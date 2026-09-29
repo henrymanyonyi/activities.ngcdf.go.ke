@@ -5,6 +5,7 @@ use App\Models\AccessLog;
 use App\Models\User;
 use App\Reports\ReportCatalog;
 use App\Services\ActivityLifecycle;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Support\Facades\Storage;
 
 beforeEach(fn () => Storage::fake('local'));
@@ -63,13 +64,14 @@ it('enforces the permission matrix on pages (4.1)', function () {
     $assistant = assistant();
     $cos = chiefOfStaff();
 
-    // Reference data and user accounts: Chief of Staff only.
-    $this->actingAs($cos)->get(route('settings.reference'))->assertOk();
-    $this->actingAs($cos)->get(route('staff.index'))->assertOk();
-    $this->actingAs($cos)->get(route('users.index'))->assertOk();
-    $this->actingAs($ceo)->get(route('settings.reference'))->assertForbidden();
-    $this->actingAs($ceo)->get(route('users.index'))->assertForbidden();
+    // Reference data and user accounts: CEO and Chief of Staff, not the Assistant.
+    foreach ([$ceo, $cos] as $user) {
+        $this->actingAs($user)->get(route('settings.reference'))->assertOk();
+        $this->actingAs($user)->get(route('staff.index'))->assertOk();
+        $this->actingAs($user)->get(route('users.index'))->assertOk();
+    }
     $this->actingAs($assistant)->get(route('staff.index'))->assertForbidden();
+    $this->actingAs($assistant)->get(route('users.index'))->assertForbidden();
 
     // Audit trail: CEO and Chief of Staff, not the Assistant.
     $this->actingAs($ceo)->get(route('reports.show', 'access-audit'))->assertOk();
@@ -150,4 +152,20 @@ it('serves attachments decrypted, only to signed-in users (CF-08)', function () 
 
     $this->get(route('documents.show', $document))->assertRedirect(route('login'));
     $this->actingAs(ceo())->get(route('documents.show', $document))->assertOk();
+});
+
+it('gives the CEO every permission the Chief of Staff and the Assistant have', function () {
+    $ceo = ceo();
+    $others = collect([chiefOfStaff(), assistant()])->flatMap(fn ($u) => $u->getAllPermissions()->pluck('name'))->unique();
+
+    expect($others->diff($ceo->getAllPermissions()->pluck('name')))->toBeEmpty()
+        ->and($ceo->getAllPermissions()->pluck('name')->sort()->values()->all())
+        ->toBe(collect(array_keys(RolesAndPermissionsSeeder::PERMISSIONS))->sort()->values()->all());
+
+    // Actions that used to belong to the Chief of Staff or the Assistant only.
+    $activity = capturedActivity($ceo);
+    app(ActivityLifecycle::class)->submitForDecision($activity, $ceo);
+    expect($activity->status->value)->toBe('awaiting_decision');
+
+    $this->actingAs($ceo)->get(route('activities.show', capturedActivity($ceo)))->assertOk()->assertSee('Submit for decision');
 });

@@ -9,8 +9,8 @@ use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
- * FRD Section 4.1 permission matrix for the three roles. OI-13 is still open:
- * if the CEO changes the matrix, change MATRIX here and re-run the seeder.
+ * FRD Section 4.1 permission matrix for the three roles, with the CEO given
+ * every permission (OI-13). To change it, edit MATRIX and re-run the seeder.
  * Safe to re-run; removes any role that is not one of the three.
  */
 class RolesAndPermissionsSeeder extends Seeder
@@ -36,10 +36,13 @@ class RolesAndPermissionsSeeder extends Seeder
 
     /** @var array<string, list<string>> */
     public const MATRIX = [
+        // Every permission: the CEO can do everything the Chief of Staff and the
+        // Assistant can, and alone decides in the system (business owner's
+        // decision on OI-13, 30 September 2026).
         User::ROLE_CEO => [
-            'activities.view', 'activities.manage', 'activities.decide', 'decisions.record', 'directives.manage',
+            'activities.view', 'activities.manage', 'activities.submit', 'activities.decide', 'decisions.record', 'directives.manage',
             'activities.postpone', 'activities.cancel', 'activities.execute', 'activities.close',
-            'links.manage', 'reports.export', 'audit.view',
+            'reference.manage', 'links.manage', 'reports.export', 'users.manage', 'audit.view',
         ],
         User::ROLE_CHIEF_OF_STAFF => [
             'activities.view', 'activities.manage', 'activities.submit', 'decisions.record', 'directives.manage',

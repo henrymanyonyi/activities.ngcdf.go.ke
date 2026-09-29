@@ -78,6 +78,7 @@ Status: **Built** (implemented and covered by tests), **Partial** (see note), **
 | NT-03 email carries no detail; nobody else alerted | Built | No email sent at all |
 | CF-01 three accounts, no self-registration | Built | `Users`, `activities:create-user` |
 | CF-02 permissions on every action | Built | Route middleware + checks in every service |
+| §4.1 / OI-13 permission matrix | Built, changed | The CEO holds every permission (30 Sep 2026): everything the Chief of Staff and Assistant can do, including reference data and user accounts, plus deciding. Only the CEO decides in the system. `RolesAndPermissionsSeeder::MATRIX` |
 | CF-03 MFA mandatory | Optional | Two-factor is available to every user but not enforced, at the business owner's request. `ACTIVITIES_REQUIRE_TWO_FACTOR=true` enforces it (`RequireTwoFactor`) |
 | CF-04 lockout; deactivate on change of holder | Built | Fortify `authenticateUsing`, `Users` |
 | CF-05 15-minute idle, one session | Built | `SESSION_LIFETIME=15`, `RecordSignIn` |
@@ -93,4 +94,4 @@ Status: **Built** (implemented and covered by tests), **Partial** (see note), **
 
 ## Open items that change behaviour
 
-OI-01 DSA basis and destination categories (provisional values seeded; `dsa_basis` setting), OI-02 which activities need a decision, OI-04 late-notice days, OI-05 field-day limits, OI-06 imprest, OI-07 report due days, OI-08 budgets, OI-11 hosting and address, OI-13 permission matrix, OI-14 custodians, OI-15 network policy. Thresholds are editable in Settings › Thresholds; the permission matrix is `RolesAndPermissionsSeeder::MATRIX`.
+OI-01 DSA basis and destination categories (provisional values seeded; `dsa_basis` setting), OI-02 which activities need a decision, OI-04 late-notice days, OI-05 field-day limits, OI-06 imprest, OI-07 report due days, OI-08 budgets, OI-11 hosting and address, OI-14 custodians, OI-15 network policy. Thresholds are editable in Settings › Thresholds; the permission matrix is `RolesAndPermissionsSeeder::MATRIX`.

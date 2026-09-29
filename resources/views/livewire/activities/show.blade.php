@@ -45,7 +45,7 @@
             <button type="button" wire:click="$set('showDiscard', true)" class="{{ Ui::BTN_NEUTRAL }} hover:!text-red-600"><i class="fa-solid fa-trash text-xs"></i>Discard</button>
         @endif
         @if (in_array($s, [ActivityStatus::Draft, ActivityStatus::Returned]) && $can('activities.submit'))
-            <button type="button" wire:click="submitForDecision" wire:loading.attr="disabled" wire:target="submitForDecision" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-paper-plane text-xs"></i>Submit to CEO</button>
+            <button type="button" wire:click="submitForDecision" wire:loading.attr="disabled" wire:target="submitForDecision" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-paper-plane text-xs"></i>{{ $can('activities.decide') ? 'Submit for decision' : 'Submit to CEO' }}</button>
         @endif
         @if ($s === ActivityStatus::AwaitingDecision && $can('activities.decide'))
             <button type="button" wire:click="openDecide('returned')" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-rotate-left text-xs"></i>Return</button>
