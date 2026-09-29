@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* PAKA-RANGI §2: Poppins for headings, Inter for everything else, Inter
+   tabular figures for numbers. Applied by inheritance from <body>, so Font
+   Awesome keeps its own font-family. No per-page <style> blocks. */
+body.font-sans h1,
+body.font-sans h2,
+body.font-sans h3,
+body.font-sans h4,
+body.font-sans h5,
+body.font-sans h6,
+body.font-sans .font-display {
+    font-family: 'Poppins', 'Inter', system-ui, sans-serif;
+}
+
+.font-numeric {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+}
+
+[x-cloak] {
+    display: none !important;
+}

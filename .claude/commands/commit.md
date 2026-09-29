@@ -1,0 +1,1 @@
+Stage all modified PHP/Blade/JS/CSS/relevant files in `/Users/henrymanyonyi/Documents/projects/ngcdf/activities.ngcdf.go.ke` (excluding `vendor/`, `node_modules/`, `.env`, `.phpunit.cache`, `storage/`), analyze the diff, generate a concise conventional commit message,  and create the small related commits.

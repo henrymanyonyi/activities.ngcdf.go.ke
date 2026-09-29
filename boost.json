@@ -1,0 +1,13 @@
+{
+    "cloud": true,
+    "guidelines": true,
+    "skills": [
+        "infer-conventions",
+        "deploying-to-cloud",
+        "fortify-development",
+        "laravel-best-practices",
+        "testing-best-practices",
+        "livewire-development",
+        "tailwindcss-development"
+    ]
+}
