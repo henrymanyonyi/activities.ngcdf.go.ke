@@ -19,6 +19,7 @@ use App\Models\CostCategory;
 use App\Models\County;
 use App\Models\Department;
 use App\Models\Directive;
+use App\Models\Office;
 use App\Models\Region;
 use App\Models\Staff;
 use App\Services\AccessLogger;
@@ -28,6 +29,7 @@ use App\Services\ActivityLifecycle;
 use App\Services\DocumentStore;
 use App\Services\DsaCalculator;
 use App\Services\ParticipantChecks;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
@@ -132,6 +134,16 @@ class Show extends Component
     /** @var array<int, string> */
     public array $conflictReasons = [];
 
+    /** Add-officers filters. Selection in $selectedStaff survives filter changes. */
+    public string $staffDepartment = '';
+
+    public string $staffOffice = '';
+
+    public bool $showSelectedOnly = false;
+
+    /** Used for every selected officer with an overlap who has no reason of their own. */
+    public string $sameConflictReason = '';
+
     public string $externalName = '';
 
     public string $externalOrganisation = '';
@@ -208,7 +220,7 @@ class Show extends Component
     {
         $this->reset([
             'showDecide', 'showRecordDecision', 'showPostpone', 'showExtend', 'showCancel', 'showComplete', 'showReport', 'showClose', 'showDiscard',
-            'showAddStaff', 'showAddExternal', 'showRemoveParticipant', 'showDays', 'daysStart', 'daysCount', 'showCost', 'showOverride', 'showLocation', 'showDirective', 'showImprest', 'showDocument',
+            'showAddStaff', 'showAddExternal', 'showRemoveParticipant', 'staffDepartment', 'staffOffice', 'showSelectedOnly', 'sameConflictReason', 'showDays', 'daysStart', 'daysCount', 'showCost', 'showOverride', 'showLocation', 'showDirective', 'showImprest', 'showDocument',
             'comment', 'memoReference', 'memoDate', 'scan', 'reason', 'newStart', 'newDays', 'extraDays', 'actualDate', 'reportReceivedOn', 'outputsAchieved',
             'findings', 'recommendations', 'reportFile', 'staffSearch', 'selectedStaff', 'conflictReasons', 'externalName', 'externalOrganisation',
             'participantId', 'costId', 'costCategoryId', 'costParticipantId', 'costDescription', 'costAmount', 'costTravelMode', 'overrideAmount',
@@ -364,10 +376,62 @@ class Show extends Component
             'reason' => [$this->activity->status->requiresAmendment() ? 'required' : 'nullable', 'string', 'max:1000'],
         ], [], ['selectedStaff' => 'officers', 'reason' => 'reason for the change']);
 
-        $result = $this->attempt(fn () => $editor->addStaff($this->activity, array_map('intval', $this->selectedStaff), ParticipantRole::from($this->role), $this->user(), array_filter($this->conflictReasons), $this->reason ?: null));
+        // A reason is kept only for people who overlap; the shared one fills any they left blank.
+        $overlaps = app(ParticipantChecks::class)->conflictingStaff($this->activity->start_date, $this->activity->end_date, $this->activity->id);
+        $reasons = collect($this->selectedStaff)->map(fn ($id) => (int) $id)->filter(fn ($id) => isset($overlaps[$id]))
+            ->mapWithKeys(fn ($id) => [$id => trim((string) ($this->conflictReasons[$id] ?? '')) ?: trim($this->sameConflictReason)])->filter()->all();
+        $result = $this->attempt(fn () => $editor->addStaff($this->activity, array_map('intval', $this->selectedStaff), ParticipantRole::from($this->role), $this->user(), $reasons, $this->reason ?: null));
         if (is_array($result)) {
             $this->done("{$result['added']} added.".($result['returned'] ? ' The change is beyond tolerance, so the activity is back with the CEO.' : ''), $result['warnings']);
         }
+    }
+
+    /**
+     * Active staff matching the add-officers filters, not already on the team.
+     *
+     * @return Builder<Staff>
+     */
+    private function candidateQuery(bool $ignoreSelectedOnly = false)
+    {
+        $onTeam = $this->activity->participants()->whereNotNull('staff_id')->pluck('staff_id')->all();
+
+        return Staff::query()->active()
+            ->search($this->staffSearch)
+            ->whereNotIn('id', $onTeam)
+            ->when($this->staffDepartment, fn ($q, $id) => $id === 'none' ? $q->whereNull('department_id') : $q->where('department_id', $id))
+            ->when($this->staffOffice, fn ($q, $id) => $q->where('office_id', $id))
+            ->when($this->showSelectedOnly && ! $ignoreSelectedOnly, fn ($q) => $q->whereIn('id', array_map('intval', $this->selectedStaff) ?: [0]));
+    }
+
+    public function selectShown(): void
+    {
+        $this->selectedStaff = collect($this->selectedStaff)->map(fn ($id) => (int) $id)
+            ->merge($this->candidateQuery()->pluck('id'))->unique()->values()->all();
+    }
+
+    public function clearShown(): void
+    {
+        $shown = $this->candidateQuery()->pluck('id')->all();
+        $this->selectedStaff = collect($this->selectedStaff)->map(fn ($id) => (int) $id)->diff($shown)->values()->all();
+        if ($this->selectedStaff === []) {
+            $this->showSelectedOnly = false;
+        }
+    }
+
+    /** Select everyone shown in one department, or clear them if they are all selected already. */
+    public function toggleDepartment(string $departmentId): void
+    {
+        $ids = $this->candidateQuery()
+            ->when($departmentId === 'none', fn ($q) => $q->whereNull('department_id'), fn ($q) => $q->where('department_id', (int) $departmentId))
+            ->pluck('id');
+        $selected = collect($this->selectedStaff)->map(fn ($id) => (int) $id);
+
+        $this->selectedStaff = ($ids->diff($selected)->isEmpty() ? $selected->diff($ids) : $selected->merge($ids))->unique()->values()->all();
+    }
+
+    public function unselect(int $id): void
+    {
+        $this->selectedStaff = collect($this->selectedStaff)->map(fn ($s) => (int) $s)->reject(fn ($s) => $s === $id)->values()->all();
     }
 
     public function addExternal(ActivityEditor $editor): void
@@ -668,11 +732,29 @@ class Show extends Component
             ->mapWithKeys(fn (ActivityParticipant $p) => [$p->id => $checks->fieldDayFlags($p->staff_id, $activity, $p->plannedDays($activity))]);
 
         $candidates = collect();
+        $picker = [];
         if ($this->showAddStaff) {
-            $onTeam = $activity->participants->pluck('staff_id')->filter()->all();
-            $candidates = Staff::query()->active()->search($this->staffSearch)->whereNotIn('id', $onTeam)
-                ->with('department')->orderBy('name')->limit(40)->get()
-                ->map(fn (Staff $s) => ['staff' => $s, 'conflicts' => $checks->conflicts($s->id, $activity->start_date, $activity->end_date, $activity->id)]);
+            $overlaps = $checks->conflictingStaff($activity->start_date, $activity->end_date, $activity->id);
+            $selected = array_map('intval', $this->selectedStaff);
+
+            $candidates = $this->candidateQuery()->with(['department', 'designation'])->orderBy('name')->limit(500)->get()
+                ->map(fn (Staff $s) => ['staff' => $s, 'conflicts' => collect($overlaps[$s->id] ?? [])]);
+
+            $picker = [
+                'groups' => $candidates->groupBy(fn ($c) => $c['staff']->department_id ?? 'none')
+                    ->map(fn ($rows, $key) => [
+                        'key' => (string) $key,
+                        'name' => $rows->first()['staff']->department?->name ?? 'No department',
+                        'rows' => $rows,
+                        'selected' => $rows->filter(fn ($c) => in_array($c['staff']->id, $selected, true))->count(),
+                    ])->sortBy('name')->values(),
+                'shownSelected' => $candidates->filter(fn ($c) => in_array($c['staff']->id, $selected, true))->count(),
+                'available' => $this->candidateQuery(true)->count(),
+                'selectedStaff' => Staff::query()->whereIn('id', $selected)->orderBy('name')->get(['id', 'name', 'department_id']),
+                'selectedWithOverlap' => collect($selected)->filter(fn ($id) => isset($overlaps[$id]))->count(),
+                'departments' => Department::query()->active()->ordered()->get(['id', 'name']),
+                'offices' => Office::query()->active()->ordered()->get(['id', 'name']),
+            ];
         }
 
         return view('livewire.activities.show', [
@@ -681,6 +763,7 @@ class Show extends Component
             'conflicts' => $conflicts,
             'fieldDays' => $fieldDays,
             'candidates' => $candidates,
+            'picker' => $picker,
             'costCategories' => CostCategory::query()->active()->ordered()->get(),
             'departments' => Department::query()->active()->ordered()->get(['id', 'name']),
             'regions' => Region::query()->orderBy('name')->get(['id', 'name']),

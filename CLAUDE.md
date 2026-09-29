@@ -36,7 +36,7 @@ Never run `migrate:fresh`, `migrate:refresh`, `db:wipe`, `migrate:rollback` agai
 
 ```bash
 composer install && npm install && npm run build
-php artisan migrate && php artisan db:seed          # roles, geography, reference lists (safe to re-run)
+php artisan migrate && php artisan db:seed          # see DatabaseSeeder: system data synced every run; editable config seeded once, never overwritten
 php artisan activities:create-user ceo you@ngcdf.go.ke "Full Name"   # also chief_of_staff, assistant_chief_of_staff
 composer run dev                                      # serve + queue + logs + vite
 php artisan test --compact                            # Pest, SQLite :memory:

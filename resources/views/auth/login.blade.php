@@ -70,7 +70,7 @@
                     </form>
 
                     <p class="mt-6 text-xs text-slate-400 leading-relaxed">
-                        Two-factor authentication is required. After several failed attempts the account is locked for a while; the Chief of Staff can unlock it.
+                        After several failed attempts the account is locked for a while; the Chief of Staff can unlock it. You can add two-factor authentication to your account from your Profile.
                     </p>
 
                     <div class="mt-8 border-t border-slate-100 pt-6 flex items-center justify-center gap-3 opacity-60 grayscale hover:grayscale-0 transition duration-500">

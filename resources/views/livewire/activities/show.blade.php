@@ -519,42 +519,116 @@
         </x-slot:footer>
     </x-ui.modal>
 
-    <x-ui.modal show="showAddStaff" :open="$showAddStaff" size="large" icon="fa-user-plus" title="Add officers" subtitle="Choose from the staff list. Anyone already on an approved activity on these dates needs a reason.">
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div class="relative flex items-center sm:col-span-2">
+    <x-ui.modal show="showAddStaff" :open="$showAddStaff" size="large" icon="fa-user-plus" title="Add officers" subtitle="Filter the staff list, pick people one by one, a whole department or everyone shown. Your picks are kept while you change the filters.">
+        @php
+            $selectedIds = array_map('intval', $selectedStaff);
+            $selCount = count($selectedIds);
+        @endphp
+
+        {{-- Filters --}}
+        <div class="flex flex-col lg:flex-row gap-3">
+            <div class="relative flex items-center flex-1 min-w-[12rem]">
                 <i class="fa-solid fa-magnifying-glass absolute left-3 text-gray-400 text-xs pointer-events-none"></i>
                 <input type="search" wire:model.live.debounce.300ms="staffSearch" placeholder="Search name, PF number or email…" class="{{ Ui::CONTROL }} pl-9" aria-label="Search staff">
             </div>
-            <select wire:model="role" class="{{ $sel }}" aria-label="Role">@foreach (ParticipantRole::cases() as $r)<option value="{{ $r->value }}">{{ $r->label() }}</option>@endforeach</select>
+            <select wire:model.live="staffDepartment" class="{{ $sel }} lg:w-60 shrink-0" aria-label="Department">
+                <option value="">All departments</option>
+                @foreach ($picker['departments'] ?? [] as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach
+                <option value="none">No department</option>
+            </select>
+            <select wire:model.live="staffOffice" class="{{ $sel }} lg:w-52 shrink-0" aria-label="Duty station">
+                <option value="">All duty stations</option>
+                @foreach ($picker['offices'] ?? [] as $o)<option value="{{ $o->id }}">{{ $o->name }}</option>@endforeach
+            </select>
+            <select wire:model="role" class="{{ $sel }} lg:w-44 shrink-0" aria-label="Role for the people added">
+                @foreach (ParticipantRole::cases() as $r)<option value="{{ $r->value }}">Add as {{ $r->label() }}</option>@endforeach
+            </select>
         </div>
-        <div class="border border-slate-200 rounded-xl divide-y divide-slate-100 max-h-80 overflow-y-auto">
-            @forelse ($candidates as $c)
-                @php $st = $c['staff']; $checked = in_array($st->id, array_map('intval', $selectedStaff)); @endphp
-                <div class="px-4 py-2.5 {{ $checked ? 'bg-emerald-50/50' : '' }}" wire:key="cand-{{ $st->id }}">
-                    <label class="flex items-start gap-3 cursor-pointer">
-                        <input type="checkbox" value="{{ $st->id }}" wire:model.live="selectedStaff" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
-                        <span class="min-w-0 flex-1">
-                            <span class="block text-[13px] font-medium text-slate-700">{{ $st->name }} <span class="text-slate-400 font-numeric">{{ $st->staff_number }}</span></span>
-                            <span class="block text-[11px] text-slate-400">{{ $st->department?->name }}{{ $st->job_grade ? ' · '.$st->job_grade : ' · no job grade (DSA cannot be computed)' }}</span>
-                            @if ($c['conflicts']->isNotEmpty())<span class="block text-[11px] text-red-600"><i class="fa-solid fa-triangle-exclamation mr-1"></i>On {{ $c['conflicts']->pluck('reference')->implode(', ') }} during these dates</span>@endif
-                        </span>
-                    </label>
-                    @if ($checked && $c['conflicts']->isNotEmpty())
-                        <input type="text" wire:model="conflictReasons.{{ $st->id }}" placeholder="Reason to proceed despite the overlap" maxlength="500" class="{{ Ui::CONTROL }} mt-2 ml-7 !w-[calc(100%-1.75rem)]">
-                    @endif
+
+        {{-- Bulk actions --}}
+        <div class="flex flex-wrap items-center gap-2">
+            <span class="text-[13px] text-slate-500 font-numeric mr-1">{{ $candidates->count() }} shown{{ $candidates->count() === 500 ? ' (first 500, narrow the filters)' : '' }}</span>
+            <button type="button" wire:click="selectShown" wire:loading.attr="disabled" class="{{ Ui::BTN_TINT }}" @disabled($candidates->isEmpty())><i class="fa-solid fa-check-double text-[9px]"></i>Select all shown</button>
+            <button type="button" wire:click="clearShown" wire:loading.attr="disabled" class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 bg-white hover:bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg" @disabled(($picker['shownSelected'] ?? 0) === 0)><i class="fa-solid fa-xmark text-[9px]"></i>Clear shown</button>
+            <label class="ml-auto inline-flex items-center gap-2 text-[13px] text-slate-600 cursor-pointer {{ $selCount ? '' : 'opacity-50' }}">
+                <input type="checkbox" wire:model.live="showSelectedOnly" @disabled(! $selCount) class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                Show selected only
+            </label>
+        </div>
+
+        {{-- Selected, as removable chips --}}
+        @if ($selCount)
+            <div class="flex flex-wrap items-center gap-1.5 rounded-lg bg-emerald-50/60 border border-emerald-100 px-3 py-2">
+                <span class="{{ Ui::MICRO }} !text-emerald-700 mr-1">{{ $selCount }} selected</span>
+                @foreach (($picker['selectedStaff'] ?? collect())->take(12) as $st)
+                    <span class="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full bg-white border border-emerald-200 text-[12px] text-slate-700" wire:key="chip-{{ $st->id }}">
+                        {{ $st->name }}
+                        <button type="button" wire:click="unselect({{ $st->id }})" class="w-4 h-4 rounded-full text-slate-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center" aria-label="Remove {{ $st->name }}"><i class="fa-solid fa-xmark text-[9px]"></i></button>
+                    </span>
+                @endforeach
+                @if ($selCount > 12)
+                    <button type="button" wire:click="$set('showSelectedOnly', true)" class="text-[12px] font-semibold text-emerald-700 hover:underline">+{{ $selCount - 12 }} more</button>
+                @endif
+            </div>
+        @endif
+
+        {{-- Staff, grouped by department --}}
+        <div class="border border-slate-200 rounded-xl max-h-[26rem] overflow-y-auto">
+            @forelse ($picker['groups'] ?? [] as $group)
+                @php
+                    $all = $group['selected'] === $group['rows']->count();
+                    $some = $group['selected'] > 0 && ! $all;
+                @endphp
+                <div wire:key="grp-{{ $group['key'] }}">
+                    <div class="sticky top-0 z-10 flex items-center gap-3 px-4 py-2 bg-slate-50 border-b border-slate-200">
+                        <input type="checkbox" wire:click="toggleDepartment('{{ $group['key'] }}')" @checked($all)
+                            x-data x-effect="$el.indeterminate = {{ $some ? 'true' : 'false' }}"
+                            class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" aria-label="Select everyone shown in {{ $group['name'] }}">
+                        <span class="text-[12px] font-semibold text-slate-700">{{ $group['name'] }}</span>
+                        <span class="text-[11px] text-slate-400 font-numeric">{{ $group['selected'] }} of {{ $group['rows']->count() }} selected</span>
+                        <button type="button" wire:click="toggleDepartment('{{ $group['key'] }}')" class="ml-auto text-[11px] font-semibold text-emerald-700 hover:underline">{{ $all ? 'Clear department' : 'Select all in department' }}</button>
+                    </div>
+                    <div class="divide-y divide-slate-100">
+                        @foreach ($group['rows'] as $c)
+                            @php $st = $c['staff']; $checked = in_array($st->id, $selectedIds, true); @endphp
+                            <div class="px-4 py-2.5 {{ $checked ? 'bg-emerald-50/50' : '' }}" wire:key="cand-{{ $st->id }}">
+                                <label class="flex items-start gap-3 cursor-pointer">
+                                    <input type="checkbox" value="{{ $st->id }}" wire:model.live="selectedStaff" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                                    <span class="min-w-0 flex-1">
+                                        <span class="block text-[13px] font-medium text-slate-700">{{ $st->name }} <span class="text-slate-400 font-numeric">{{ $st->staff_number }}</span></span>
+                                        <span class="block text-[11px] text-slate-400">{{ $st->designation?->name ?? 'No designation' }} · {{ $st->job_grade ?: 'no job grade (DSA cannot be computed)' }}</span>
+                                        @if ($c['conflicts']->isNotEmpty())<span class="block text-[11px] text-red-600"><i class="fa-solid fa-triangle-exclamation mr-1"></i>On {{ $c['conflicts']->implode(', ') }} during these dates</span>@endif
+                                    </span>
+                                </label>
+                                @if ($checked && $c['conflicts']->isNotEmpty())
+                                    <input type="text" wire:model="conflictReasons.{{ $st->id }}" placeholder="{{ $sameConflictReason ? 'Uses the shared reason below unless you type one' : 'Reason to proceed despite the overlap' }}" maxlength="500" class="{{ Ui::CONTROL }} mt-2 ml-7 !w-[calc(100%-1.75rem)]">
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
                 </div>
             @empty
-                <p class="px-4 py-6 text-center text-sm text-slate-400">{{ $staffSearch ? 'No active staff match.' : 'No active staff on the list. The Chief of Staff can import the HR staff list.' }}</p>
+                <p class="px-4 py-8 text-center text-sm text-slate-400">
+                    @if ($showSelectedOnly) Nobody selected matches these filters.
+                    @elseif ($staffSearch || $staffDepartment || $staffOffice) No active staff match these filters.
+                    @else No active staff left to add. The Chief of Staff can import the HR staff list. @endif
+                </p>
             @endforelse
         </div>
         @error('selectedStaff')<p class="text-xs text-red-600">{{ $message }}</p>@enderror
+
+        @if (($picker['selectedWithOverlap'] ?? 0) > 0)
+            <x-ui.field :label="'Reason for the '.$picker['selectedWithOverlap'].' '.Str::plural('person', $picker['selectedWithOverlap']).' with an overlap'" for="as-same" hint="Applies to everyone selected who is already on another approved activity on these dates, unless you gave them their own reason above.">
+                <input id="as-same" type="text" wire:model.live.debounce.400ms="sameConflictReason" maxlength="500" class="{{ Ui::CONTROL }}" placeholder="e.g. The CEO asked for both teams">
+            </x-ui.field>
+        @endif
         @if ($amend)
             <x-ui.field label="Reason for changing the team" for="as-r" error="reason" required hint="The activity has been submitted or approved, so this is recorded as an amendment."><input id="as-r" type="text" wire:model="reason" maxlength="1000" class="{{ Ui::CONTROL }}"></x-ui.field>
         @endif
         <x-slot:footer>
-            <span class="mr-auto text-[13px] text-slate-500 font-numeric">{{ count($selectedStaff) }} selected</span>
+            <span class="mr-auto text-[13px] text-slate-500 font-numeric">{{ $selCount }} selected</span>
             <button type="button" wire:click="$set('showAddStaff', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
-            <button type="button" wire:click="addStaff" wire:loading.attr="disabled" wire:target="addStaff" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-user-plus text-xs"></i>Add to team</button>
+            <button type="button" wire:click="addStaff" wire:loading.attr="disabled" wire:target="addStaff" class="{{ Ui::BTN_PRIMARY }}" @disabled(! $selCount)><i class="fa-solid fa-user-plus text-xs"></i>Add {{ $selCount ?: '' }} to team</button>
         </x-slot:footer>
     </x-ui.modal>
 

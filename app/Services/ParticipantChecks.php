@@ -47,6 +47,30 @@ class ParticipantChecks
     }
 
     /**
+     * Every staff member whose own days on another approved or in-progress
+     * activity overlap the given days, in one query: staff id => references.
+     * Used when choosing people from the whole staff list.
+     *
+     * @return array<int, list<string>>
+     */
+    public function conflictingStaff(Carbon $start, Carbon $end, ?int $excludeActivityId = null): array
+    {
+        return ActivityParticipant::query()
+            ->join('activities', 'activities.id', '=', 'activity_participants.activity_id')
+            ->whereNull('activities.deleted_at')
+            ->whereNotNull('activity_participants.staff_id')
+            ->whereIn('activities.status', ActivityStatus::values(ActivityStatus::Approved, ActivityStatus::InProgress))
+            ->whereIn('activity_participants.status', ParticipationStatus::values(ParticipationStatus::Nominated, ParticipationStatus::Confirmed, ParticipationStatus::Attended))
+            ->when($excludeActivityId, fn (Builder $q, $id) => $q->where('activities.id', '!=', $id))
+            ->whereRaw('COALESCE(activity_participants.start_date, activities.start_date) <= ?', [$end->toDateString()])
+            ->whereRaw('COALESCE(activity_participants.end_date, activities.end_date) >= ?', [$start->toDateString()])
+            ->get(['activity_participants.staff_id', 'activities.reference'])
+            ->groupBy('staff_id')
+            ->map(fn ($rows) => $rows->pluck('reference')->unique()->values()->all())
+            ->all();
+    }
+
+    /**
      * Conflicts for every staff participant on an activity, keyed by participant id.
      *
      * @return array<int, Collection<int, Activity>>

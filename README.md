@@ -13,13 +13,13 @@ Stack: Laravel 13, PHP 8.3+, Livewire 3, Jetstream (Fortify, two-factor), Tailwi
 ```bash
 composer install && npm install && npm run build
 cp .env.example .env && php artisan key:generate      # set DB_* (db_ngcdf_activities)
-php artisan migrate && php artisan db:seed            # roles, 10 regions / 47 counties / 290 constituencies, reference lists
+php artisan migrate && php artisan db:seed            # roles, geography, reference lists, thresholds, provisional DSA rates (safe to re-run)
 php artisan activities:create-user chief_of_staff cos@ngcdf.go.ke "Name"
 php artisan activities:create-user ceo ceo@ngcdf.go.ke "Name"
 composer run dev
 ```
 
-On a local machine only, `ACTIVITIES_REQUIRE_TWO_FACTOR=false` skips the two-factor set-up. Never in staging or production.
+Two-factor authentication is optional: each user can turn it on from their Profile. Set `ACTIVITIES_REQUIRE_TWO_FACTOR=true` to make it mandatory for all accounts (FRD CF-03).
 
 ## Naming and environments
 
@@ -41,7 +41,7 @@ These are server responsibilities, not application code:
 4. **Scheduler**: cron `* * * * * php artisan schedule:run`. It runs `activities:daily` (completion, commencement and overdue-report alerts), `activities:weekly-summary` (Monday) and the backups.
 5. **Network** (CF-11, OI-15): restrict the virtual host to the Board network and VPN.
 6. **Custodians** (CF-09, OI-14): only named ICT custodians get server or database access; nobody from ICT gets an application account.
-7. `APP_ENV=production`, `APP_DEBUG=false`, `SESSION_LIFETIME=15`, `SESSION_ENCRYPT=true`, `ACTIVITIES_REQUIRE_TWO_FACTOR=true`.
+7. `APP_ENV=production`, `APP_DEBUG=false`, `SESSION_LIFETIME=15`, `SESSION_ENCRYPT=true`. Two-factor is optional unless `ACTIVITIES_REQUIRE_TWO_FACTOR=true`.
 8. Leave `ACTIVITIES_SUBMISSION_LINKS=false` until the CEO confirms the magic-link intake route (it conflicts with FRD 2.2 as written).
 
 ## Tests

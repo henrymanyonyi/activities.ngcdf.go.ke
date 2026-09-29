@@ -7,8 +7,9 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * FRD CF-03: two-factor authentication is mandatory. Until it is confirmed,
- * the only page a signed-in user can reach is their profile, where they set it up.
+ * Optional enforcement of FRD CF-03, off by default (ACTIVITIES_REQUIRE_TWO_FACTOR).
+ * When on, until two-factor is confirmed the only page a signed-in user can
+ * reach is their profile, where they set it up.
  */
 class RequireTwoFactor
 {

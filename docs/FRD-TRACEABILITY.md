@@ -78,7 +78,7 @@ Status: **Built** (implemented and covered by tests), **Partial** (see note), **
 | NT-03 email carries no detail; nobody else alerted | Built | No email sent at all |
 | CF-01 three accounts, no self-registration | Built | `Users`, `activities:create-user` |
 | CF-02 permissions on every action | Built | Route middleware + checks in every service |
-| CF-03 MFA mandatory | Built | `RequireTwoFactor` (`ACTIVITIES_REQUIRE_TWO_FACTOR`) |
+| CF-03 MFA mandatory | Optional | Two-factor is available to every user but not enforced, at the business owner's request. `ACTIVITIES_REQUIRE_TWO_FACTOR=true` enforces it (`RequireTwoFactor`) |
 | CF-04 lockout; deactivate on change of holder | Built | Fortify `authenticateUsing`, `Users` |
 | CF-05 15-minute idle, one session | Built | `SESSION_LIFETIME=15`, `RecordSignIn` |
 | CF-06 audit and access log | Built | `audit_logs`, `access_logs` |

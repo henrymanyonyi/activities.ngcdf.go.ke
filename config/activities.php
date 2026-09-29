@@ -1,8 +1,10 @@
 <?php
 
 return [
-    // FRD CF-03: two-factor authentication is mandatory for all three accounts.
-    'require_two_factor' => (bool) env('ACTIVITIES_REQUIRE_TWO_FACTOR', true),
+    // Two-factor authentication is optional: users may turn it on in their
+    // Profile. Set true to force every account to set it up before using the
+    // app (FRD CF-03 asks for this; switched off at the business owner's request).
+    'require_two_factor' => (bool) env('ACTIVITIES_REQUIRE_TWO_FACTOR', false),
 
     // Magic-link intake of submissions from memo originators. FRD 2.2 / BR-11
     // put all access by departments out of scope, so this stays off until the
