@@ -242,6 +242,62 @@ class ActivityEditor
     }
 
     /**
+     * The days one person takes part, within the activity's dates. Null dates
+     * mean the whole activity. DSA follows the person's own nights.
+     *
+     * @return bool whether the change sent the activity back to the CEO
+     */
+    public function setParticipantDates(ActivityParticipant $participant, ?Carbon $start, ?Carbon $end, User $user, ?string $amendmentReason = null): bool
+    {
+        $this->authorize($user, 'activities.manage');
+        $activity = $participant->loadMissing('activity')->activity;
+        $this->assertEditable($activity);
+
+        if ($activity->status->isDelivered()) {
+            throw new ActivityWorkflowException('Planned days are fixed once the activity is completed; record days attended instead.');
+        }
+
+        $start ??= $activity->start_date;
+        $end ??= $activity->end_date;
+
+        if ($start->lt($activity->start_date) || $end->gt($activity->end_date)) {
+            throw new ActivityWorkflowException(sprintf('Dates must fall within the activity, %s to %s.', $activity->start_date->format('d M Y'), $activity->end_date->format('d M Y')));
+        }
+
+        if ($end->lt($start)) {
+            throw new ActivityWorkflowException('The last day cannot be before the first day.');
+        }
+
+        if ($activity->status->requiresAmendment() && blank($amendmentReason)) {
+            throw new ActivityWorkflowException("Give a reason for changing a participant's days on a submitted or approved activity.");
+        }
+
+        $whole = $start->equalTo($activity->start_date) && $end->equalTo($activity->end_date);
+        $before = ['start_date' => $participant->startOn($activity)->toDateString(), 'end_date' => $participant->endOn($activity)->toDateString(), 'days' => $participant->plannedDays($activity)];
+        $days = (int) $start->diffInDays($end) + 1;
+
+        return DB::transaction(function () use ($participant, $activity, $start, $end, $whole, $days, $before, $user, $amendmentReason) {
+            $participant->update([
+                'start_date' => $whole ? null : $start,
+                'end_date' => $whole ? null : $end,
+                'days_planned' => $whole ? null : $days,
+            ]);
+            $this->dsa->recalculate($activity);
+
+            if (! $activity->status->requiresAmendment()) {
+                return false;
+            }
+
+            return $this->lifecycle->recordAmendment(
+                $activity, ActivityAmendment::KIND_PARTICIPANTS,
+                sprintf('%s: %s to %s (%d %s)', $participant->displayName(), $start->format('d M Y'), $end->format('d M Y'), $days, $days === 1 ? 'day' : 'days'),
+                (string) $amendmentReason, $user, $this->lifecycle->costBeyondTolerance($activity),
+                $before, ['start_date' => $start->toDateString(), 'end_date' => $end->toDateString(), 'days' => $days],
+            );
+        });
+    }
+
+    /**
      * EX-02: attendance, and days actually spent.
      */
     public function recordAttendance(ActivityParticipant $participant, ParticipationStatus $status, ?int $daysAttended, User $user): void
@@ -255,7 +311,7 @@ class ActivityEditor
 
         $participant->update([
             'status' => $status,
-            'days_attended' => $status === ParticipationStatus::Attended ? ($daysAttended ?? $participant->days_planned ?? $activity->days) : null,
+            'days_attended' => $status === ParticipationStatus::Attended ? ($daysAttended ?? $participant->plannedDays($activity)) : null,
         ]);
         $this->costing->refresh($activity);
     }

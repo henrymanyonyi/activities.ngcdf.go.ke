@@ -179,7 +179,7 @@
                         <table class="w-full">
                             <thead class="border-b border-slate-100"><tr>
                                 <th class="{{ Ui::TH }}">Participant</th><th class="{{ Ui::TH }}">Role</th><th class="{{ Ui::TH }}">Field days (Q · FY)</th>
-                                <th class="{{ Ui::TH }}">Attendance</th><th class="{{ Ui::TH }} text-right">Days</th><th class="{{ Ui::TH }} text-right">Cost incl. share</th><th class="{{ Ui::TH }}"></th>
+                                <th class="{{ Ui::TH }}">Attendance</th><th class="{{ Ui::TH }} text-right">{{ $s->isDelivered() ? 'Days attended' : 'Days' }}</th><th class="{{ Ui::TH }} text-right">Cost incl. share</th><th class="{{ Ui::TH }}"></th>
                             </tr></thead>
                             <tbody class="divide-y divide-slate-100">
                                 @foreach ($breakdown['rows'] as $row)
@@ -212,11 +212,21 @@
                                                 <x-ui.badge :classes="$p->status->badgeClasses()">{{ $p->status->label() }}</x-ui.badge>
                                             @endif
                                         </td>
-                                        <td class="{{ Ui::TD }} text-right font-numeric">
-                                            @if ($p->status === ParticipationStatus::Attended && $can('activities.execute') && ! $s->isReadOnly())
-                                                <input type="number" min="0" max="366" value="{{ $p->days_attended ?? $p->days_planned ?? $a->days }}" wire:change="setDaysAttended({{ $p->id }}, $event.target.value)" class="{{ Ui::CONTROL }} !py-1 w-20 text-right" aria-label="Days attended">
+                                        <td class="{{ Ui::TD }} text-right font-numeric whitespace-nowrap">
+                                            @if (! $s->isDelivered())
+                                                <div class="inline-flex items-start justify-end gap-1">
+                                                    <div>
+                                                        <span class="{{ $p->isPartial($a) ? 'text-slate-800 font-semibold' : '' }}">{{ $p->plannedDays($a) }}</span>
+                                                        @if ($p->isPartial($a))<p class="text-[11px] text-slate-400">{{ $p->startOn($a)->format('d M') }} – {{ $p->endOn($a)->format('d M') }}</p>@endif
+                                                    </div>
+                                                    @if ($editable)
+                                                        <button type="button" wire:click="openDays({{ $p->id }})" class="{{ Ui::BTN_ICON }} -mt-1" title="Change {{ $p->displayName() }}'s days" aria-label="Change {{ $p->displayName() }}'s days"><i class="fa-solid fa-calendar-day text-xs"></i></button>
+                                                    @endif
+                                                </div>
+                                            @elseif ($p->status === ParticipationStatus::Attended && $can('activities.execute') && ! $s->isReadOnly())
+                                                <input type="number" min="0" max="366" value="{{ $p->days_attended ?? $p->plannedDays($a) }}" wire:change="setDaysAttended({{ $p->id }}, $event.target.value)" class="{{ Ui::CONTROL }} !py-1 w-20 text-right" aria-label="Days attended">
                                             @else
-                                                {{ $p->days_attended ?? $p->days_planned ?? $a->days }}
+                                                {{ $p->days_attended ?? $p->plannedDays($a) }}
                                             @endif
                                         </td>
                                         <td class="{{ Ui::TD }} text-right">
@@ -545,6 +555,34 @@
             <span class="mr-auto text-[13px] text-slate-500 font-numeric">{{ count($selectedStaff) }} selected</span>
             <button type="button" wire:click="$set('showAddStaff', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
             <button type="button" wire:click="addStaff" wire:loading.attr="disabled" wire:target="addStaff" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-user-plus text-xs"></i>Add to team</button>
+        </x-slot:footer>
+    </x-ui.modal>
+
+    @php $editingDays = $participantId ? $a->participants->firstWhere('id', $participantId) : null; @endphp
+    <x-ui.modal show="showDays" :open="$showDays" size="slim" icon="fa-calendar-day" :title="'Days for '.($editingDays?->displayName() ?? 'participant')"
+        :subtitle="'Within the activity, '.Ui::dateRange($a->start_date, $a->end_date).'. DSA follows this person\'s own nights.'">
+        <div class="grid grid-cols-2 gap-4">
+            <x-ui.field label="First day" for="pd-s" error="daysStart" required><input id="pd-s" type="date" wire:model.live="daysStart" min="{{ $a->start_date->toDateString() }}" max="{{ $a->end_date->toDateString() }}" class="{{ Ui::CONTROL }}"></x-ui.field>
+            <x-ui.field label="Number of days" for="pd-n" error="daysCount" required><input id="pd-n" type="number" min="1" max="{{ $a->days }}" wire:model.live="daysCount" class="{{ Ui::CONTROL }} font-numeric"></x-ui.field>
+        </div>
+        @php
+            $pdStart = $daysStart ? \Illuminate\Support\Carbon::parse($daysStart) : null;
+            $pdEnd = $pdStart && $daysCount >= 1 ? $pdStart->copy()->addDays($daysCount - 1) : null;
+            $pdOver = $pdEnd && $pdEnd->gt($a->end_date);
+        @endphp
+        <div class="rounded-lg border px-3 py-2.5 {{ $pdOver ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50' }}" aria-live="polite">
+            <p class="{{ Ui::MICRO }}">Last day · nights</p>
+            <p class="text-[13px] font-bold font-numeric {{ $pdOver ? 'text-amber-800' : 'text-emerald-800' }}">
+                {{ $pdEnd ? Ui::date($pdEnd).' · '.max(0, $daysCount - 1).' '.Str::plural('night', max(0, $daysCount - 1)) : '—' }}
+                <span class="font-normal text-slate-500">of {{ $a->days }} activity days</span>
+            </p>
+            @if ($pdOver)<p class="text-[11px] text-amber-800 mt-0.5">Runs past the activity's last day, {{ Ui::date($a->end_date) }}.</p>@endif
+        </div>
+        <button type="button" wire:click="$set('daysStart', '{{ $a->start_date->toDateString() }}')" class="{{ Ui::BTN_TINT }} w-fit">Start on the activity's first day</button>
+        @if ($amend)<x-ui.field label="Reason for the change" for="pd-r" error="reason" required hint="The activity has been submitted or approved, so this is recorded as an amendment."><input id="pd-r" type="text" wire:model="reason" maxlength="1000" class="{{ Ui::CONTROL }}"></x-ui.field>@endif
+        <x-slot:footer>
+            <button type="button" wire:click="$set('showDays', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
+            <button type="button" wire:click="saveDays" wire:loading.attr="disabled" wire:target="saveDays" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-floppy-disk text-xs"></i>Save days</button>
         </x-slot:footer>
     </x-ui.modal>
 

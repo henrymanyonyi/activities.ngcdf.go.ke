@@ -331,7 +331,9 @@ class ActivityLifecycle
         DB::transaction(function () use ($activity, $start, $end, $days, $reason, $user, $kind, $before, $after, $beyond, &$warnings) {
             $wasPostponed = $activity->status === ActivityStatus::Postponed;
 
+            $shift = (int) $activity->start_date->diffInDays($start, false);
             $activity->forceFill(['start_date' => $start, 'end_date' => $end, 'days' => $days, 'nights' => max(0, $days - 1)])->save();
+            $this->moveParticipantDates($activity, $shift);
             $warnings = $this->dsa->recalculate($activity);
 
             $summary = $kind === ActivityAmendment::KIND_EXTENSION
@@ -350,6 +352,25 @@ class ActivityLifecycle
         });
 
         return $warnings;
+    }
+
+    /**
+     * Keep each participant's own days in step when the activity moves: shift
+     * them by the same number of days, then fit them inside the new dates.
+     */
+    private function moveParticipantDates(Activity $activity, int $shift): void
+    {
+        $activity->participants()->whereNotNull('start_date')->get()->each(function ($p) use ($activity, $shift) {
+            $start = $p->start_date->copy()->addDays($shift)->max($activity->start_date)->min($activity->end_date);
+            $end = $p->end_date->copy()->addDays($shift)->max($start)->min($activity->end_date);
+            $whole = $start->equalTo($activity->start_date) && $end->equalTo($activity->end_date);
+
+            $p->update([
+                'start_date' => $whole ? null : $start,
+                'end_date' => $whole ? null : $end,
+                'days_planned' => $whole ? null : (int) $start->diffInDays($end) + 1,
+            ]);
+        });
     }
 
     private function applyDecision(Activity $activity, DecisionType $decision, ?string $comment, DecisionMode $mode, User $user, ?string $memoReference = null, ?Carbon $memoDate = null, ?int $documentId = null): CeoDecision

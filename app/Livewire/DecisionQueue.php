@@ -61,7 +61,7 @@ class DecisionQueue extends Component
                 'activity' => $a,
                 'conflicts' => $checks->conflictsFor($a),
                 'overLimit' => $a->participants->where('is_external', false)->filter(function (ActivityParticipant $p) use ($checks, $a) {
-                    $f = $checks->fieldDayFlags($p->staff_id, $a, $p->days_planned ?? $a->days);
+                    $f = $checks->fieldDayFlags($p->staff_id, $a, $p->plannedDays($a));
 
                     return $f['over_quarter'] || $f['over_year'];
                 }),

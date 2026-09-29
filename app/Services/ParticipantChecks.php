@@ -25,7 +25,9 @@ class ParticipantChecks
     public function __construct(private AppSettings $settings) {}
 
     /**
-     * Other approved or in-progress activities the staff member is on with overlapping dates (BR-04).
+     * Other approved or in-progress activities where the staff member's own
+     * days overlap the given days (BR-04). A participant's own dates default
+     * to their activity's.
      *
      * @return Collection<int, Activity>
      */
@@ -37,7 +39,9 @@ class ParticipantChecks
             ->when($excludeActivityId, fn (Builder $q, $id) => $q->whereKeyNot($id))
             ->whereHas('participants', fn (Builder $q) => $q
                 ->where('staff_id', $staffId)
-                ->whereIn('status', ParticipationStatus::values(ParticipationStatus::Nominated, ParticipationStatus::Confirmed, ParticipationStatus::Attended)))
+                ->whereIn('status', ParticipationStatus::values(ParticipationStatus::Nominated, ParticipationStatus::Confirmed, ParticipationStatus::Attended))
+                ->whereRaw('COALESCE(activity_participants.start_date, activities.start_date) <= ?', [$end->toDateString()])
+                ->whereRaw('COALESCE(activity_participants.end_date, activities.end_date) >= ?', [$start->toDateString()]))
             ->orderBy('start_date')
             ->get(['id', 'reference', 'title', 'start_date', 'end_date', 'status']);
     }
@@ -53,7 +57,7 @@ class ParticipantChecks
 
         return $activity->participants
             ->where('is_external', false)
-            ->mapWithKeys(fn (ActivityParticipant $p) => [$p->id => $this->conflicts($p->staff_id, $activity->start_date, $activity->end_date, $activity->id)])
+            ->mapWithKeys(fn (ActivityParticipant $p) => [$p->id => $this->conflicts($p->staff_id, $p->startOn($activity), $p->endOn($activity), $activity->id)])
             ->filter(fn (Collection $c) => $c->isNotEmpty())
             ->all();
     }
@@ -73,15 +77,15 @@ class ParticipantChecks
                 ->whereDate('start_date', '>=', $from)
                 ->whereDate('start_date', '<=', $to)
                 ->when($excludeActivityId, fn (Builder $q, $id) => $q->whereKeyNot($id)))
-            ->with('activity:id,days,status')
-            ->get(['id', 'activity_id', 'status', 'days_planned', 'days_attended']);
+            ->with('activity:id,days,status,start_date,end_date')
+            ->get(['id', 'activity_id', 'status', 'start_date', 'end_date', 'days_planned', 'days_attended']);
 
         $planned = 0;
         $actual = 0;
         foreach ($rows as $row) {
-            $planned += $row->days_planned ?? $row->activity->days;
+            $planned += $row->plannedDays($row->activity);
             if ($row->activity->status->isDelivered() && $row->status === ParticipationStatus::Attended) {
-                $actual += $row->days_attended ?? $row->days_planned ?? $row->activity->days;
+                $actual += $row->days_attended ?? $row->plannedDays($row->activity);
             }
         }
 

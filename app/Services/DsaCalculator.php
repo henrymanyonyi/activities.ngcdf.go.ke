@@ -36,7 +36,7 @@ class DsaCalculator
 
     public function units(Activity $activity, ?ActivityParticipant $participant = null): int
     {
-        $days = $participant?->days_planned ?? $activity->days;
+        $days = $participant ? $participant->plannedDays($activity) : $activity->days;
 
         return $this->settings->get('dsa_basis') === 'days' ? $days : max(0, $days - 1);
     }

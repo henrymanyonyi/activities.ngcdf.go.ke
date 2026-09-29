@@ -80,6 +80,11 @@
             @endif
 
             @if ($tab === 'rates')
+                @if ($items->where('is_provisional', true)->whereNull('effective_to')->isNotEmpty())
+                    <div class="mb-4 px-4 py-3 rounded-lg text-[13px] bg-amber-50 border border-amber-200 text-amber-800" role="note">
+                        <i class="fa-solid fa-triangle-exclamation mr-1"></i><strong>Provisional rates are in use.</strong> Placeholder rates were seeded at installation so DSA can be calculated. Add the rates from the Finance circular below: each one replaces the provisional rate for its grade and destination from its effective date (OI-01).
+                    </div>
+                @endif
                 <form wire:submit="addRate" class="grid grid-cols-1 sm:grid-cols-5 gap-3 mb-4 items-end">
                     <x-ui.field label="Job grade" for="r-g" error="rateGrade"><input id="r-g" type="text" list="grade-list" wire:model="rateGrade" maxlength="20" class="{{ Ui::CONTROL }}"><datalist id="grade-list">@foreach ($grades as $g)<option value="{{ $g }}">@endforeach</datalist></x-ui.field>
                     <x-ui.field label="Destination" for="r-d" error="rateDestination"><input id="r-d" type="text" list="dest-list2" wire:model="rateDestination" maxlength="40" class="{{ Ui::CONTROL }}"><datalist id="dest-list2">@foreach ($known as $k)<option value="{{ $k }}">@endforeach</datalist></x-ui.field>
@@ -98,7 +103,10 @@
                                     <td class="{{ Ui::TD }} font-numeric">{{ $r->job_grade }}</td><td class="{{ Ui::TD }}">{{ $r->destination_category }}</td>
                                     <td class="{{ Ui::TD }} text-right"><x-ui.money :value="$r->amount" /></td>
                                     <td class="{{ Ui::TD }} font-numeric">{{ Ui::date($r->effective_from) }} – {{ $r->effective_to ? Ui::date($r->effective_to) : 'current' }}</td>
-                                    <td class="{{ Ui::TD }}">@if (! $r->effective_to)<x-ui.badge classes="bg-emerald-50 text-emerald-700">In force</x-ui.badge>@endif</td>
+                                    <td class="{{ Ui::TD }} whitespace-nowrap">
+                                        @if (! $r->effective_to)<x-ui.badge classes="bg-emerald-50 text-emerald-700">In force</x-ui.badge>@endif
+                                        @if ($r->is_provisional)<x-ui.badge classes="bg-amber-50 text-amber-700" icon="fa-triangle-exclamation">Provisional</x-ui.badge>@endif
+                                    </td>
                                 </tr>
                             @endforeach
                         </tbody>

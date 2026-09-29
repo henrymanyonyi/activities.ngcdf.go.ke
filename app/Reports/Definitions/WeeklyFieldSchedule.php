@@ -77,15 +77,16 @@ class WeeklyFieldSchedule extends Report
             ->whereHas('activity', fn (Builder $q) => $q->status(ActivityStatus::Approved, ActivityStatus::InProgress, ActivityStatus::AwaitingDecision)->overlapping($start, $end))
             ->with(['staff.department', 'activity.locations.county', 'activity.locations.constituency', 'activity.locations.region'])
             ->get()
-            ->sortBy(fn ($p) => $p->activity->start_date->format('Ymd').$p->displayName())
+            ->filter(fn (ActivityParticipant $p) => $p->startOn($p->activity)->lte($end) && $p->endOn($p->activity)->gte($start))
+            ->sortBy(fn ($p) => $p->startOn($p->activity)->format('Ymd').$p->displayName())
             ->map(fn (ActivityParticipant $p) => [
                 'officer' => $p->displayName().($p->is_external ? ' (external)' : ''),
                 'department' => $p->is_external ? $p->external_organisation : $p->staff?->department?->name,
                 'reference' => $p->activity->reference,
                 'activity' => $p->activity->title,
                 'location' => $p->activity->locationSummary(),
-                'start' => $p->activity->start_date,
-                'end' => $p->activity->end_date,
+                'start' => $p->startOn($p->activity),
+                'end' => $p->endOn($p->activity),
                 'role' => $p->role->label(),
                 'status' => $p->activity->status->label(),
                 '_activity_id' => $p->activity_id,

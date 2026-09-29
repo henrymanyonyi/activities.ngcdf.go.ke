@@ -191,7 +191,7 @@ class ParticipantListImporter
                 $participant->fill([
                     'is_external' => false,
                     'role' => $row['role'],
-                    'days_planned' => $row['days'],
+                    'days_planned' => $row['days'] === null ? null : min($row['days'], $activity->days),
                 ]);
                 if (! $participant->exists) {
                     $participant->status = ParticipationStatus::Nominated;
@@ -288,7 +288,7 @@ class ParticipantListImporter
                 'external_organisation' => $row['organisation'] ?: null,
                 'external_category' => $row['external_category'],
                 'role' => $row['role'],
-                'days_planned' => $row['days'],
+                'days_planned' => $row['days'] === null ? null : min($row['days'], $activity->days),
             ])->save();
     }
 }

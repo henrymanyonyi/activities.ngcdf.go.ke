@@ -53,7 +53,8 @@ class Submit extends Component
 
     public string $start_date = '';
 
-    public int|string $days = 1;
+    /** Null by default, set in mount(); see Activities\Form::$days. */
+    public ?int $days = null;
 
     public string $county_id = '';
 
@@ -82,6 +83,7 @@ class Submit extends Component
     public function mount(string $token, SubmissionLinkService $links): void
     {
         $this->token = $token;
+        $this->days = 1;
         $link = $links->find($token);
 
         if ($link?->isUsable()) {

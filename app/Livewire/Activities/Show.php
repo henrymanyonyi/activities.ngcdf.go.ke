@@ -88,6 +88,8 @@ class Show extends Component
 
     public bool $showDocument = false;
 
+    public bool $showDays = false;
+
     // Shared form state.
     public string $decision = 'approved';
 
@@ -103,9 +105,10 @@ class Show extends Component
 
     public string $newStart = '';
 
-    public int|string $newDays = '';
+    public ?int $newDays = null;
 
-    public int|string $extraDays = 1;
+    /** Null by default, set in mount(); see Activities\Form::$days. */
+    public ?int $extraDays = null;
 
     public string $actualDate = '';
 
@@ -136,6 +139,11 @@ class Show extends Component
     public string $externalCategory = 'other';
 
     public ?int $participantId = null;
+
+    public string $daysStart = '';
+
+    /** Null by default, set in openDays(); see Activities\Form::$days. */
+    public ?int $daysCount = null;
 
     public ?int $costId = null;
 
@@ -180,6 +188,7 @@ class Show extends Component
     public function mount(Activity $activity, AccessLogger $log): void
     {
         $this->activity = $activity;
+        $this->extraDays = 1;
         $log->log(AccessLogger::VIEW, $activity); // CF-06: every view of an activity
         $this->loadActuals();
     }
@@ -199,12 +208,13 @@ class Show extends Component
     {
         $this->reset([
             'showDecide', 'showRecordDecision', 'showPostpone', 'showExtend', 'showCancel', 'showComplete', 'showReport', 'showClose', 'showDiscard',
-            'showAddStaff', 'showAddExternal', 'showRemoveParticipant', 'showCost', 'showOverride', 'showLocation', 'showDirective', 'showImprest', 'showDocument',
+            'showAddStaff', 'showAddExternal', 'showRemoveParticipant', 'showDays', 'daysStart', 'daysCount', 'showCost', 'showOverride', 'showLocation', 'showDirective', 'showImprest', 'showDocument',
             'comment', 'memoReference', 'memoDate', 'scan', 'reason', 'newStart', 'newDays', 'extraDays', 'actualDate', 'reportReceivedOn', 'outputsAchieved',
             'findings', 'recommendations', 'reportFile', 'staffSearch', 'selectedStaff', 'conflictReasons', 'externalName', 'externalOrganisation',
             'participantId', 'costId', 'costCategoryId', 'costParticipantId', 'costDescription', 'costAmount', 'costTravelMode', 'overrideAmount',
             'locRegion', 'locCounty', 'locConstituency', 'locVenue', 'directiveBody', 'directiveDepartment', 'directiveDue', 'document',
         ]);
+        $this->extraDays = 1;
         $this->activity->refresh();
         $this->loadActuals();
         if ($message) {
@@ -393,6 +403,45 @@ class Show extends Component
         $returned = $this->attempt(fn () => $editor->removeParticipant($participant, $this->user(), $this->reason ?: null));
         if ($returned !== null) {
             $this->done('Removed from the team.'.($returned === true ? ' The change is beyond tolerance, so the activity is back with the CEO.' : ''));
+        }
+    }
+
+    public function openDays(int $id): void
+    {
+        $participant = $this->activity->participants()->findOrFail($id);
+        $this->resetErrorBag();
+        $this->participantId = $id;
+        $this->daysStart = $participant->startOn($this->activity)->toDateString();
+        $this->daysCount = $participant->plannedDays($this->activity);
+        $this->reason = '';
+        $this->showDays = true;
+    }
+
+    public function saveDays(ActivityEditor $editor): void
+    {
+        $this->validate([
+            'daysStart' => ['required', 'date', 'after_or_equal:'.$this->activity->start_date->toDateString(), 'before_or_equal:'.$this->activity->end_date->toDateString()],
+            'daysCount' => ['required', 'integer', 'min:1', 'max:'.$this->activity->days],
+            'reason' => [$this->activity->status->requiresAmendment() ? 'required' : 'nullable', 'string', 'max:1000'],
+        ], [
+            'daysStart.after_or_equal' => 'The first day must be within the activity.',
+            'daysStart.before_or_equal' => 'The first day must be within the activity.',
+        ], ['daysStart' => 'first day', 'daysCount' => 'number of days', 'reason' => 'reason for the change']);
+
+        $start = Carbon::parse($this->daysStart);
+        $end = $start->copy()->addDays($this->daysCount - 1);
+
+        if ($end->gt($this->activity->end_date)) {
+            $this->addError('daysCount', sprintf('From %s the activity has only %d days left, ending %s.', $start->format('d M Y'), (int) $start->diffInDays($this->activity->end_date) + 1, $this->activity->end_date->format('d M Y')));
+
+            return;
+        }
+
+        $participant = $this->activity->participants()->findOrFail($this->participantId);
+        $returned = $this->attempt(fn () => $editor->setParticipantDates($participant, $start, $end, $this->user(), $this->reason ?: null));
+
+        if ($returned !== null) {
+            $this->done($participant->displayName()."'s days updated.".($returned === true ? ' The cost change is beyond tolerance, so the activity is back with the CEO.' : ''));
         }
     }
 
@@ -616,7 +665,7 @@ class Show extends Component
 
         $conflicts = $checks->conflictsFor($activity);
         $fieldDays = $activity->participants->where('is_external', false)
-            ->mapWithKeys(fn (ActivityParticipant $p) => [$p->id => $checks->fieldDayFlags($p->staff_id, $activity, $p->days_planned ?? $activity->days)]);
+            ->mapWithKeys(fn (ActivityParticipant $p) => [$p->id => $checks->fieldDayFlags($p->staff_id, $activity, $p->plannedDays($activity))]);
 
         $candidates = collect();
         if ($this->showAddStaff) {

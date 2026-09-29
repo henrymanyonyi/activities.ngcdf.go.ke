@@ -116,10 +116,10 @@ class Analytics
                 $share = $breakdown[$p->id]['share'] ?? 0;
 
                 $rows[$id]['activities']->push(['activity' => $activity, 'participant' => $p, 'cost' => $split['total'] + $share]);
-                $rows[$id]['planned_days'] += $p->days_planned ?? $activity->days;
+                $rows[$id]['planned_days'] += $p->plannedDays($activity);
                 if ($p->status === ParticipationStatus::Attended) {
                     $rows[$id]['attended']++;
-                    $rows[$id]['actual_days'] += $p->days_attended ?? $p->days_planned ?? $activity->days;
+                    $rows[$id]['actual_days'] += $p->days_attended ?? $p->plannedDays($activity);
                 }
                 if ($p->status === ParticipationStatus::Absent) {
                     $rows[$id]['missed']++;
@@ -192,7 +192,7 @@ class Analytics
                 $rows[$key]['activities'][$activity->id] = true;
                 foreach ($activity->participants->where('is_external', false) as $p) {
                     $rows[$key]['staff'][$p->staff_id] = true;
-                    $rows[$key]['days'] += $p->days_planned ?? $activity->days;
+                    $rows[$key]['days'] += $p->plannedDays($activity);
                 }
                 foreach (['dsa', 'travel', 'other', 'total', 'planned', 'actual'] as $k) {
                     $rows[$key][$k] += $split[$k];
@@ -208,7 +208,7 @@ class Analytics
                 $split = $this->split($activity->costs->where('activity_participant_id', $p->id));
                 $rows[$key]['activities'][$activity->id] = true;
                 $rows[$key]['staff'][$p->staff_id] = true;
-                $rows[$key]['days'] += $p->days_planned ?? $activity->days;
+                $rows[$key]['days'] += $p->plannedDays($activity);
                 foreach (['dsa', 'travel', 'other', 'total', 'planned', 'actual'] as $k) {
                     $rows[$key][$k] += $split[$k];
                 }
@@ -302,6 +302,7 @@ class Analytics
             ->whereHas('activity', fn (Builder $q) => $q->status(ActivityStatus::InProgress, ActivityStatus::Approved)->overlapping(today(), today()))
             ->with(['staff.department', 'activity.locations.county', 'activity.locations.constituency', 'activity.locations.region'])
             ->get()
+            ->filter(fn (ActivityParticipant $p) => $p->startOn($p->activity)->lte(today()) && $p->endOn($p->activity)->gte(today()))
             ->sortBy(fn (ActivityParticipant $p) => $p->staff?->name)
             ->values();
     }

@@ -54,7 +54,8 @@ class Form extends Component
 
     public string $start_date = '';
 
-    public int|string $days = 1;
+    /** Null by default, set in mount(): Livewire rehydrates a null value to the class default, so a default of 1 would silently undo a cleared field. */
+    public ?int $days = null;
 
     public bool $count_externals_in_per_head = true;
 
@@ -85,6 +86,7 @@ class Form extends Component
             $this->expected_outputs ??= '';
             $this->notes ??= '';
         } else {
+            $this->days = 1;
             $this->source_received_on = today()->toDateString();
         }
     }

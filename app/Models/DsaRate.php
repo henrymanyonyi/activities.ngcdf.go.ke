@@ -16,7 +16,7 @@ class DsaRate extends Model
 {
     use Auditable;
 
-    protected $fillable = ['job_grade', 'destination_category', 'amount', 'effective_from', 'effective_to', 'recorded_by'];
+    protected $fillable = ['job_grade', 'destination_category', 'amount', 'effective_from', 'effective_to', 'is_provisional', 'recorded_by'];
 
     protected function casts(): array
     {
@@ -24,6 +24,7 @@ class DsaRate extends Model
             'amount' => 'decimal:2',
             'effective_from' => 'date',
             'effective_to' => 'date',
+            'is_provisional' => 'boolean',
         ];
     }
 
