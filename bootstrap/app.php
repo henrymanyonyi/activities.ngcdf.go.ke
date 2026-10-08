@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsurePrivacyConsent;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\NoStore;
 use App\Http\Middleware\RequireTwoFactor;
@@ -20,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
+            'privacy.consent' => EnsurePrivacyConsent::class,
             'role' => RoleMiddleware::class,
             'permission' => PermissionMiddleware::class,
             'role_or_permission' => RoleOrPermissionMiddleware::class,

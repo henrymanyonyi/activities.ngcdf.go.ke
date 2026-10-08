@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Exceptions\ActivityWorkflowException;
+use App\Http\Controllers\PrivacyStatementController;
 use App\Models\ActivityCategory;
 use App\Models\ActivityType;
 use App\Models\Constituency;
@@ -12,6 +13,7 @@ use App\Models\Department;
 use App\Models\SubmissionLink;
 use App\Services\ActivitySubmission;
 use App\Services\ParticipantListImporter;
+use App\Services\PrivacyConsentService;
 use App\Services\SubmissionLinkService;
 use Illuminate\Support\Carbon;
 use Illuminate\View\View;
@@ -25,6 +27,10 @@ use Livewire\WithFileUploads;
  * The page a link holder sees. It shows nothing but its own form; the token
  * is re-checked on every request, and the submission becomes a Draft for the
  * Office of the CEO to review.
+ *
+ * The link holder must have agreed to the NG-CDF Board Data Privacy Statement
+ * before the form opens and again at submit, since it carries participants'
+ * personal data; without it they are sent to the statement and brought back.
  */
 #[Layout('layouts.public')]
 #[Title('Submit an activity')]
@@ -87,12 +93,26 @@ class Submit extends Component
         $link = $links->find($token);
 
         if ($link?->isUsable()) {
+            if (! app(PrivacyConsentService::class)->visitorHasConsented(request())) {
+                $this->sendToPrivacyStatement();
+
+                return;
+            }
+
             $links->recordOpen($link);
             $this->submitted_by_name = $link->recipient_name;
             $this->submitted_by_email = (string) $link->recipient_email;
             $this->organising_department_id = (string) ($link->department_id ?? '');
             $this->activity_category_id = (string) ($link->activity_category_id ?? '');
         }
+    }
+
+    /** To the public statement, coming back to this form once they agree. */
+    private function sendToPrivacyStatement(): void
+    {
+        session()->put(PrivacyStatementController::RETURN_TO_KEY, route('submit.show', $this->token));
+
+        $this->redirectRoute('privacy.statement');
     }
 
     private function link(): ?SubmissionLink
@@ -165,6 +185,12 @@ class Submit extends Component
     {
         $link = $this->link();
         abort_unless($link, 403);
+
+        if (! app(PrivacyConsentService::class)->visitorHasConsented(request())) {
+            $this->sendToPrivacyStatement();
+
+            return;
+        }
 
         $data = $this->validate();
         $parsed = $importer->parse($this->participantList->getRealPath());

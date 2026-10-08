@@ -6,6 +6,7 @@ use App\Models\ActivityCategory;
 use App\Models\ActivityDocument;
 use App\Models\County;
 use App\Models\Department;
+use App\Models\PrivacyConsent;
 use App\Models\Staff;
 use App\Models\User;
 use App\Services\ActivityEditor;
@@ -23,6 +24,23 @@ pest()->extend(TestCase::class)
         $this->seed([RolesAndPermissionsSeeder::class, GeographySeeder::class, ReferenceDataSeeder::class]);
     })
     ->in('Feature');
+
+/**
+ * A browser that has agreed to the Data Privacy Statement as a visitor: returns the consent
+ * token for the privacy cookie (`withCookie(config('privacy.cookie'), ...)`).
+ */
+function visitorPrivacyConsent(): string
+{
+    $token = bin2hex(random_bytes(32));
+    PrivacyConsent::create([
+        'consent_type' => PrivacyConsent::TYPE_ANONYMOUS,
+        'consent_token_hash' => hash('sha256', $token),
+        'privacy_statement_version' => config('privacy.statement.version'),
+        'consented_at' => now(),
+    ]);
+
+    return $token;
+}
 
 function ceo(): User
 {

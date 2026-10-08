@@ -115,6 +115,9 @@
                             <a href="{{ route('profile.show') }}" role="menuitem" class="{{ $menuItem }} text-slate-600 hover:bg-emerald-50 hover:text-emerald-700">
                                 <i class="fa-regular fa-user w-4 text-center text-slate-400"></i> Profile and security
                             </a>
+                            <a href="{{ route('privacy.statement') }}" role="menuitem" target="_blank" class="{{ $menuItem }} text-slate-600 hover:bg-emerald-50 hover:text-emerald-700">
+                                <i class="fa-solid fa-shield-halved w-4 text-center text-slate-400"></i> Privacy Statement
+                            </a>
                         </div>
                         <div class="p-1.5 border-t border-slate-100">
                             <form method="POST" action="{{ route('logout') }}">

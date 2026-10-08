@@ -73,6 +73,11 @@
                         After several failed attempts the account is locked for a while; the Chief of Staff can unlock it. You can add two-factor authentication to your account from your Profile.
                     </p>
 
+                    <p class="mt-4 text-xs text-slate-500">
+                        On signing in you will be asked to agree to the
+                        <a href="{{ route('privacy.statement') }}" class="font-semibold text-emerald-700 hover:text-emerald-500 transition">NG-CDF Board Data Privacy Statement</a>.
+                    </p>
+
                     <div class="mt-8 border-t border-slate-100 pt-6 flex items-center justify-center gap-3 opacity-60 grayscale hover:grayscale-0 transition duration-500">
                         <img src="{{ asset('images/gok.png') }}" alt="Government of Kenya" class="h-5 w-auto">
                         <span class="text-slate-300">|</span>
