@@ -24,11 +24,23 @@ class ReferenceDataSeeder extends Seeder
 {
     use SeedsOnce;
 
-    /** The concept tracker's list (FRD MD-02). */
+    /** The Board's 16 departments (FRD MD-02; list supplied 11 October 2026, replacing the concept tracker's 11). */
     public const DEPARTMENTS = [
-        'Office of the CEO / Accounting Officer', 'Finance & Accounts', 'Internal Audit & Compliance', 'Procurement', 'ICT',
-        'Human Resource & Administration', 'Legal Services', 'Projects, Planning & M&E',
-        'Corporate Communications', 'Regional Coordination', 'Board Secretariat',
+        'Human Resources', 'Internal Audit', 'Corporate Communications', 'Office of the CEO', 'Financial Services - Accounts',
+        'Field Financial Coordination', 'ICT', 'Research & Statistics', 'Monitoring & Evaluation', 'Risk & Compliance',
+        'Supply Chain', 'Programmes', 'Corporate, Planning & Strategy', 'Administration', 'Legal Services',
+        'Special Initiatives & Partnerships',
+    ];
+
+    /**
+     * Concept-list names that are the same unit under a new name. Merged units
+     * (e.g. Human Resource & Administration) are not here: their staff must be
+     * moved by the Chief of Staff with Settings › Departments › Merge.
+     */
+    public const RENAMED_DEPARTMENTS = [
+        'Office of the CEO / Accounting Officer' => 'Office of the CEO',
+        'Finance & Accounts' => 'Financial Services - Accounts',
+        'Procurement' => 'Supply Chain',
     ];
 
     public const DESIGNATIONS = [
@@ -77,6 +89,22 @@ class ReferenceDataSeeder extends Seeder
         }
 
         $this->once('departments', function () {
+            foreach (self::DEPARTMENTS as $name) {
+                Department::resolveByName($name);
+            }
+        });
+
+        // Installations seeded with the concept list: rename the units that only
+        // changed name (keeping their id, so staff and history stay attached),
+        // then add any of the 16 still missing. Nothing is removed.
+        $this->once('departments_board_structure', function () {
+            foreach (self::RENAMED_DEPARTMENTS as $old => $new) {
+                $legacy = Department::query()->whereRaw('LOWER(name) = ?', [mb_strtolower($old)])->first();
+                if ($legacy && Department::query()->whereRaw('LOWER(name) = ?', [mb_strtolower($new)])->doesntExist()) {
+                    $legacy->update(['name' => $new]);
+                }
+            }
+
             foreach (self::DEPARTMENTS as $name) {
                 Department::resolveByName($name);
             }
