@@ -86,6 +86,7 @@ class ActivityLifecycle
 
         if ($decision === DecisionType::Approved) {
             $this->assertHasTeam($activity);
+            $this->assertConflictsExplained($activity, 'approving');
         }
 
         return DB::transaction(function () use ($activity, $decision, $comment, $memoReference, $memoDate, $scan, $user) {
@@ -381,6 +382,7 @@ class ActivityLifecycle
 
         if ($decision === DecisionType::Approved) {
             $this->assertHasTeam($activity);
+            $this->assertConflictsExplained($activity, 'approving');
         }
 
         return DB::transaction(function () use ($activity, $decision, $comment, $mode, $user, $memoReference, $memoDate, $documentId) {
@@ -430,12 +432,30 @@ class ActivityLifecycle
             throw new ActivityWorkflowException('Attach the source document (memo, concept note or terms of reference) before submitting.');
         }
 
-        $unexplained = collect($this->checks->conflictsFor($activity))
-            ->keys()
-            ->filter(fn (int $participantId) => blank($activity->participants->firstWhere('id', $participantId)?->conflict_reason));
+        $this->assertConflictsExplained($activity, 'submitting');
+    }
 
-        if ($unexplained->isNotEmpty()) {
-            throw new ActivityWorkflowException('Some participants are already on another activity on these dates. Give a reason for each before submitting.');
+    /**
+     * BR-04 at every gate: nobody may stay on two overlapping approved or
+     * in-progress activities without a recorded reason. Overlaps can appear
+     * after submission (another activity is approved, dates move), so this
+     * runs again at approval.
+     */
+    private function assertConflictsExplained(Activity $activity, string $before): void
+    {
+        $activity->load('participants');
+
+        $names = collect($this->checks->conflictsFor($activity))
+            ->keys()
+            ->map(fn (int $participantId) => $activity->participants->firstWhere('id', $participantId))
+            ->filter(fn ($participant) => $participant && blank($participant->conflict_reason))
+            ->map(fn ($participant) => $participant->displayName());
+
+        if ($names->isNotEmpty()) {
+            throw new ActivityWorkflowException(sprintf(
+                '%s %s already on another approved activity on these dates. On the Team tab, give a reason for each before %s.',
+                $names->implode(', '), $names->count() === 1 ? 'is' : 'are', $before,
+            ));
         }
     }
 

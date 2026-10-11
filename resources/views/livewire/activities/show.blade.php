@@ -38,7 +38,7 @@
     <x-slot:actions>
         <a href="{{ route('activities.index') }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-arrow-left text-xs"></i>Register</a>
 
-        @if ($s->isFreelyEditable() && $editable)
+        @if ($editable)
             <a href="{{ route('activities.edit', $a) }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-pen text-xs"></i>Edit</a>
         @endif
         @if ($s === ActivityStatus::Draft && $can('activities.manage'))
@@ -192,7 +192,17 @@
                                                 @else{{ $p->staff?->staff_number }} · {{ $p->department?->name ?? $p->staff?->department?->name }}{{ $p->job_grade ? ' · '.$p->job_grade : '' }}@endif
                                             </p>
                                             @if (isset($conflicts[$p->id]))
-                                                <p class="text-[11px] text-red-600 mt-0.5"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Also on {{ $conflicts[$p->id]->pluck('reference')->implode(', ') }}@if ($p->conflict_reason)<span class="text-slate-500"> · Reason: {{ $p->conflict_reason }}</span>@else<span class="font-semibold"> · no reason given</span>@endif</p>
+                                                <p class="text-[11px] text-red-600 mt-0.5">
+                                                    <i class="fa-solid fa-triangle-exclamation mr-1"></i>Also on {{ $conflicts[$p->id]->pluck('reference')->implode(', ') }}
+                                                    @if ($p->conflict_reason)
+                                                        <span class="text-slate-500"> · Reason: {{ $p->conflict_reason }}</span>
+                                                    @else
+                                                        <span class="font-semibold"> · no reason given</span>
+                                                        @if ($editable)
+                                                            <button type="button" wire:click="openExplain({{ $p->id }})" class="ml-1.5 font-semibold text-emerald-700 hover:underline">Give reason</button>
+                                                        @endif
+                                                    @endif
+                                                </p>
                                             @endif
                                         </td>
                                         <td class="{{ Ui::TD }}">{{ $p->role->label() }}</td>
@@ -540,6 +550,10 @@
                 <option value="">All duty stations</option>
                 @foreach ($picker['offices'] ?? [] as $o)<option value="{{ $o->id }}">{{ $o->name }}</option>@endforeach
             </select>
+            <select wire:model.live="staffSort" class="{{ $sel }} lg:w-52 shrink-0" aria-label="Order">
+                <option value="name">By name</option>
+                <option value="fewest">Fewest field days first</option>
+            </select>
             <select wire:model="role" class="{{ $sel }} lg:w-44 shrink-0" aria-label="Role for the people added">
                 @foreach (ParticipantRole::cases() as $r)<option value="{{ $r->value }}">Add as {{ $r->label() }}</option>@endforeach
             </select>
@@ -597,6 +611,11 @@
                                     <span class="min-w-0 flex-1">
                                         <span class="block text-[13px] font-medium text-slate-700">{{ $st->name }} <span class="text-slate-400 font-numeric">{{ $st->staff_number }}</span></span>
                                         <span class="block text-[11px] text-slate-400">{{ $st->designation?->name ?? 'No designation' }} · {{ $st->job_grade ?: 'no job grade (DSA cannot be computed)' }}</span>
+                                        @php $overYear = $picker['yearLimit'] > 0 && $c['yearDays'] + $a->days > $picker['yearLimit']; @endphp
+                                        <span class="block text-[11px] font-numeric {{ $overYear ? 'text-amber-700' : 'text-slate-500' }}" title="Planned field days on approved activities in {{ $picker['yearLabel'] }}, not counting this one">
+                                            <i class="fa-solid fa-person-walking-luggage mr-1"></i>{{ $c['yearDays'] }} field {{ Str::plural('day', $c['yearDays']) }} in {{ $picker['yearLabel'] }}@if ($picker['yearLimit'] > 0) of {{ $picker['yearLimit'] }}@endif
+                                            @if ($overYear) · would pass the limit with this activity @endif
+                                        </span>
                                         @if ($c['conflicts']->isNotEmpty())<span class="block text-[11px] text-red-600"><i class="fa-solid fa-triangle-exclamation mr-1"></i>On {{ $c['conflicts']->implode(', ') }} during these dates</span>@endif
                                     </span>
                                 </label>
@@ -653,10 +672,36 @@
             @if ($pdOver)<p class="text-[11px] text-amber-800 mt-0.5">Runs past the activity's last day, {{ Ui::date($a->end_date) }}.</p>@endif
         </div>
         <button type="button" wire:click="$set('daysStart', '{{ $a->start_date->toDateString() }}')" class="{{ Ui::BTN_TINT }} w-fit">Start on the activity's first day</button>
+        @if ($daysOverlap->isNotEmpty())
+            <div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-[12px] text-red-700" role="alert">
+                <i class="fa-solid fa-triangle-exclamation mr-1"></i>On these days {{ $editingDays?->displayName() }} is also on {{ $daysOverlap->map(fn ($o) => $o->reference.' ('.Ui::dateRange($o->start_date, $o->end_date).')')->implode(', ') }}.
+            </div>
+            @unless ($editingDays?->conflict_reason)
+                <x-ui.field label="Reason to proceed despite the overlap" for="pd-o" error="overlapReason" required><input id="pd-o" type="text" wire:model="overlapReason" maxlength="500" class="{{ Ui::CONTROL }}"></x-ui.field>
+            @endunless
+        @endif
         @if ($amend)<x-ui.field label="Reason for the change" for="pd-r" error="reason" required hint="The activity has been submitted or approved, so this is recorded as an amendment."><input id="pd-r" type="text" wire:model="reason" maxlength="1000" class="{{ Ui::CONTROL }}"></x-ui.field>@endif
         <x-slot:footer>
             <button type="button" wire:click="$set('showDays', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
             <button type="button" wire:click="saveDays" wire:loading.attr="disabled" wire:target="saveDays" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-floppy-disk text-xs"></i>Save days</button>
+        </x-slot:footer>
+    </x-ui.modal>
+
+    <x-ui.modal show="showExplain" :open="$showExplain" size="slim" icon="fa-triangle-exclamation" :title="'Overlap: '.($explaining?->displayName() ?? 'participant')"
+        subtitle="This person is also on another approved activity on some of these days. Record why they may be on both, or remove them from one.">
+        @if ($explaining && isset($conflicts[$explaining->id]))
+            <ul class="text-[13px] text-slate-600 space-y-1">
+                @foreach ($conflicts[$explaining->id] as $other)
+                    <li><a href="{{ route('activities.show', $other) }}" wire:navigate class="font-semibold text-emerald-700 hover:underline font-numeric">{{ $other->reference }}</a> {{ $other->title }} · <span class="font-numeric">{{ Ui::dateRange($other->start_date, $other->end_date) }}</span></li>
+                @endforeach
+            </ul>
+        @endif
+        <x-ui.field label="Reason" for="ex-r" error="overlapReason" required hint="Shown to the CEO with the conflict. Approval is refused while an overlap has no reason.">
+            <input id="ex-r" type="text" wire:model="overlapReason" maxlength="500" class="{{ Ui::CONTROL }}" placeholder="e.g. Joins the second team after the first two days">
+        </x-ui.field>
+        <x-slot:footer>
+            <button type="button" wire:click="$set('showExplain', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
+            <button type="button" wire:click="explainConflict" wire:loading.attr="disabled" wire:target="explainConflict" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-floppy-disk text-xs"></i>Save reason</button>
         </x-slot:footer>
     </x-ui.modal>
 

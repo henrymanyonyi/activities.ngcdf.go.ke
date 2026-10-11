@@ -243,11 +243,12 @@ class ActivityEditor
 
     /**
      * The days one person takes part, within the activity's dates. Null dates
-     * mean the whole activity. DSA follows the person's own nights.
+     * mean the whole activity. DSA follows the person's own nights. New days
+     * that overlap another approved activity need a reason, as when adding (BR-04).
      *
      * @return bool whether the change sent the activity back to the CEO
      */
-    public function setParticipantDates(ActivityParticipant $participant, ?Carbon $start, ?Carbon $end, User $user, ?string $amendmentReason = null): bool
+    public function setParticipantDates(ActivityParticipant $participant, ?Carbon $start, ?Carbon $end, User $user, ?string $amendmentReason = null, ?string $conflictReason = null): bool
     {
         $this->authorize($user, 'activities.manage');
         $activity = $participant->loadMissing('activity')->activity;
@@ -272,15 +273,22 @@ class ActivityEditor
             throw new ActivityWorkflowException("Give a reason for changing a participant's days on a submitted or approved activity.");
         }
 
+        $conflictReason = trim((string) $conflictReason) ?: $participant->conflict_reason;
+        if ($participant->staff_id && blank($conflictReason)
+            && ($clash = $this->checks->conflicts($participant->staff_id, $start, $end, $activity->id))->isNotEmpty()) {
+            throw new ActivityWorkflowException(sprintf('%s is already on %s on those days. Give a reason to proceed.', $participant->displayName(), $clash->pluck('reference')->implode(', ')));
+        }
+
         $whole = $start->equalTo($activity->start_date) && $end->equalTo($activity->end_date);
         $before = ['start_date' => $participant->startOn($activity)->toDateString(), 'end_date' => $participant->endOn($activity)->toDateString(), 'days' => $participant->plannedDays($activity)];
         $days = (int) $start->diffInDays($end) + 1;
 
-        return DB::transaction(function () use ($participant, $activity, $start, $end, $whole, $days, $before, $user, $amendmentReason) {
+        return DB::transaction(function () use ($participant, $activity, $start, $end, $whole, $days, $before, $user, $amendmentReason, $conflictReason) {
             $participant->update([
                 'start_date' => $whole ? null : $start,
                 'end_date' => $whole ? null : $end,
                 'days_planned' => $whole ? null : $days,
+                'conflict_reason' => $conflictReason,
             ]);
             $this->dsa->recalculate($activity);
 
@@ -295,6 +303,28 @@ class ActivityEditor
                 $before, ['start_date' => $start->toDateString(), 'end_date' => $end->toDateString(), 'days' => $days],
             );
         });
+    }
+
+    /**
+     * BR-04: record why someone stays on this activity although their days
+     * overlap another approved one. Used when the overlap appeared after they
+     * were added (a postponement, an extension, another activity approved).
+     */
+    public function explainConflict(ActivityParticipant $participant, string $reason, User $user): void
+    {
+        $this->authorize($user, 'activities.manage');
+        $activity = $participant->loadMissing('activity')->activity;
+        $this->assertEditable($activity);
+
+        if (trim($reason) === '') {
+            throw new ActivityWorkflowException('Give the reason this person may be on both activities.');
+        }
+
+        if (! $participant->staff_id || $this->checks->conflicts($participant->staff_id, $participant->startOn($activity), $participant->endOn($activity), $activity->id)->isEmpty()) {
+            throw new ActivityWorkflowException("{$participant->displayName()} has no overlap to explain.");
+        }
+
+        $participant->update(['conflict_reason' => trim($reason)]);
     }
 
     /**

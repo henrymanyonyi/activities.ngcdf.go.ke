@@ -26,9 +26,11 @@ use App\Services\AccessLogger;
 use App\Services\ActivityCosting;
 use App\Services\ActivityEditor;
 use App\Services\ActivityLifecycle;
+use App\Services\AppSettings;
 use App\Services\DocumentStore;
 use App\Services\DsaCalculator;
 use App\Services\ParticipantChecks;
+use App\Support\FinancialYear;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -91,6 +93,14 @@ class Show extends Component
     public bool $showDocument = false;
 
     public bool $showDays = false;
+
+    public bool $showExplain = false;
+
+    /** Reason someone may stay on two overlapping activities (BR-04), for the days and explain popups. */
+    public string $overlapReason = '';
+
+    /** Add-officers order: by name, or fewest field days this financial year first (PT-06). */
+    public string $staffSort = 'name';
 
     // Shared form state.
     public string $decision = 'approved';
@@ -220,7 +230,7 @@ class Show extends Component
     {
         $this->reset([
             'showDecide', 'showRecordDecision', 'showPostpone', 'showExtend', 'showCancel', 'showComplete', 'showReport', 'showClose', 'showDiscard',
-            'showAddStaff', 'showAddExternal', 'showRemoveParticipant', 'staffDepartment', 'staffOffice', 'showSelectedOnly', 'sameConflictReason', 'showDays', 'daysStart', 'daysCount', 'showCost', 'showOverride', 'showLocation', 'showDirective', 'showImprest', 'showDocument',
+            'showAddStaff', 'showAddExternal', 'showRemoveParticipant', 'staffDepartment', 'staffOffice', 'showSelectedOnly', 'sameConflictReason', 'showDays', 'showExplain', 'overlapReason', 'staffSort', 'daysStart', 'daysCount', 'showCost', 'showOverride', 'showLocation', 'showDirective', 'showImprest', 'showDocument',
             'comment', 'memoReference', 'memoDate', 'scan', 'reason', 'newStart', 'newDays', 'extraDays', 'actualDate', 'reportReceivedOn', 'outputsAchieved',
             'findings', 'recommendations', 'reportFile', 'staffSearch', 'selectedStaff', 'conflictReasons', 'externalName', 'externalOrganisation',
             'participantId', 'costId', 'costCategoryId', 'costParticipantId', 'costDescription', 'costAmount', 'costTravelMode', 'overrideAmount',
@@ -478,6 +488,7 @@ class Show extends Component
         $this->daysStart = $participant->startOn($this->activity)->toDateString();
         $this->daysCount = $participant->plannedDays($this->activity);
         $this->reason = '';
+        $this->overlapReason = '';
         $this->showDays = true;
     }
 
@@ -502,10 +513,29 @@ class Show extends Component
         }
 
         $participant = $this->activity->participants()->findOrFail($this->participantId);
-        $returned = $this->attempt(fn () => $editor->setParticipantDates($participant, $start, $end, $this->user(), $this->reason ?: null));
+        $returned = $this->attempt(fn () => $editor->setParticipantDates($participant, $start, $end, $this->user(), $this->reason ?: null, $this->overlapReason ?: null));
 
         if ($returned !== null) {
             $this->done($participant->displayName()."'s days updated.".($returned === true ? ' The cost change is beyond tolerance, so the activity is back with the CEO.' : ''));
+        }
+    }
+
+    public function openExplain(int $id): void
+    {
+        $this->activity->participants()->findOrFail($id);
+        $this->resetErrorBag();
+        $this->participantId = $id;
+        $this->overlapReason = '';
+        $this->showExplain = true;
+    }
+
+    public function explainConflict(ActivityEditor $editor): void
+    {
+        $this->validate(['overlapReason' => ['required', 'string', 'max:500']], [], ['overlapReason' => 'reason']);
+
+        $participant = $this->activity->participants()->findOrFail($this->participantId);
+        if ($this->attempt(fn () => $editor->explainConflict($participant, $this->overlapReason, $this->user())) !== null) {
+            $this->done('Reason recorded for '.$participant->displayName().'.');
         }
     }
 
@@ -731,14 +761,27 @@ class Show extends Component
         $fieldDays = $activity->participants->where('is_external', false)
             ->mapWithKeys(fn (ActivityParticipant $p) => [$p->id => $checks->fieldDayFlags($p->staff_id, $activity, $p->plannedDays($activity))]);
 
+        // The days popup warns as soon as the chosen days overlap another approved activity.
+        $daysOverlap = collect();
+        $daysParticipant = $this->showDays && $this->participantId ? $activity->participants->firstWhere('id', $this->participantId) : null;
+        if ($daysParticipant?->staff_id && $this->daysStart && $this->daysCount >= 1) {
+            $from = Carbon::parse($this->daysStart);
+            $daysOverlap = $checks->conflicts($daysParticipant->staff_id, $from, $from->copy()->addDays($this->daysCount - 1), $activity->id);
+        }
+
         $candidates = collect();
         $picker = [];
         if ($this->showAddStaff) {
             $overlaps = $checks->conflictingStaff($activity->start_date, $activity->end_date, $activity->id);
             $selected = array_map('intval', $this->selectedStaff);
+            $fy = FinancialYear::for($activity->start_date);
+            $yearDays = $checks->plannedFieldDaysByStaff($fy->start(), $fy->end(), $activity->id);
 
             $candidates = $this->candidateQuery()->with(['department', 'designation'])->orderBy('name')->limit(500)->get()
-                ->map(fn (Staff $s) => ['staff' => $s, 'conflicts' => collect($overlaps[$s->id] ?? [])]);
+                ->map(fn (Staff $s) => ['staff' => $s, 'conflicts' => collect($overlaps[$s->id] ?? []), 'yearDays' => $yearDays[$s->id] ?? 0]);
+            if ($this->staffSort === 'fewest') {
+                $candidates = $candidates->sortBy([['yearDays', 'asc'], [fn ($a, $b) => strcmp($a['staff']->name, $b['staff']->name)]])->values();
+            }
 
             $picker = [
                 'groups' => $candidates->groupBy(fn ($c) => $c['staff']->department_id ?? 'none')
@@ -754,6 +797,8 @@ class Show extends Component
                 'selectedWithOverlap' => collect($selected)->filter(fn ($id) => isset($overlaps[$id]))->count(),
                 'departments' => Department::query()->active()->ordered()->get(['id', 'name']),
                 'offices' => Office::query()->active()->ordered()->get(['id', 'name']),
+                'yearLabel' => $fy->label(),
+                'yearLimit' => app(AppSettings::class)->int('field_days_threshold_year'),
             ];
         }
 
@@ -762,6 +807,8 @@ class Show extends Component
             'byCategory' => $costing->byCategory($activity),
             'conflicts' => $conflicts,
             'fieldDays' => $fieldDays,
+            'daysOverlap' => $daysOverlap,
+            'explaining' => $this->showExplain && $this->participantId ? $activity->participants->firstWhere('id', $this->participantId) : null,
             'candidates' => $candidates,
             'picker' => $picker,
             'costCategories' => CostCategory::query()->active()->ordered()->get(),
