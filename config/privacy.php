@@ -39,7 +39,7 @@ return [
         'web' => [
             'model' => User::class,
             'column' => 'user_id',
-            'home' => 'dashboard',
+            'home' => 'home',
             'consent_route' => 'privacy.consent.show',
             'accept_route' => 'privacy.consent.accept',
             'logout_route' => 'logout',

@@ -1,5 +1,5 @@
 @use('App\Support\Ui')
-<x-ui.page icon="fa-users-gear" title="User accounts" subtitle="Exactly three accounts: CEO, Chief of Staff and Assistant Chief of Staff (FRD CF-01). No other role or account can exist.">
+<x-ui.page icon="fa-users-gear" title="User accounts" subtitle="One account per role: CEO, Chief of Staff and Assistant Chief of Staff (FRD CF-01), and the System Administrator for settings and logs only. No other role or account can exist.">
     @if ($oneTimePassword)
         <div class="px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm" role="alert">
             <p class="font-semibold"><i class="fa-solid fa-key mr-1"></i>One-time password for {{ $oneTimeFor }}</p>

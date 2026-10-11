@@ -8,18 +8,18 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
 /**
- * Creates one of the three accounts (FRD CF-01) with a one-time random
+ * Creates one of the accounts in User::ROLES (FRD CF-01) with a one-time random
  * password, printed once. Two-factor authentication must be set up at first
  * sign-in (CF-03). Refuses a second active account for the same role.
  */
 class CreateUser extends Command
 {
     protected $signature = 'activities:create-user
-        {role : ceo, chief_of_staff or assistant_chief_of_staff}
+        {role : ceo, chief_of_staff, assistant_chief_of_staff or admin}
         {email : Sign-in email address}
         {name : Full name}';
 
-    protected $description = 'Create the CEO, Chief of Staff or Assistant Chief of Staff account';
+    protected $description = 'Create the CEO, Chief of Staff, Assistant Chief of Staff or System Administrator account';
 
     public function handle(): int
     {

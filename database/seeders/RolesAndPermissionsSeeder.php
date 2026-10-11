@@ -10,8 +10,9 @@ use Spatie\Permission\PermissionRegistrar;
 
 /**
  * FRD Section 4.1 permission matrix for the three roles, with the CEO given
- * every permission (OI-13). To change it, edit MATRIX and re-run the seeder.
- * Safe to re-run; removes any role that is not one of the three.
+ * every permission (OI-13), plus the System Administrator (settings,
+ * configuration and logs only). To change it, edit MATRIX and re-run the
+ * seeder. Safe to re-run; removes any role that is not in MATRIX.
  */
 class RolesAndPermissionsSeeder extends Seeder
 {
@@ -52,6 +53,11 @@ class RolesAndPermissionsSeeder extends Seeder
         User::ROLE_ASSISTANT_CHIEF_OF_STAFF => [
             'activities.view', 'activities.manage', 'activities.submit', 'activities.postpone', 'activities.execute',
         ],
+        // Settings, configuration and logs; no activities.view, so no activity, dashboard or report
+        // other than the access and audit log (CEO's approval, 11 October 2026).
+        User::ROLE_ADMIN => [
+            'reference.manage', 'users.manage', 'audit.view', 'reports.export',
+        ],
     ];
 
     public function run(): void
@@ -68,7 +74,7 @@ class RolesAndPermissionsSeeder extends Seeder
             $role->syncPermissions($permissions);
         }
 
-        // CF-01: no role other than the three may exist.
+        // CF-01: no role outside the matrix may exist.
         Role::query()->whereNotIn('name', array_keys(self::MATRIX))->get()->each->delete();
         Permission::query()->whereNotIn('name', array_keys(self::PERMISSIONS))->get()->each->delete();
 

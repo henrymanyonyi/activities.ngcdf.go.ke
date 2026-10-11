@@ -14,8 +14,8 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 
 /**
- * FRD CF-01 / CF-04: exactly three accounts, one active holder per role,
- * managed by the Chief of Staff. Accounts are deactivated, never deleted.
+ * FRD CF-01 / CF-04: one active holder per role in User::ROLES, managed by the
+ * Chief of Staff or the System Administrator. Accounts are deactivated, never deleted.
  */
 #[Layout('layouts.admin')]
 #[Title('User accounts')]

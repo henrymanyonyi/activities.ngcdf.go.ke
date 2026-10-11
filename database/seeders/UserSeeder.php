@@ -7,13 +7,13 @@ use Illuminate\Database\Seeder;
 use RuntimeException;
 
 /**
- * The three accounts for local development and testing, all with the password
+ * One account per role for local development and testing, all with the password
  * "password". Refuses to run anywhere else: FRD CF-01 accounts in staging and
  * production are created with `php artisan activities:create-user`.
  *
  * Only one account may hold each role, so any other active holder of the role
  * is deactivated (never deleted). Safe to re-run; it also resets the password,
- * clears a lockout and removes two-factor set-up on these three accounts.
+ * clears a lockout and removes two-factor set-up on these accounts.
  */
 class UserSeeder extends Seeder
 {
@@ -24,6 +24,7 @@ class UserSeeder extends Seeder
         User::ROLE_CEO => ['ceo@ngcdf.go.ke', 'Chief Executive Officer'],
         User::ROLE_CHIEF_OF_STAFF => ['cos@ngcdf.go.ke', 'Chief of Staff'],
         User::ROLE_ASSISTANT_CHIEF_OF_STAFF => ['acos@ngcdf.go.ke', 'Assistant Chief of Staff'],
+        User::ROLE_ADMIN => ['admin@ngcdf.go.ke', 'System Administrator'],
     ];
 
     public function run(): void

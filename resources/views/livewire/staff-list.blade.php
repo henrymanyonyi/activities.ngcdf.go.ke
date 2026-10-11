@@ -35,7 +35,7 @@
                                 <td class="{{ Ui::TD }} font-numeric">{!! $s->job_grade ? e($s->job_grade) : '<span class="text-amber-600">not set</span>' !!}</td>
                                 <td class="{{ Ui::TD }}">{{ $s->department?->name ?? '—' }}</td>
                                 <td class="{{ Ui::TD }}">{{ $s->office?->name ?? '—' }}</td>
-                                <td class="{{ Ui::TD }} text-right font-numeric"><a href="{{ route('activities.index', ['staff_id' => $s->id]) }}" wire:navigate class="text-emerald-700 hover:underline">{{ $s->participations_count }}</a></td>
+                                <td class="{{ Ui::TD }} text-right font-numeric">@can('activities.view')<a href="{{ route('activities.index', ['staff_id' => $s->id]) }}" wire:navigate class="text-emerald-700 hover:underline">{{ $s->participations_count }}</a>@else{{ $s->participations_count }}@endcan</td>
                                 <td class="{{ Ui::TD }} text-right"><button type="button" wire:click="edit({{ $s->id }})" class="{{ Ui::BTN_ICON }}" aria-label="Edit {{ $s->name }}"><i class="fa-solid fa-pen text-xs"></i></button></td>
                             </tr>
                         @endforeach

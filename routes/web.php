@@ -7,7 +7,7 @@ use App\Http\Controllers\ReportExportController;
 use App\Livewire;
 use Illuminate\Support\Facades\Route;
 
-Route::redirect('/', '/dashboard');
+Route::redirect('/', '/home');
 
 /*
 | NG-CDF Board Data Privacy Statement: public, no sign-in (see PrivacyConsentService).
@@ -33,6 +33,14 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified',
 | matrix by the services (CF-02).
 */
 Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified', 'active', 'two_factor', 'privacy.consent'])->group(function () {
+    // Where sign-in lands: the dashboard, or for the System Administrator the first page their role opens.
+    Route::get('/home', fn () => redirect()->route(auth()->user()->homeRoute()))->name('home');
+
+    // Each report, and its export, checks the report's own permission: the
+    // access and audit log needs audit.view, every other report activities.view.
+    Route::get('/reports/{report}', Livewire\Reports\Show::class)->name('reports.show');
+    Route::get('/reports/{report}/export/{format}', ReportExportController::class)->middleware('permission:reports.export')->name('reports.export');
+
     Route::middleware('permission:activities.view')->group(function () {
         Route::get('/dashboard', Livewire\Dashboard::class)->name('dashboard');
         Route::get('/decisions', Livewire\DecisionQueue::class)->name('decisions.index');
@@ -49,9 +57,6 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified',
         Route::get('/department-costs', Livewire\DepartmentCosts::class)->name('department-costs');
 
         Route::get('/reports', Livewire\Reports\Index::class)->name('reports.index');
-        Route::get('/reports/{report}', Livewire\Reports\Show::class)->name('reports.show');
-        Route::get('/reports/{report}/export/{format}', ReportExportController::class)->middleware('permission:reports.export')->name('reports.export');
-
         Route::get('/documents/{document}', DocumentController::class)->name('documents.show');
         Route::get('/templates/participant-list', ParticipantTemplateController::class)->name('templates.participants');
     });

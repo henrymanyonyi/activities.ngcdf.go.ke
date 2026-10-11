@@ -83,6 +83,11 @@ class UserFactory extends Factory
         return $this->role(User::ROLE_CEO);
     }
 
+    public function admin(): static
+    {
+        return $this->role(User::ROLE_ADMIN);
+    }
+
     public function chiefOfStaff(): static
     {
         return $this->role(User::ROLE_CHIEF_OF_STAFF);

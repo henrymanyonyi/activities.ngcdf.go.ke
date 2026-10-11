@@ -13,7 +13,7 @@ Never run `migrate:fresh`, `migrate:refresh`, `db:wipe`, `migrate:rollback` agai
 
 ## Confidentiality rules (FRD 7.12) — keep them true
 
-- Exactly three roles: `ceo`, `chief_of_staff`, `assistant_chief_of_staff`. Permissions are `RolesAndPermissionsSeeder::MATRIX` (FRD §4.1). Never add a role or a way to self-register.
+- Exactly four roles: `ceo`, `chief_of_staff`, `assistant_chief_of_staff` (FRD §4.1), and `admin`, the System Administrator, approved by the CEO on 11 October 2026 for settings, configuration and the access and audit log only. `admin` has no `activities.view`, so it must never reach activity data, dashboards or any report but `access-audit`. Permissions are `RolesAndPermissionsSeeder::MATRIX`. Never add another role or a way to self-register.
 - Every service method that changes data checks the user's permission itself; route middleware is not enough.
 - Every view of an activity, export, print and download goes through `App\Services\AccessLogger`. Model changes are audited by the `Auditable` trait.
 - Exports carry the RESTRICTED marking, the user and the time (`App\Exports\ReportExport`, `resources/views/reports/document.blade.php`).
@@ -37,7 +37,7 @@ Never run `migrate:fresh`, `migrate:refresh`, `db:wipe`, `migrate:rollback` agai
 ```bash
 composer install && npm install && npm run build
 php artisan migrate && php artisan db:seed          # see DatabaseSeeder: system data synced every run; editable config seeded once, never overwritten
-php artisan activities:create-user ceo you@ngcdf.go.ke "Full Name"   # also chief_of_staff, assistant_chief_of_staff
+php artisan activities:create-user ceo you@ngcdf.go.ke "Full Name"   # also chief_of_staff, assistant_chief_of_staff, admin
 composer run dev                                      # serve + queue + logs + vite
 php artisan test --compact                            # Pest, SQLite :memory:
 vendor/bin/pint --dirty --format agent                # after changing PHP
