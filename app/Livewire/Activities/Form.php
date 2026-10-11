@@ -75,16 +75,14 @@ class Form extends Component
         if ($activity?->exists) {
             abort_if($activity->status->isReadOnly(), 403, 'This activity is read only.');
             $this->activity = $activity;
-            $this->fill($activity->only([
-                'title', 'purpose', 'expected_outputs', 'notes', 'source_reference', 'days', 'count_externals_in_per_head',
-            ]));
-            foreach (['activity_category_id', 'activity_type_id', 'organising_department_id', 'budget_line_id'] as $key) {
+            // Optional columns are NULL in the database but strings here, so cast before filling.
+            foreach (['title', 'purpose', 'expected_outputs', 'notes', 'source_reference', 'activity_category_id', 'activity_type_id', 'organising_department_id', 'budget_line_id'] as $key) {
                 $this->{$key} = (string) ($activity->{$key} ?? '');
             }
+            $this->days = $activity->days;
+            $this->count_externals_in_per_head = (bool) $activity->count_externals_in_per_head;
             $this->source_received_on = $activity->source_received_on?->toDateString() ?? '';
             $this->start_date = $activity->start_date->toDateString();
-            $this->expected_outputs ??= '';
-            $this->notes ??= '';
         } else {
             $this->days = 1;
             $this->source_received_on = today()->toDateString();
@@ -138,7 +136,8 @@ class Form extends Component
             'county_id' => ['nullable', 'exists:counties,id'],
             'constituency_id' => ['nullable', 'exists:constituencies,id'],
             'venue' => ['nullable', 'string', 'max:255'],
-            'memo' => [$creating ? 'nullable' : 'prohibited', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png', 'max:'.config('activities.max_document_kb')],
+            // On edit the property is present but null, so 'file' must not run; documents are attached on the activity page.
+            'memo' => $creating ? ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png', 'max:'.config('activities.max_document_kb')] : ['prohibited'],
         ];
     }
 
