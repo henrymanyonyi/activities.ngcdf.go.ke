@@ -131,7 +131,7 @@
 
             <x-ui.card title="Costing" icon="fa-coins" padded>
                 <div class="space-y-4">
-                    <x-ui.field label="Estimated budget (KES)" for="requested" error="requested_budget" :hint="$office ? 'The department\'s own estimate. The costed plan comes from the team and cost lines.' : 'Your estimate. The Office of the CEO costs the team, travel and allowances during review.'">
+                    <x-ui.field label="Estimated budget (KES)" for="requested" error="requested_budget" :hint="$office ? 'The department\'s own estimate. The costed plan comes from the team and cost lines.' : 'Your own estimate. After saving, add the team and cost lines under Team and costs; allowances (DSA) are calculated for you.'">
                         <input id="requested" type="text" inputmode="decimal" wire:model="requested_budget" class="{{ Ui::CONTROL }} font-numeric" placeholder="e.g. 250000">
                     </x-ui.field>
                     <x-ui.field label="Budget line" for="budget" error="budget_line_id" :hint="$budgetLines->isEmpty() ? 'No budget lines recorded for this department and year.' : null">

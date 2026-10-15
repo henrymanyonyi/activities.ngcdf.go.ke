@@ -8,6 +8,7 @@ use App\Models\Designation;
 use App\Models\Office;
 use App\Models\Staff;
 use App\Services\StaffImporter;
+use App\Services\StaffRecords;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -18,7 +19,12 @@ use Livewire\Component;
 use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 
-/** FRD MD-01: the staff list, maintained by the Chief of Staff on screen and by Excel import. */
+/**
+ * FRD MD-01: the staff list, maintained by the Office of the CEO on screen and
+ * by Excel import. A Head of Department sees it and adds officers who are
+ * missing, so they can build a team; they correct only the records they added
+ * (App\Services\StaffRecords).
+ */
 #[Layout('layouts.admin')]
 #[Title('Staff list')]
 class StaffList extends Component
@@ -81,6 +87,7 @@ class StaffList extends Component
 
         if ($id) {
             $s = Staff::query()->findOrFail($id);
+            abort_unless(app(StaffRecords::class)->mayEdit(Auth::user(), $s), 403);
             $this->staff_number = (string) $s->staff_number;
             $this->name = $s->name;
             $this->email = (string) $s->email;
@@ -95,10 +102,8 @@ class StaffList extends Component
         $this->showForm = true;
     }
 
-    public function save(): void
+    public function save(StaffRecords $records): void
     {
-        abort_unless(Auth::user()->can('reference.manage'), 403);
-
         $data = $this->validate([
             'staff_number' => ['required', 'string', 'max:30', Rule::unique('staff', 'staff_number')->ignore($this->editingId)],
             'name' => ['required', 'string', 'max:255'],
@@ -112,22 +117,23 @@ class StaffList extends Component
         ], [], ['staff_number' => 'PF number', 'form_department_id' => 'department']);
 
         $attributes = [
-            'staff_number' => strtoupper(trim($data['staff_number'])),
+            'staff_number' => $data['staff_number'],
             'name' => $data['name'],
             'email' => $data['email'] ?: null,
             'phone' => $data['phone'] ?: null,
             'department_id' => $data['form_department_id'],
             'designation_id' => $data['designation_id'] ?: null,
-            'job_grade' => $data['job_grade'] ? strtoupper(trim($data['job_grade'])) : null,
+            'job_grade' => $data['job_grade'] ?: null,
             'office_id' => $data['office_id'] ?: null,
             'is_active' => $data['is_active'],
-            'exited_on' => $data['is_active'] ? null : today(),
         ];
 
-        $this->editingId ? Staff::query()->findOrFail($this->editingId)->update($attributes) : Staff::create($attributes + ['source' => 'manual', 'joined_on' => today()]);
+        $staff = $this->editingId ? Staff::query()->findOrFail($this->editingId) : null;
 
-        $this->showForm = false;
-        $this->toast('Staff record saved.');
+        if ($this->attempt(fn () => $records->save($attributes, Auth::user(), $staff))) {
+            $this->showForm = false;
+            $this->toast($staff ? 'Staff record saved.' : "{$data['name']} added to the staff list.");
+        }
     }
 
     public function import(StaffImporter $importer): void
@@ -163,6 +169,8 @@ class StaffList extends Component
             'designations' => Designation::query()->ordered()->get(['id', 'name']),
             'offices' => Office::query()->ordered()->get(['id', 'name']),
             'columns' => StaffImporter::COLUMNS,
+            'records' => app(StaffRecords::class),
+            'manages' => Auth::user()->can('reference.manage'),
             'counts' => [
                 'active' => Staff::query()->where('is_active', true)->count(),
                 'no_grade' => Staff::query()->where('is_active', true)->whereNull('job_grade')->count(),

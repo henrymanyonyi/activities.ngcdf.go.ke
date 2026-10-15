@@ -16,6 +16,8 @@
         '' => [
             ['route' => 'dashboard', 'match' => 'dashboard', 'icon' => 'fa-gauge-high', 'label' => 'Dashboard', 'can' => 'activities.view'],
             ['route' => 'memos.index', 'match' => 'memos.*', 'icon' => 'fa-envelope-open-text', 'label' => 'Activity memos', 'can' => ['memos.originate', 'memos.review'], 'count' => $memoActions],
+            // A Head of Department's own entry; the Office of the CEO finds the staff list under its section below.
+            ['route' => 'staff.index', 'match' => 'staff.*', 'icon' => 'fa-id-badge', 'label' => 'Staff list', 'can' => 'staff.add', 'hidden' => $officeView],
             ['route' => 'decisions.index', 'match' => 'decisions.*', 'icon' => 'fa-gavel', 'label' => 'Decision queue', 'can' => 'activities.view', 'count' => $awaiting],
             ['route' => 'activities.index', 'match' => 'activities.*', 'icon' => 'fa-table-list', 'label' => 'Activity register', 'can' => 'activities.view', 'count' => $user->can('activities.submit') ? $drafts : 0],
             ['route' => 'calendar', 'match' => 'calendar', 'icon' => 'fa-calendar-days', 'label' => 'Calendar', 'can' => 'activities.view'],

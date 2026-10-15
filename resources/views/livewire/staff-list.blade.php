@@ -1,11 +1,13 @@
 @use('App\Support\Ui')
 @php $sel = Ui::CONTROL.' appearance-none pr-8'; @endphp
-<x-ui.page icon="fa-id-badge" title="Staff list" subtitle="Participants are chosen from this list. Job grade drives the DSA rate." scroll="inner">
+<x-ui.page icon="fa-id-badge" title="Staff list" :subtitle="$manages ? 'Participants are chosen from this list. Job grade drives the DSA rate.' : 'Officers you can add to a memo\'s team. If someone is missing, add them; you can correct the officers you added.'" scroll="inner">
     <x-slot:pills><span class="inline-flex items-center px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-semibold font-numeric">{{ $counts['active'] }} active</span>
         @if ($counts['no_grade'])<span class="inline-flex items-center px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[11px] font-semibold font-numeric">{{ $counts['no_grade'] }} without job grade</span>@endif
     </x-slot:pills>
     <x-slot:actions>
-        <button type="button" wire:click="$set('showImport', true)" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-file-import text-xs"></i>Import HR list</button>
+        @if ($manages)
+            <button type="button" wire:click="$set('showImport', true)" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-file-import text-xs"></i>Import HR list</button>
+        @endif
         <button type="button" wire:click="edit" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-plus text-xs"></i>Add officer</button>
     </x-slot:actions>
     <x-slot:filters>
@@ -24,7 +26,7 @@
             <div class="flex-1 min-h-0 overflow-auto">
                 <table class="w-full">
                     <thead class="sticky top-0 z-10 bg-white border-b border-slate-100"><tr>
-                        <th class="{{ Ui::TH }}">PF number</th><th class="{{ Ui::TH }}">Name</th><th class="{{ Ui::TH }}">Designation</th><th class="{{ Ui::TH }}">Job grade</th><th class="{{ Ui::TH }}">Department</th><th class="{{ Ui::TH }}">Duty station</th><th class="{{ Ui::TH }} text-right">Activities</th><th class="{{ Ui::TH }}"></th>
+                        <th class="{{ Ui::TH }}">PF number</th><th class="{{ Ui::TH }}">Name</th><th class="{{ Ui::TH }}">Designation</th><th class="{{ Ui::TH }}">Job grade</th><th class="{{ Ui::TH }}">Department</th><th class="{{ Ui::TH }}">Duty station</th>@if ($manages)<th class="{{ Ui::TH }} text-right">Activities</th>@endif<th class="{{ Ui::TH }}"></th>
                     </tr></thead>
                     <tbody class="divide-y divide-slate-100">
                         @foreach ($staff as $s)
@@ -35,8 +37,8 @@
                                 <td class="{{ Ui::TD }} font-numeric">{!! $s->job_grade ? e($s->job_grade) : '<span class="text-amber-600">not set</span>' !!}</td>
                                 <td class="{{ Ui::TD }}">{{ $s->department?->name ?? '—' }}</td>
                                 <td class="{{ Ui::TD }}">{{ $s->office?->name ?? '—' }}</td>
-                                <td class="{{ Ui::TD }} text-right font-numeric">@can('activities.view')<a href="{{ route('activities.index', ['staff_id' => $s->id]) }}" wire:navigate class="text-emerald-700 hover:underline">{{ $s->participations_count }}</a>@else{{ $s->participations_count }}@endcan</td>
-                                <td class="{{ Ui::TD }} text-right"><button type="button" wire:click="edit({{ $s->id }})" class="{{ Ui::BTN_ICON }}" aria-label="Edit {{ $s->name }}"><i class="fa-solid fa-pen text-xs"></i></button></td>
+                                @if ($manages)<td class="{{ Ui::TD }} text-right font-numeric">@can('activities.view')<a href="{{ route('activities.index', ['staff_id' => $s->id]) }}" wire:navigate class="text-emerald-700 hover:underline">{{ $s->participations_count }}</a>@else{{ $s->participations_count }}@endcan</td>@endif
+                                <td class="{{ Ui::TD }} text-right">@if ($records->mayEdit(auth()->user(), $s))<button type="button" wire:click="edit({{ $s->id }})" class="{{ Ui::BTN_ICON }}" aria-label="Edit {{ $s->name }}"><i class="fa-solid fa-pen text-xs"></i></button>@endif</td>
                             </tr>
                         @endforeach
                     </tbody>
@@ -56,7 +58,11 @@
             <x-ui.field label="Duty station" for="f-o" error="office_id"><select id="f-o" wire:model="office_id" class="{{ $sel }}"><option value="">Choose…</option>@foreach ($offices as $o)<option value="{{ $o->id }}">{{ $o->name }}</option>@endforeach</select></x-ui.field>
             <x-ui.field label="Email" for="f-e" error="email"><input id="f-e" type="email" wire:model="email" class="{{ Ui::CONTROL }}"></x-ui.field>
             <x-ui.field label="Phone" for="f-p" error="phone"><input id="f-p" type="text" wire:model="phone" maxlength="30" class="{{ Ui::CONTROL }}"></x-ui.field>
-            <label class="flex items-center gap-2 text-[13px] text-slate-600 sm:col-span-2"><input type="checkbox" wire:model="is_active" class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">Active</label>
+            @if ($manages)
+                <label class="flex items-center gap-2 text-[13px] text-slate-600 sm:col-span-2"><input type="checkbox" wire:model="is_active" class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">Active</label>
+            @else
+                <p class="text-[11px] text-slate-400 sm:col-span-2">Check the PF number and job grade with HR: the job grade sets the officer's allowance (DSA) rate.</p>
+            @endif
         </div>
         <x-slot:footer>
             <button type="button" wire:click="$set('showForm', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>

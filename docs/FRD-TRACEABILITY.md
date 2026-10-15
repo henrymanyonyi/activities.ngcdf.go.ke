@@ -51,6 +51,8 @@ Status: **Built** (implemented and covered by tests), **Partial** (see note), **
 | CD-01 decision queue | Built | `DecisionQueue` |
 | Memo workflow (Oct 2026): HOD drafts and submits; ACOS / COS review, comment, return for correction, forward; CEO decides | Built | `ActivityLifecycle::submitForReview`, `returnForCorrection`, `forward`, `addReviewNote`; statuses Under review and Returned for correction; `Memos\Board`, `Memos\Show`; route via the Chief of Staff is the setting `acos_forwards_via_cos` |
 | Memo prepared on a Head of Department's behalf, real preparer kept | Built | `responsible_hod_id` / `responsible_hod_name`, `created_by` |
+| Head of Department builds the whole memo: locations, team, external participants, days, planned costs (DSA computed) | Built | `Memos\Team`, `Memos\Show` (Add location); `ActivityEditor::authorizeDetails` limits them to their own department's memo while it is a draft or returned. An overlap is flagged without naming the other activity |
+| Head of Department sees the staff list and adds missing officers (MD-01) | Built | `staff.add`; `StaffRecords` (corrects only officers they added, cannot deactivate); `staff.created_by` |
 | Memo reporting: counts by stage, time per stage, pending too long, budgets | Built | `MemoTracker`, report `memo-workflow`, daily reminder (`memo_review_reminder_working_days`) |
 | CD-02 approve / decline / return, comment mandatory | Built | |
 | CD-03 decision recorded on CEO's behalf with memo, date, scan | Built | |
