@@ -13,17 +13,18 @@ Never run `migrate:fresh`, `migrate:refresh`, `db:wipe`, `migrate:rollback` agai
 
 ## Confidentiality rules (FRD 7.12) — keep them true
 
-- Exactly four roles: `ceo`, `chief_of_staff`, `assistant_chief_of_staff` (FRD §4.1), and `admin`, the System Administrator, approved by the CEO on 11 October 2026 for settings, configuration and the access and audit log only. `admin` has no `activities.view`, so it must never reach activity data, dashboards or any report but `access-audit`. Permissions are `RolesAndPermissionsSeeder::MATRIX`. Never add another role or a way to self-register.
+- Exactly five roles: `ceo`, `chief_of_staff`, `assistant_chief_of_staff` (FRD §4.1); `admin`, the System Administrator, approved by the CEO on 11 October 2026 for settings, configuration and the access and audit log only; and `hod`, a Head of Department (activity memo workflow, October 2026; record the CEO's approval in the next FRD revision), one active account per department. Neither `admin` nor `hod` has `activities.view`: `admin` must never reach activity data, dashboards or any report but `access-audit`; `hod` reaches only their own department's memos (`Activity::scopeVisibleTo` / `isVisibleTo`, the `memos.*` routes and `DocumentController`), never the register, dashboards, calendar or reports. Permissions are `RolesAndPermissionsSeeder::MATRIX`. Never add another role or a way to self-register.
 - Every service method that changes data checks the user's permission itself; route middleware is not enough.
 - Every view of an activity, export, print and download goes through `App\Services\AccessLogger`. Model changes are audited by the `Auditable` trait.
 - Exports carry the RESTRICTED marking, the user and the time (`App\Exports\ReportExport`, `resources/views/reports/document.blade.php`).
 - Files are written and read only through `App\Services\DocumentStore` (encrypted at rest).
 - Nothing is permanently deleted: drafts are soft-deleted, everything else is cancelled; lists are deactivated or merged.
-- No outbound integration and no alerts to anyone but the three users (FRD 12, BR-11).
+- No outbound integration, and in-app alerts only to the Office of the CEO and, about their own department's memos, its Head of Department (`App\Services\Alerts`; FRD 12, BR-11).
 
 ## Domain rules
 
-- `Activity::status` changes only through `App\Services\ActivityLifecycle`, which checks `ActivityStatus::allowedTransitions()` and writes the status history.
+- `Activity::status` changes only through `App\Services\ActivityLifecycle`, which checks `ActivityStatus::allowedTransitions()`, locks the row and re-checks the status (so a double click or two users cannot apply a step twice), and writes the status history.
+- Activity memo workflow: a Head of Department's memo goes Draft → Under review (with `review_office` ACOS or COS) → Awaiting decision; a reviewer can return it (Returned for correction, reason required) and it is resubmitted to the same office. `forward()` sends it on, via the Chief of Staff when Settings › Thresholds `acos_forwards_via_cos` is Yes and the Assistant forwards. Forwarding never approves. The Office of the CEO can prepare a memo on a Head of Department's behalf (`responsible_hod_id` / `responsible_hod_name`; `created_by` is the real preparer). Review comments are `ActivityReviewNote`, append-only. Board tabs, counts and the memo report come from `App\Services\MemoTracker`. User guide: `docs/guides/FAPM-Activity-Memo-Workflow-Guide.pdf`.
 - Details, locations, team and planned costs change through `App\Services\ActivityEditor`; after submission these become amendments and may return the activity to the CEO (BR-10).
 - Stored totals on `activities` are maintained by `App\Services\ActivityCosting::refresh()`; DSA lines by `App\Services\DsaCalculator`.
 - Money is integer cents in PHP (`App\Support\Money`) and DECIMAL(15,2) in the database. No float arithmetic (BR-09).
@@ -37,7 +38,7 @@ Never run `migrate:fresh`, `migrate:refresh`, `db:wipe`, `migrate:rollback` agai
 ```bash
 composer install && npm install && npm run build
 php artisan migrate && php artisan db:seed          # see DatabaseSeeder: system data synced every run; editable config seeded once, never overwritten
-php artisan activities:create-user ceo you@ngcdf.go.ke "Full Name"   # also chief_of_staff, assistant_chief_of_staff, admin
+php artisan activities:create-user ceo you@ngcdf.go.ke "Full Name"   # also chief_of_staff, assistant_chief_of_staff, admin; hod needs --department="ICT"
 composer run dev                                      # serve + queue + logs + vite
 php artisan test --compact                            # Pest, SQLite :memory:
 vendor/bin/pint --dirty --format agent                # after changing PHP

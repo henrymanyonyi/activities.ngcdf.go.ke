@@ -9,6 +9,7 @@ Status: **Built** (implemented and covered by tests), **Partial** (see note), **
 | Topic | Earlier decision (design assessment §0) | FRD v1.2 | Built as |
 |---|---|---|---|
 | Users | Admin + CEO | Exactly three: CEO, Chief of Staff, Assistant Chief of Staff (CF-01, §4.1) | FRD, plus a **System Administrator** (`admin`) approved by the CEO on 11 Oct 2026: reference data and settings, user accounts, and the access and audit log with export. No activity data. **Record the approval in the next FRD revision (CF-01, CF-09).** `RolesAndPermissionsSeeder::MATRIX` |
+| Department access | Departments have no access (§2.2, BR-11) | Heads of Department originate activity memos | A **Head of Department** (`hod`) role, one account per department, added October 2026 for the activity memo workflow: prepares, submits and corrects only their own department's memos and sees their status and decisions. No register, dashboard, calendar or report. **Record the CEO's approval in the next FRD revision (§2.2, BR-11, CF-01).** |
 | Intake | Magic links for memo originators | Departments have no access (§2.2, BR-11) | Links kept behind `ACTIVITIES_SUBMISSION_LINKS` (**off by default**). A link submission becomes a **Draft** the Chief of Staff reviews. Needs the CEO's confirmation. |
 | Lifecycle | Draft → Planned → Approved → Ongoing → Completed | Draft → Awaiting Decision → Approved/Returned/Declined → In Progress → Completed → Report Received → Closed, + Postponed, Cancelled (§5) | FRD. `ActivityStatus` |
 | Approval | In app or memo reference | CEO decides in app; Chief of Staff records an outside decision with memo, date and scan (CD-02, CD-03) | FRD |
@@ -48,6 +49,9 @@ Status: **Built** (implemented and covered by tests), **Partial** (see note), **
 | CB-05 against budget | Partial | Department costs show allocation and remainder; no warning at approval yet |
 | CB-06 exact money | Built | `Money` (integer cents), DECIMAL(15,2) |
 | CD-01 decision queue | Built | `DecisionQueue` |
+| Memo workflow (Oct 2026): HOD drafts and submits; ACOS / COS review, comment, return for correction, forward; CEO decides | Built | `ActivityLifecycle::submitForReview`, `returnForCorrection`, `forward`, `addReviewNote`; statuses Under review and Returned for correction; `Memos\Board`, `Memos\Show`; route via the Chief of Staff is the setting `acos_forwards_via_cos` |
+| Memo prepared on a Head of Department's behalf, real preparer kept | Built | `responsible_hod_id` / `responsible_hod_name`, `created_by` |
+| Memo reporting: counts by stage, time per stage, pending too long, budgets | Built | `MemoTracker`, report `memo-workflow`, daily reminder (`memo_review_reminder_working_days`) |
 | CD-02 approve / decline / return, comment mandatory | Built | |
 | CD-03 decision recorded on CEO's behalf with memo, date, scan | Built | |
 | CD-04 directives tracked to completion | Built | `Directives` |
@@ -75,7 +79,7 @@ Status: **Built** (implemented and covered by tests), **Partial** (see note), **
 | SR-01..SR-04 register, filters, sort, filtered export, count | Built | `Activities\Register`, `ActivityRegisterQuery` |
 | NT-01 in-app alerts | Built | `AlertsBell`, `Alerts` |
 | NT-02 Monday summary | Built | `activities:weekly-summary` |
-| NT-03 email carries no detail; nobody else alerted | Built | No email sent at all |
+| NT-03 email carries no detail; nobody else alerted | Built | No email sent at all. A Head of Department receives in-app alerts only about their own department's memos |
 | CF-01 three accounts, no self-registration | Built | `Users`, `activities:create-user` |
 | CF-02 permissions on every action | Built | Route middleware + checks in every service |
 | §4.1 / OI-13 permission matrix | Built, changed | The CEO holds every permission (30 Sep 2026): everything the Chief of Staff and Assistant can do, including reference data and user accounts, plus deciding. Only the CEO decides in the system. `RolesAndPermissionsSeeder::MATRIX` |
