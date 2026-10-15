@@ -36,6 +36,7 @@ class RolesAndPermissionsSeeder extends Seeder
         'audit.view' => 'View audit trail and access log',
         'memos.originate' => 'Prepare and submit memos for their own department (Head of Department)',
         'memos.review' => 'Review memos, comment, return them for correction and forward them',
+        'staff.add' => 'See the staff list and add officers who are missing (correct only those they added)',
     ];
 
     /** @var array<string, list<string>> */
@@ -47,7 +48,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'activities.view', 'activities.manage', 'activities.submit', 'activities.decide', 'decisions.record', 'directives.manage',
             'activities.postpone', 'activities.cancel', 'activities.execute', 'activities.close',
             'reference.manage', 'links.manage', 'reports.export', 'users.manage', 'audit.view',
-            'memos.originate', 'memos.review',
+            'memos.originate', 'memos.review', 'staff.add',
         ],
         User::ROLE_CHIEF_OF_STAFF => [
             'activities.view', 'activities.manage', 'activities.submit', 'decisions.record', 'directives.manage',
@@ -67,7 +68,7 @@ class RolesAndPermissionsSeeder extends Seeder
         // Their own department's memos only: prepare, submit, correct and follow them to the
         // CEO's decision. No activities.view, so no register, dashboard, calendar or report.
         User::ROLE_HOD => [
-            'memos.originate',
+            'memos.originate', 'staff.add',
         ],
     ];
 

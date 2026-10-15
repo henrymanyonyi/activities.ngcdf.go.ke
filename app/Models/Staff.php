@@ -36,6 +36,7 @@ class Staff extends Model
         'exited_on',
         'smart_hq_staff_id',
         'source',
+        'created_by',
     ];
 
     protected function casts(): array
@@ -63,6 +64,16 @@ class Staff extends Model
     public function office(): BelongsTo
     {
         return $this->belongsTo(Office::class);
+    }
+
+    /**
+     * Who added the officer by hand (null for imported records).
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 
     /** @return HasMany<ActivityParticipant, $this> */

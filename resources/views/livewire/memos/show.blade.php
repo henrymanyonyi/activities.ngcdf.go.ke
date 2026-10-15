@@ -16,6 +16,7 @@
                 <button type="button" wire:click="$set('showDiscard', true)" class="{{ Ui::BTN_NEUTRAL }} hover:!text-red-600"><i class="fa-solid fa-trash text-xs"></i>Discard draft</button>
             @endif
             <a href="{{ route('memos.edit', $a) }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-pen text-xs"></i>Edit memo</a>
+            <a href="{{ route('memos.team', $a) }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-users text-xs"></i>Team and costs</a>
             <button type="button" wire:click="openSubmit" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-paper-plane text-xs"></i>{{ $returned ? 'Resubmit for review' : 'Submit for review' }}</button>
         @endif
     </x-slot:actions>
@@ -31,6 +32,20 @@
     @endif
 
     <x-memo.workflow :activity="$a" />
+
+    <x-ui.card title="Team and costs" icon="fa-users" padded>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div class="grid grid-cols-3 gap-3 flex-1">
+                <div><p class="{{ Ui::MICRO }}">Officers</p><p class="text-lg font-bold text-slate-800 font-numeric">{{ $a->staff_count }}</p></div>
+                <div><p class="{{ Ui::MICRO }}">External</p><p class="text-lg font-bold text-slate-800 font-numeric">{{ $a->external_count }}</p></div>
+                <div><p class="{{ Ui::MICRO }}">Planned cost</p><p class="text-lg font-bold text-slate-800 font-numeric"><span class="text-[10px] text-slate-400 mr-0.5">KES</span>{{ Money::format(Money::toCents($a->estimated_total)) }}</p></div>
+            </div>
+            <a href="{{ route('memos.team', $a) }}" wire:navigate class="{{ $editable ? Ui::BTN_PRIMARY : Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-users text-xs"></i>{{ $editable ? 'Build the team and costs' : 'View the team and costs' }}</a>
+        </div>
+        @if ($editable && $a->staff_count === 0)
+            <p class="text-[12px] text-amber-700 mt-3"><i class="fa-solid fa-circle-info mr-1"></i>Add the officers taking part. The CEO needs at least one officer on the team.</p>
+        @endif
+    </x-ui.card>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <x-ui.card title="The memo" icon="fa-clipboard-list" class="lg:col-span-2" padded>
@@ -48,8 +63,9 @@
                                 @if ($editable)<button type="button" wire:click="removeLocation({{ $loc->id }})" class="{{ Ui::BTN_ICON_DANGER }}" aria-label="Remove location"><i class="fa-solid fa-xmark text-xs"></i></button>@endif
                             </span>
                         @empty
-                            <span class="text-slate-400 italic">Not given. Add it with Edit memo.</span>
+                            <span class="text-slate-400 italic">Not given.</span>
                         @endforelse
+                        @if ($editable)<button type="button" wire:click="$set('showLocation', true)" class="{{ Ui::BTN_TINT }} mt-1"><i class="fa-solid fa-plus text-[9px]"></i>Add location</button>@endif
                     </dd>
                 </div>
                 <div><dt class="{{ Ui::MICRO }}">Estimated budget (department)</dt><dd class="text-sm text-slate-700 font-numeric">{{ $a->requested_budget !== null ? 'KES '.Money::format(Money::toCents($a->requested_budget)) : 'Not given' }}</dd></div>
@@ -98,6 +114,17 @@
         <x-slot:footer>
             <button type="button" wire:click="$set('showSubmit', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
             <button type="button" wire:click="submit" wire:loading.attr="disabled" wire:target="submit" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-paper-plane text-xs"></i><span wire:loading.remove wire:target="submit">{{ $returned ? 'Resubmit for review' : 'Submit for review' }}</span><span wire:loading wire:target="submit">Sending…</span></button>
+        </x-slot:footer>
+    </x-ui.modal>
+
+    <x-ui.modal show="showLocation" :open="$showLocation" size="slim" icon="fa-location-dot" title="Add a location" subtitle="Choose the county so allowances (DSA) can be calculated, and the venue.">
+        <x-ui.field label="Region" for="l-r" error="locRegion"><select id="l-r" wire:model="locRegion" class="{{ Ui::CONTROL }} appearance-none pr-8"><option value="">Any</option>@foreach ($regions as $r)<option value="{{ $r->id }}">{{ $r->name }}</option>@endforeach</select></x-ui.field>
+        <x-ui.field label="County" for="l-c" error="locCounty"><select id="l-c" wire:model.live="locCounty" class="{{ Ui::CONTROL }} appearance-none pr-8"><option value="">Choose…</option>@foreach ($counties as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select></x-ui.field>
+        <x-ui.field label="Constituency" for="l-k" error="locConstituency"><select id="l-k" wire:model.live="locConstituency" class="{{ Ui::CONTROL }} appearance-none pr-8" @disabled($constituencies->isEmpty())><option value="">{{ $locCounty ? 'Any' : 'Choose a county first' }}</option>@foreach ($constituencies as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select></x-ui.field>
+        <x-ui.field label="Venue" for="l-v" error="locVenue"><input id="l-v" type="text" wire:model="locVenue" maxlength="255" class="{{ Ui::CONTROL }}" placeholder="e.g. NGCDF Board headquarters"></x-ui.field>
+        <x-slot:footer>
+            <button type="button" wire:click="$set('showLocation', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
+            <button type="button" wire:click="addLocation" wire:loading.attr="disabled" wire:target="addLocation" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-plus text-xs"></i>Add location</button>
         </x-slot:footer>
     </x-ui.modal>
 

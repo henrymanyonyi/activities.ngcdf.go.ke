@@ -67,11 +67,12 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified',
         Route::get('/memos/create', Livewire\Activities\Form::class)->name('memos.create');
         Route::get('/memos/{activity}', Livewire\Memos\Show::class)->name('memos.show');
         Route::get('/memos/{activity}/edit', Livewire\Activities\Form::class)->name('memos.edit');
+        Route::get('/memos/{activity}/team', Livewire\Memos\Team::class)->name('memos.team');
     });
     Route::get('/documents/{document}', DocumentController::class)->middleware('permission:activities.view|memos.originate')->name('documents.show');
 
     Route::get('/links', Livewire\Links::class)->middleware('permission:links.manage')->name('links.index');
-    Route::get('/staff', Livewire\StaffList::class)->middleware('permission:reference.manage')->name('staff.index');
+    Route::get('/staff', Livewire\StaffList::class)->middleware('permission:reference.manage|staff.add')->name('staff.index');
     Route::get('/settings', Livewire\Settings\Reference::class)->middleware('permission:reference.manage')->name('settings.reference');
     Route::get('/users', Livewire\Users::class)->middleware('permission:users.manage')->name('users.index');
     Route::get('/audit', fn () => redirect()->route('reports.show', 'access-audit'))->middleware('permission:audit.view')->name('audit.index');

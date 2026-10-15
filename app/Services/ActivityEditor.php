@@ -144,7 +144,7 @@ class ActivityEditor
      */
     public function addStaff(Activity $activity, array $staffIds, ParticipantRole $role, User $user, array $conflictReasons = [], ?string $amendmentReason = null): array
     {
-        $this->authorize($user, 'activities.manage');
+        $this->authorizeDetails($activity, $user);
         $this->assertEditable($activity);
 
         $staff = Staff::query()->whereIn('id', $staffIds)->get()->keyBy('id');
@@ -210,7 +210,7 @@ class ActivityEditor
      */
     public function addExternal(Activity $activity, array $data, ParticipantRole $role, User $user, ?string $amendmentReason = null): ActivityParticipant
     {
-        $this->authorize($user, 'activities.manage');
+        $this->authorizeDetails($activity, $user);
         $this->assertEditable($activity);
 
         if ($activity->status->requiresAmendment() && blank($amendmentReason)) {
@@ -235,8 +235,8 @@ class ActivityEditor
 
     public function removeParticipant(ActivityParticipant $participant, User $user, ?string $amendmentReason = null): bool
     {
-        $this->authorize($user, 'activities.manage');
         $activity = $participant->loadMissing('activity')->activity;
+        $this->authorizeDetails($activity, $user);
         $this->assertEditable($activity);
 
         if ($activity->status->requiresAmendment() && blank($amendmentReason)) {
@@ -266,8 +266,8 @@ class ActivityEditor
      */
     public function setParticipantDates(ActivityParticipant $participant, ?Carbon $start, ?Carbon $end, User $user, ?string $amendmentReason = null, ?string $conflictReason = null): bool
     {
-        $this->authorize($user, 'activities.manage');
         $activity = $participant->loadMissing('activity')->activity;
+        $this->authorizeDetails($activity, $user);
         $this->assertEditable($activity);
 
         if ($activity->status->isDelivered()) {
@@ -292,7 +292,9 @@ class ActivityEditor
         $conflictReason = trim((string) $conflictReason) ?: $participant->conflict_reason;
         if ($participant->staff_id && blank($conflictReason)
             && ($clash = $this->checks->conflicts($participant->staff_id, $start, $end, $activity->id))->isNotEmpty()) {
-            throw new ActivityWorkflowException(sprintf('%s is already on %s on those days. Give a reason to proceed.', $participant->displayName(), $clash->pluck('reference')->implode(', ')));
+            // A Head of Department is not told which other activity: that belongs to another department.
+            throw new ActivityWorkflowException(sprintf('%s is already on %s on those days. Give a reason to proceed.', $participant->displayName(),
+                $user->can('activities.view') ? $clash->pluck('reference')->implode(', ') : 'another approved activity'));
         }
 
         $whole = $start->equalTo($activity->start_date) && $end->equalTo($activity->end_date);
@@ -328,8 +330,8 @@ class ActivityEditor
      */
     public function explainConflict(ActivityParticipant $participant, string $reason, User $user): void
     {
-        $this->authorize($user, 'activities.manage');
         $activity = $participant->loadMissing('activity')->activity;
+        $this->authorizeDetails($activity, $user);
         $this->assertEditable($activity);
 
         if (trim($reason) === '') {
@@ -370,7 +372,7 @@ class ActivityEditor
      */
     public function savePlannedCost(Activity $activity, array $data, User $user, ?ActivityCost $line = null, ?string $amendmentReason = null): bool
     {
-        $this->authorize($user, 'activities.manage');
+        $this->authorizeDetails($activity, $user);
         $this->assertEditable($activity);
 
         if ($activity->status->isDelivered()) {
@@ -412,7 +414,7 @@ class ActivityEditor
             throw new ActivityWorkflowException('Computed DSA follows the participants; remove the participant instead.');
         }
 
-        $this->authorize($user, 'activities.manage');
+        $this->authorizeDetails($activity, $user);
         $this->assertEditable($activity);
 
         if ($activity->status->requiresAmendment() && blank($amendmentReason)) {
