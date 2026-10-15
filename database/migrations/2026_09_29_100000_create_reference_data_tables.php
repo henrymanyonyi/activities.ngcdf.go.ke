@@ -5,9 +5,10 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Lookup lists. Departments, designations, regions and offices are keyed in by
- * whoever originates a memo (decision Q6), so they are created on the fly by
- * App\Services\ParticipantListImporter and tidied by Admin in Settings.
+ * Lookup lists and configuration maintained in Settings: departments,
+ * designations, regions and offices (created on the fly by
+ * App\Services\ParticipantListImporter and tidied in Settings), geography
+ * (MD-04), DSA rates (MD-05), budget lines (MD-08) and thresholds.
  */
 return new class extends Migration
 {
@@ -87,10 +88,82 @@ return new class extends Migration
             $table->string('name', 60)->unique();
             $table->timestamps();
         });
+
+        // MD-04: region (10), county (47), constituency (290). Snapshot of Smart NG-CDF's geography.
+        Schema::create('counties', function (Blueprint $table) {
+            $table->id();
+            $table->string('code', 10)->unique();
+            $table->string('name')->unique();
+            // MD-05 / OI-01: DSA destination category the county falls in.
+            $table->string('dsa_destination_category', 40)->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('constituencies', function (Blueprint $table) {
+            $table->id();
+            $table->string('code', 10)->unique();
+            $table->string('name');
+            $table->foreignId('county_id')->constrained()->restrictOnDelete();
+            $table->foreignId('region_id')->constrained()->restrictOnDelete();
+            $table->timestamps();
+
+            $table->index(['county_id', 'name']);
+        });
+
+        // MD-05: DSA rates by job grade and destination category, with effective dates.
+        Schema::create('dsa_rates', function (Blueprint $table) {
+            $table->id();
+            $table->string('job_grade', 20);
+            $table->string('destination_category', 40);
+            $table->decimal('amount', 15, 2);
+            $table->date('effective_from');
+            $table->date('effective_to')->nullable();
+            // Placeholder rates seeded at installation until Finance's circular replaces them (OI-01).
+            $table->boolean('is_provisional')->default(false);
+            $table->foreignId('recorded_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamps();
+
+            $table->index(['job_grade', 'destination_category', 'effective_from']);
+        });
+
+        // MD-08: budget lines per department per financial year.
+        Schema::create('budget_lines', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('department_id')->constrained()->restrictOnDelete();
+            $table->string('financial_year', 9);
+            $table->string('code', 40)->nullable();
+            $table->string('name');
+            $table->decimal('amount', 15, 2);
+            $table->timestamps();
+
+            $table->index(['department_id', 'financial_year']);
+        });
+
+        // Configurable thresholds and tolerances (OI-04, OI-05, OI-07, BR-10), editable in Settings.
+        Schema::create('app_settings', function (Blueprint $table) {
+            $table->string('key', 60)->primary();
+            $table->string('value', 255)->nullable();
+            $table->foreignId('updated_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamps();
+        });
+
+        // A Head of Department's department (the column is created with users).
+        Schema::table('users', function (Blueprint $table) {
+            $table->foreign('department_id')->references('id')->on('departments')->nullOnDelete();
+        });
     }
 
     public function down(): void
     {
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropForeign(['department_id']);
+        });
+
+        Schema::dropIfExists('app_settings');
+        Schema::dropIfExists('budget_lines');
+        Schema::dropIfExists('dsa_rates');
+        Schema::dropIfExists('constituencies');
+        Schema::dropIfExists('counties');
         Schema::dropIfExists('tags');
         Schema::dropIfExists('cost_categories');
         Schema::dropIfExists('programmes');
