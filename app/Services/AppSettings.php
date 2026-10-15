@@ -23,7 +23,12 @@ class AppSettings
         'tolerance_participant_changes' => ['Participant change tolerance (people)', 1, 'After approval, adding or removing more than this many people returns the activity to the CEO (PT-07).'],
         'tolerance_cost_increase_percent' => ['Cost increase tolerance (%)', 10, 'After approval, a planned-cost increase above this percentage returns the activity to the CEO (BR-10).'],
         'dsa_basis' => ['DSA basis', 'nights', 'Whether planned DSA is rate × nights or rate × days (OI-01): "nights" or "days".'],
+        'acos_forwards_via_cos' => ['Assistant\'s memos go through the Chief of Staff', 0, 'Yes: a memo the Assistant Chief of Staff forwards goes to the Chief of Staff before the CEO. No: the Assistant may forward it straight to the CEO.'],
+        'memo_review_reminder_working_days' => ['Memo pending reminder (working days)', 3, 'A memo still under review or awaiting the CEO\'s decision after this many working days is flagged as pending too long and raises a daily reminder.'],
     ];
+
+    /** Settings that are a yes (1) or no (0) choice. */
+    public const SWITCHES = ['acos_forwards_via_cos'];
 
     private const CACHE_KEY = 'app_settings';
 
@@ -43,6 +48,11 @@ class AppSettings
     public function int(string $key): int
     {
         return (int) $this->get($key);
+    }
+
+    public function bool(string $key): bool
+    {
+        return (bool) $this->int($key);
     }
 
     /** @return array<string, mixed> */

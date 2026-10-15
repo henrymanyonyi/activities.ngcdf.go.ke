@@ -22,7 +22,7 @@ class ParticipantListTemplate implements FromArray, ShouldAutoSize, WithHeadings
     public function array(): array
     {
         return [
-            ['NGCDF/0123', 'Jane Wanjiru', 'Projects, Planning & M&E', 'Senior Officer', 'NGCDF 5', 'Headquarters', 'Nairobi Region', 'Team lead', 3, 'No', '', '', 'jane@example.go.ke', '0700000000'],
+            ['NGCDF/0123', 'Jane Wanjiru', 'Monitoring & Evaluation', 'Senior Officer', 'NGCDF 5', 'Headquarters', 'Nairobi Region', 'Team lead', 3, 'No', '', '', 'jane@example.go.ke', '0700000000'],
             ['', 'Hon. John Doe', '', '', '', '', '', 'Member', 2, 'Yes', 'National Assembly', 'Member of Parliament', '', ''],
         ];
     }

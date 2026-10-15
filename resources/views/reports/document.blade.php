@@ -1,4 +1,4 @@
-{{-- PDF and print layout for a standard report. RESTRICTED at top and bottom of every page (FRD CF-07). --}}
+{{-- PDF and print layout for a standard report. One RESTRICTED marking with the user and time, repeated at the top of every page (FRD CF-07). --}}
 @php
     $columns = $report->columns();
     $totals = $report->totals($rows);
@@ -10,12 +10,10 @@
     <meta charset="utf-8">
     <title>{{ $report->title() }} · RESTRICTED</title>
     <style>
-        @page { margin: 70px 28px 60px 28px; }
+        @page { margin: 70px 28px 40px 28px; }
         body { font-family: DejaVu Sans, Helvetica, Arial, sans-serif; font-size: 9px; color: #1e293b; }
-        header.mark, footer.mark { position: fixed; left: 0; right: 0; text-align: center; font-weight: bold; color: #b91c1c; letter-spacing: 2px; font-size: 9px; }
-        header.mark { top: -52px; }
-        footer.mark { bottom: -42px; }
-        footer.mark .stamp { display: block; color: #64748b; letter-spacing: 0; font-weight: normal; margin-top: 3px; }
+        header.mark { position: fixed; left: 0; right: 0; top: -52px; text-align: center; font-weight: bold; color: #b91c1c; letter-spacing: 2px; font-size: 9px; }
+        header.mark .stamp { display: block; color: #64748b; letter-spacing: 0; font-weight: normal; margin-top: 3px; }
         h1 { font-size: 15px; margin: 0 0 2px; color: #065f46; }
         .sub { color: #64748b; margin-bottom: 10px; }
         table { width: 100%; border-collapse: collapse; }
@@ -25,12 +23,11 @@
         tr.total td { font-weight: bold; border-top: 2px solid #065f46; }
         .brand { display: flex; align-items: center; gap: 8px; }
         @media print { .no-print { display: none; } body { font-size: 10px; } }
-        @media screen { body { max-width: 1100px; margin: 20px auto; } header.mark, footer.mark { position: static; margin: 8px 0; } }
+        @media screen { body { max-width: 1100px; margin: 20px auto; } header.mark { position: static; margin: 8px 0; } }
     </style>
 </head>
 <body @if ($print ?? false) onload="window.print()" @endif>
-    <header class="mark">RESTRICTED: FOR THE OFFICE OF THE CEO ONLY</header>
-    <footer class="mark">RESTRICTED: FOR THE OFFICE OF THE CEO ONLY<span class="stamp">{{ $stamp }}</span></footer>
+    <header class="mark">RESTRICTED: FOR THE OFFICE OF THE CEO ONLY<span class="stamp">{{ $stamp }}</span></header>
 
     <div class="sub">NG-CDF Board · Office of the CEO / Accounting Officer · Field Activity Planning and Monitoring</div>
     <h1>{{ $report->title() }}</h1>

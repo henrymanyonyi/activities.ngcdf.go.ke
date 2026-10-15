@@ -274,7 +274,11 @@ class Reference extends Component
     public function saveSettings(AppSettings $appSettings): void
     {
         $this->guard();
-        $rules = collect(AppSettings::DEFINITIONS)->mapWithKeys(fn ($def, $key) => ["settings.{$key}" => is_int($def[1]) ? ['required', 'integer', 'min:0', 'max:1000'] : ['required', 'in:nights,days']])->all();
+        $rules = collect(AppSettings::DEFINITIONS)->mapWithKeys(fn ($def, $key) => ["settings.{$key}" => match (true) {
+            in_array($key, AppSettings::SWITCHES, true) => ['required', 'in:0,1'],
+            is_int($def[1]) => ['required', 'integer', 'min:0', 'max:1000'],
+            default => ['required', 'in:nights,days'],
+        }])->all();
         $this->validate($rules);
 
         foreach (array_keys(AppSettings::DEFINITIONS) as $key) {

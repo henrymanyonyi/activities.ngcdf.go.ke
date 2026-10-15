@@ -42,8 +42,19 @@ class ActivityEditor
      */
     public function create(array $attributes, ?User $user, ?string $actorName = null): Activity
     {
-        if ($user) {
-            $this->authorize($user, 'activities.manage');
+        if ($user && ! $user->can('activities.manage')) {
+            // A Head of Department prepares memos for their own department, as the responsible head.
+            $this->authorize($user, 'memos.originate');
+
+            if (! $user->department_id) {
+                throw new AuthorizationException('Your account is not linked to a department. Ask the System Administrator.');
+            }
+
+            $attributes = array_merge($attributes, [
+                'organising_department_id' => $user->department_id,
+                'responsible_hod_id' => $user->id,
+                'responsible_hod_name' => $user->name,
+            ]);
         }
 
         return DB::transaction(function () use ($attributes, $user, $actorName) {
@@ -66,8 +77,13 @@ class ActivityEditor
      */
     public function update(Activity $activity, array $attributes, User $user): Activity
     {
-        $this->authorize($user, 'activities.manage');
+        $this->authorizeDetails($activity, $user);
         $this->assertEditable($activity);
+
+        if (! $user->can('activities.manage')) {
+            // The department and responsible head stay as they are.
+            unset($attributes['organising_department_id'], $attributes['responsible_hod_id'], $attributes['responsible_hod_name']);
+        }
 
         $attributes = $this->withDates($attributes + ['start_date' => $activity->start_date, 'days' => $activity->days]);
 
@@ -97,7 +113,7 @@ class ActivityEditor
     /** @param  array{region_id?: ?int, county_id?: ?int, constituency_id?: ?int, venue?: ?string}  $data */
     public function addLocation(Activity $activity, array $data, User $user): ActivityLocation
     {
-        $this->authorize($user, 'activities.manage');
+        $this->authorizeDetails($activity, $user);
         $this->assertEditable($activity);
 
         if (blank($data['region_id'] ?? null) && blank($data['county_id'] ?? null) && blank($data['constituency_id'] ?? null) && blank($data['venue'] ?? null)) {
@@ -112,8 +128,8 @@ class ActivityEditor
 
     public function removeLocation(ActivityLocation $location, User $user): void
     {
-        $this->authorize($user, 'activities.manage');
         $activity = $location->loadMissing('activity')->activity;
+        $this->authorizeDetails($activity, $user);
         $this->assertEditable($activity);
         $location->delete();
         $this->dsa->recalculate($activity);
@@ -243,11 +259,12 @@ class ActivityEditor
 
     /**
      * The days one person takes part, within the activity's dates. Null dates
-     * mean the whole activity. DSA follows the person's own nights.
+     * mean the whole activity. DSA follows the person's own nights. New days
+     * that overlap another approved activity need a reason, as when adding (BR-04).
      *
      * @return bool whether the change sent the activity back to the CEO
      */
-    public function setParticipantDates(ActivityParticipant $participant, ?Carbon $start, ?Carbon $end, User $user, ?string $amendmentReason = null): bool
+    public function setParticipantDates(ActivityParticipant $participant, ?Carbon $start, ?Carbon $end, User $user, ?string $amendmentReason = null, ?string $conflictReason = null): bool
     {
         $this->authorize($user, 'activities.manage');
         $activity = $participant->loadMissing('activity')->activity;
@@ -272,15 +289,22 @@ class ActivityEditor
             throw new ActivityWorkflowException("Give a reason for changing a participant's days on a submitted or approved activity.");
         }
 
+        $conflictReason = trim((string) $conflictReason) ?: $participant->conflict_reason;
+        if ($participant->staff_id && blank($conflictReason)
+            && ($clash = $this->checks->conflicts($participant->staff_id, $start, $end, $activity->id))->isNotEmpty()) {
+            throw new ActivityWorkflowException(sprintf('%s is already on %s on those days. Give a reason to proceed.', $participant->displayName(), $clash->pluck('reference')->implode(', ')));
+        }
+
         $whole = $start->equalTo($activity->start_date) && $end->equalTo($activity->end_date);
         $before = ['start_date' => $participant->startOn($activity)->toDateString(), 'end_date' => $participant->endOn($activity)->toDateString(), 'days' => $participant->plannedDays($activity)];
         $days = (int) $start->diffInDays($end) + 1;
 
-        return DB::transaction(function () use ($participant, $activity, $start, $end, $whole, $days, $before, $user, $amendmentReason) {
+        return DB::transaction(function () use ($participant, $activity, $start, $end, $whole, $days, $before, $user, $amendmentReason, $conflictReason) {
             $participant->update([
                 'start_date' => $whole ? null : $start,
                 'end_date' => $whole ? null : $end,
                 'days_planned' => $whole ? null : $days,
+                'conflict_reason' => $conflictReason,
             ]);
             $this->dsa->recalculate($activity);
 
@@ -295,6 +319,28 @@ class ActivityEditor
                 $before, ['start_date' => $start->toDateString(), 'end_date' => $end->toDateString(), 'days' => $days],
             );
         });
+    }
+
+    /**
+     * BR-04: record why someone stays on this activity although their days
+     * overlap another approved one. Used when the overlap appeared after they
+     * were added (a postponement, an extension, another activity approved).
+     */
+    public function explainConflict(ActivityParticipant $participant, string $reason, User $user): void
+    {
+        $this->authorize($user, 'activities.manage');
+        $activity = $participant->loadMissing('activity')->activity;
+        $this->assertEditable($activity);
+
+        if (trim($reason) === '') {
+            throw new ActivityWorkflowException('Give the reason this person may be on both activities.');
+        }
+
+        if (! $participant->staff_id || $this->checks->conflicts($participant->staff_id, $participant->startOn($activity), $participant->endOn($activity), $activity->id)->isEmpty()) {
+            throw new ActivityWorkflowException("{$participant->displayName()} has no overlap to explain.");
+        }
+
+        $participant->update(['conflict_reason' => trim($reason)]);
     }
 
     /**
@@ -440,6 +486,28 @@ class ActivityEditor
     {
         if ($activity->status->isReadOnly()) {
             throw new ActivityWorkflowException("A {$activity->status->label()} activity is read only.");
+        }
+    }
+
+    /**
+     * The Office of the CEO edits any activity's details. A Head of
+     * Department edits only their own department's memo, and only while it
+     * is with them (a draft, or returned for correction).
+     */
+    public function authorizeDetails(Activity $activity, User $user): void
+    {
+        if ($user->can('activities.manage')) {
+            return;
+        }
+
+        $this->authorize($user, 'memos.originate');
+
+        if (! $activity->isVisibleTo($user)) {
+            throw new AuthorizationException('This memo belongs to another department.');
+        }
+
+        if (! $activity->status->isWithDepartment()) {
+            throw new ActivityWorkflowException('This memo is with the Office of the CEO. It can be changed again only if it is returned to you for correction.');
         }
     }
 

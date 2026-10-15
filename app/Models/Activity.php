@@ -6,6 +6,7 @@ use App\Enums\ActivityStatus;
 use App\Enums\DecisionMode;
 use App\Enums\ImprestStatus;
 use App\Enums\Rag;
+use App\Enums\ReviewOffice;
 use App\Models\Concerns\Auditable;
 use App\Support\FinancialYear;
 use App\Support\Money;
@@ -18,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 /**
  * One field activity (FRD 11, "Activity"). Status changes go through
@@ -41,6 +43,10 @@ class Activity extends Model
         'title',
         'purpose',
         'expected_outputs',
+        'justification',
+        'requested_budget',
+        'responsible_hod_id',
+        'responsible_hod_name',
         'notes',
         'activity_category_id',
         'activity_type_id',
@@ -65,7 +71,7 @@ class Activity extends Model
         'created_by',
     ];
 
-    // status, decision/approval fields, execution timestamps, flags and the
+    // status, review_office, decision/approval fields, execution timestamps, flags and the
     // stored totals are deliberately not fillable: only ActivityLifecycle and
     // ActivityCosting write them.
 
@@ -78,6 +84,7 @@ class Activity extends Model
         return [
             'status' => ActivityStatus::class,
             'approval_mode' => DecisionMode::class,
+            'review_office' => ReviewOffice::class,
             'imprest_status' => ImprestStatus::class,
             'start_date' => 'date',
             'end_date' => 'date',
@@ -97,6 +104,7 @@ class Activity extends Model
             'estimated_total' => 'decimal:2',
             'actual_total' => 'decimal:2',
             'cost_total' => 'decimal:2',
+            'requested_budget' => 'decimal:2',
         ];
     }
 
@@ -227,6 +235,91 @@ class Activity extends Model
         return $this->hasMany(ActivityAmendment::class)->latest('id');
     }
 
+    /**
+     * The Head of Department responsible for the memo. created_by is who
+     * actually prepared it, which differs when the Office of the CEO records
+     * it on the Head of Department's behalf.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function responsibleHod(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'responsible_hod_id');
+    }
+
+    /** @return HasMany<ActivityReviewNote, $this> */
+    public function reviewNotes(): HasMany
+    {
+        return $this->hasMany(ActivityReviewNote::class)->latest('id');
+    }
+
+    public function responsibleHodLabel(): ?string
+    {
+        return $this->responsible_hod_name ?: $this->responsibleHod?->name;
+    }
+
+    /** Prepared by someone other than the responsible Head of Department. */
+    public function isPreparedOnBehalf(): bool
+    {
+        return $this->responsibleHodLabel() !== null && ($this->responsible_hod_id === null || (int) $this->responsible_hod_id !== (int) $this->created_by);
+    }
+
+    /** A draft the Head of Department is still preparing (not one the Office of the CEO is recording). */
+    public function isDepartmentDraft(): bool
+    {
+        return $this->status === ActivityStatus::Draft && $this->responsible_hod_id !== null && (int) $this->responsible_hod_id === (int) $this->created_by;
+    }
+
+    /** Who holds the memo now. */
+    public function currentHolder(): string
+    {
+        $department = $this->organisingDepartment?->name;
+
+        return match ($this->status) {
+            ActivityStatus::Draft => $this->isDepartmentDraft() ? 'Head of Department'.($department ? ", {$department}" : '') : 'Office of the CEO',
+            ActivityStatus::ReturnedToHod => 'Head of Department'.($department ? ", {$department}" : ''),
+            ActivityStatus::UnderReview => $this->review_office?->label() ?? 'Office of the CEO',
+            ActivityStatus::AwaitingDecision => 'Chief Executive Officer',
+            ActivityStatus::Returned => 'Chief of Staff and Assistant Chief of Staff',
+            ActivityStatus::Declined => 'Nobody: the CEO declined it',
+            default => 'Nobody: the CEO has decided',
+        };
+    }
+
+    /** What has to happen next, in plain words. */
+    public function nextAction(): string
+    {
+        return match ($this->status) {
+            ActivityStatus::Draft => $this->isDepartmentDraft() ? 'Complete the memo and submit it for review.' : 'Complete the memo and forward it to the CEO.',
+            ActivityStatus::UnderReview => 'Review the memo, then forward it or return it for correction.',
+            ActivityStatus::ReturnedToHod => 'Make the corrections asked for and resubmit.',
+            ActivityStatus::AwaitingDecision => 'The CEO approves and authorises, declines, or returns it.',
+            ActivityStatus::Returned => 'Answer the CEO\'s comments, then forward it again or return it to the Head of Department.',
+            ActivityStatus::Declined => 'None. The CEO declined this memo.',
+            ActivityStatus::Cancelled => 'None. The activity was cancelled.',
+            default => 'None. Approved and authorised'.($this->approved_at ? ' on '.$this->approved_at->format('d M Y') : '').'.',
+        };
+    }
+
+    /**
+     * The most recent comment that matters to the reader: a review note, or a
+     * reason given when the memo was returned, forwarded or decided.
+     *
+     * @return array{body: string, by: string, at: Carbon}|null
+     */
+    public function latestComment(): ?array
+    {
+        $note = $this->reviewNotes->first();
+        $history = $this->statusHistory->filter(fn (ActivityStatusHistory $h) => filled($h->reason) && $h->user_id !== null)->sortByDesc('id')->first();
+
+        $candidates = collect([
+            $note ? ['body' => $note->body, 'by' => $note->user?->name ?? 'Unknown', 'at' => $note->created_at] : null,
+            $history ? ['body' => $history->reason, 'by' => $history->actorLabel(), 'at' => $history->created_at] : null,
+        ])->filter();
+
+        return $candidates->sortByDesc(fn (array $c) => $c['at']->getTimestamp())->first();
+    }
+
     public function locationSummary(): string
     {
         return $this->locations->map(fn (ActivityLocation $l) => $l->label())->filter()->implode('; ');
@@ -295,6 +388,33 @@ class Activity extends Model
     public function scopeStatus(Builder $query, ActivityStatus ...$statuses): void
     {
         $query->whereIn('status', ActivityStatus::values(...$statuses));
+    }
+
+    /**
+     * The memos a user may see: everything for the Office of the CEO, only
+     * their own department's for a Head of Department, nothing otherwise.
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeVisibleTo(Builder $query, User $user): void
+    {
+        if ($user->can('activities.view')) {
+            return;
+        }
+
+        if ($user->can('memos.originate') && $user->department_id) {
+            $query->where('organising_department_id', $user->department_id);
+
+            return;
+        }
+
+        $query->whereRaw('1 = 0');
+    }
+
+    public function isVisibleTo(User $user): bool
+    {
+        return $user->can('activities.view')
+            || ($user->can('memos.originate') && $user->department_id !== null && (int) $this->organising_department_id === (int) $user->department_id);
     }
 
     /**

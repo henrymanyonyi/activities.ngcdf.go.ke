@@ -21,7 +21,14 @@ class AlertsBell extends Component
         $alert = Auth::user()->notifications()->findOrFail($id);
         $alert->markAsRead();
 
-        $this->redirect($alert->data['activity_id'] ?? null ? route('activities.show', $alert->data['activity_id']) : route('dashboard'), navigate: true);
+        $user = Auth::user();
+        $activityId = $alert->data['activity_id'] ?? null;
+
+        $this->redirect(match (true) {
+            $activityId && $user->can('activities.view') => route('activities.show', $activityId),
+            $activityId && $user->can('memos.originate') => route('memos.show', $activityId),
+            default => route('home'),
+        }, navigate: true);
     }
 
     public function render(): View

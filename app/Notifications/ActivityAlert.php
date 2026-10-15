@@ -3,13 +3,14 @@
 namespace App\Notifications;
 
 use App\Enums\DecisionType;
+use App\Enums\ReviewOffice;
 use App\Models\Activity;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 
 /**
- * FRD NT-01: in-app alert to one of the three users. Database channel only —
- * nothing leaves the system (NT-03, BR-11).
+ * FRD NT-01: in-app alert to an authorised user. Database channel only —
+ * nothing leaves the system (NT-03, BR-11). Each message says what to do.
  */
 class ActivityAlert extends Notification
 {
@@ -30,6 +31,32 @@ class ActivityAlert extends Notification
     public static function decided(Activity $activity, DecisionType $decision): self
     {
         return new self('decided', "{$decision->label()}: {$activity->title}", $activity->id, 'fa-gavel');
+    }
+
+    public static function submittedForReview(Activity $activity, bool $resubmitted = false): self
+    {
+        return new self('submitted_for_review', ($resubmitted ? 'Corrected and resubmitted, please review: ' : 'Submitted for your review: ').$activity->title, $activity->id, 'fa-magnifying-glass');
+    }
+
+    public static function returnedForCorrection(Activity $activity): self
+    {
+        return new self('returned_for_correction', "Returned for correction, please revise and resubmit: {$activity->title}", $activity->id, 'fa-reply');
+    }
+
+    public static function forwardedToOffice(Activity $activity, ReviewOffice $office): self
+    {
+        return new self('forwarded_for_review', "Forwarded to you by the {$office->label()}'s office, please review: {$activity->title}", $activity->id, 'fa-share');
+    }
+
+    /** To the Head of Department: their memo has moved on. No action needed. */
+    public static function progressed(Activity $activity, string $where): self
+    {
+        return new self('memo_progressed', "{$where}: {$activity->title}", $activity->id, 'fa-share');
+    }
+
+    public static function pendingTooLong(Activity $activity, int $workingDays): self
+    {
+        return new self('memo_pending', "Pending {$workingDays}+ working days, please act: {$activity->title}", $activity->id, 'fa-clock');
     }
 
     public static function commencementDue(Activity $activity): self

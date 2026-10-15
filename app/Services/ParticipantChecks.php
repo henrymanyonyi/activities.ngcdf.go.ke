@@ -117,6 +117,31 @@ class ParticipantChecks
     }
 
     /**
+     * Planned field days per staff member in a date window, for everyone at
+     * once (same rules as fieldDays()): staff id => days. Lets the person
+     * choosing a team see who has been in the field least (PT-06).
+     *
+     * @return array<int, int>
+     */
+    public function plannedFieldDaysByStaff(Carbon $from, Carbon $to, ?int $excludeActivityId = null): array
+    {
+        return ActivityParticipant::query()
+            ->join('activities', 'activities.id', '=', 'activity_participants.activity_id')
+            ->whereNull('activities.deleted_at')
+            ->whereNotNull('activity_participants.staff_id')
+            ->whereIn('activity_participants.status', ParticipationStatus::values(ParticipationStatus::Nominated, ParticipationStatus::Confirmed, ParticipationStatus::Attended))
+            ->whereIn('activities.status', ActivityStatus::values(ActivityStatus::Approved, ActivityStatus::InProgress, ActivityStatus::Postponed, ActivityStatus::Completed, ActivityStatus::ReportReceived, ActivityStatus::Closed))
+            ->whereDate('activities.start_date', '>=', $from)
+            ->whereDate('activities.start_date', '<=', $to)
+            ->when($excludeActivityId, fn (Builder $q, $id) => $q->where('activities.id', '!=', $id))
+            ->groupBy('activity_participants.staff_id')
+            ->selectRaw('activity_participants.staff_id, SUM(COALESCE(activity_participants.days_planned, activities.days)) as days')
+            ->pluck('days', 'staff_id')
+            ->map(fn ($days) => (int) $days)
+            ->all();
+    }
+
+    /**
      * Field-day position for the quarter and financial year containing the
      * activity, including this activity, against the configured thresholds.
      *

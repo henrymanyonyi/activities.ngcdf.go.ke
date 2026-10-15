@@ -10,6 +10,8 @@ namespace App\Enums;
 enum ActivityStatus: string
 {
     case Draft = 'draft';
+    case UnderReview = 'under_review';
+    case ReturnedToHod = 'returned_to_hod';
     case AwaitingDecision = 'awaiting_decision';
     case Approved = 'approved';
     case Returned = 'returned';
@@ -25,6 +27,8 @@ enum ActivityStatus: string
     {
         return match ($this) {
             self::Draft => 'Draft',
+            self::UnderReview => 'Under review',
+            self::ReturnedToHod => 'Returned for correction',
             self::AwaitingDecision => 'Awaiting decision',
             self::Approved => 'Approved',
             self::Returned => 'Returned',
@@ -43,6 +47,8 @@ enum ActivityStatus: string
     {
         return match ($this) {
             self::Draft => 'bg-slate-100 text-slate-500',
+            self::UnderReview => 'bg-sky-50 text-sky-700',
+            self::ReturnedToHod => 'bg-orange-50 text-orange-700',
             self::AwaitingDecision => 'bg-amber-50 text-amber-700',
             self::Approved => 'bg-teal-50 text-teal-700',
             self::Returned => 'bg-orange-50 text-orange-700',
@@ -59,6 +65,8 @@ enum ActivityStatus: string
     {
         return match ($this) {
             self::Draft => 'fa-pen-ruler',
+            self::UnderReview => 'fa-magnifying-glass',
+            self::ReturnedToHod => 'fa-reply',
             self::AwaitingDecision => 'fa-hourglass-half',
             self::Approved => 'fa-circle-check',
             self::Returned => 'fa-rotate-left',
@@ -77,9 +85,13 @@ enum ActivityStatus: string
     {
         return match ($this) {
             // Draft → Approved is a decision recorded on the CEO's behalf (CD-03).
-            self::Draft => [self::AwaitingDecision, self::Approved],
+            // Draft → Under review is a Head of Department's submission; the
+            // Office of the CEO's own drafts go straight to Awaiting decision.
+            self::Draft => [self::UnderReview, self::AwaitingDecision, self::Approved],
+            self::UnderReview => [self::ReturnedToHod, self::AwaitingDecision],
+            self::ReturnedToHod => [self::UnderReview],
             self::AwaitingDecision => [self::Approved, self::Returned, self::Declined],
-            self::Returned => [self::Draft, self::AwaitingDecision, self::Approved],
+            self::Returned => [self::Draft, self::UnderReview, self::ReturnedToHod, self::AwaitingDecision, self::Approved],
             self::Approved => [self::InProgress, self::Postponed, self::Cancelled, self::AwaitingDecision],
             self::InProgress => [self::Completed, self::Cancelled, self::AwaitingDecision],
             self::Postponed => [self::Approved, self::AwaitingDecision, self::Cancelled],
@@ -97,7 +109,19 @@ enum ActivityStatus: string
     /** Details, participants and planned costs may be edited without an amendment. */
     public function isFreelyEditable(): bool
     {
-        return in_array($this, [self::Draft, self::Returned], true);
+        return in_array($this, [self::Draft, self::UnderReview, self::ReturnedToHod, self::Returned], true);
+    }
+
+    /** The Head of Department may edit the memo: before submission, or after it is returned for correction. */
+    public function isWithDepartment(): bool
+    {
+        return in_array($this, [self::Draft, self::ReturnedToHod], true);
+    }
+
+    /** Submitted and not yet decided by the CEO. */
+    public function isPendingDecision(): bool
+    {
+        return in_array($this, [self::UnderReview, self::AwaitingDecision, self::Returned], true);
     }
 
     /** Changes are allowed but recorded as amendments (PT-07, BR-10). */

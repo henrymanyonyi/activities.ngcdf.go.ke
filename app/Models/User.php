@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\Auditable;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Str;
@@ -27,7 +28,11 @@ class User extends Authenticatable
     use TwoFactorAuthenticatable;
 
     /**
-     * FRD 4 / CF-01: exactly three accounts, one per role. No other role exists.
+     * FRD 4 / CF-01: the three accounts of the Office of the CEO, plus a System
+     * Administrator for settings, configuration and logs only (no activity
+     * data), approved by the CEO on 11 October 2026. One account per role,
+     * except Heads of Department: one per department, seeing only their own
+     * department's memos (activity memo workflow, October 2026).
      */
     public const ROLE_CEO = 'ceo';
 
@@ -35,12 +40,21 @@ class User extends Authenticatable
 
     public const ROLE_ASSISTANT_CHIEF_OF_STAFF = 'assistant_chief_of_staff';
 
+    public const ROLE_ADMIN = 'admin';
+
+    public const ROLE_HOD = 'hod';
+
     /** @var array<string, string> role => label */
     public const ROLES = [
         self::ROLE_CEO => 'Chief Executive Officer',
         self::ROLE_CHIEF_OF_STAFF => 'Chief of Staff',
         self::ROLE_ASSISTANT_CHIEF_OF_STAFF => 'Assistant Chief of Staff',
+        self::ROLE_ADMIN => 'System Administrator',
+        self::ROLE_HOD => 'Head of Department',
     ];
+
+    /** Roles held by one active account per department instead of one in total. */
+    public const DEPARTMENTAL_ROLES = [self::ROLE_HOD];
 
     /**
      * The attributes that are mass assignable.
@@ -50,6 +64,7 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'email',
+        'department_id',
         'password',
         'is_active',
         'failed_login_attempts',
@@ -102,6 +117,30 @@ class User extends Authenticatable
     public function roleName(): ?string
     {
         return $this->roles->first()?->name;
+    }
+
+    /** @return BelongsTo<Department, $this> */
+    public function department(): BelongsTo
+    {
+        return $this->belongsTo(Department::class);
+    }
+
+    public function isHeadOfDepartment(): bool
+    {
+        return $this->hasRole(self::ROLE_HOD);
+    }
+
+    /** The first page this user may open: the dashboard, memos for a Head of Department, or for the System Administrator, settings or the log. */
+    public function homeRoute(): string
+    {
+        return match (true) {
+            $this->can('activities.view') => 'dashboard',
+            $this->can('memos.originate') => 'memos.index',
+            $this->can('reference.manage') => 'settings.reference',
+            $this->can('users.manage') => 'users.index',
+            $this->can('audit.view') => 'audit.index',
+            default => 'profile.show',
+        };
     }
 
     public function roleLabel(): string

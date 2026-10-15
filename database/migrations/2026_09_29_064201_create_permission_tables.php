@@ -42,6 +42,8 @@ return new class extends Migration
                 $table->index($columnNames['team_foreign_key'], 'roles_team_foreign_key_index');
             }
             $table->string('name');
+            // Human label, as in Smart NG-CDF ("Chief Executive Officer" rather than the slug "ceo").
+            $table->string('label')->nullable();
             $table->string('guard_name');
             $table->timestamps();
             if ($teams || config('permission.testing')) {

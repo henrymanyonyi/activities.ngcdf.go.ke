@@ -38,19 +38,22 @@
     <x-slot:actions>
         <a href="{{ route('activities.index') }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-arrow-left text-xs"></i>Register</a>
 
-        @if ($s->isFreelyEditable() && $editable)
+        @if ($editable)
             <a href="{{ route('activities.edit', $a) }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-pen text-xs"></i>Edit</a>
         @endif
         @if ($s === ActivityStatus::Draft && $can('activities.manage'))
             <button type="button" wire:click="$set('showDiscard', true)" class="{{ Ui::BTN_NEUTRAL }} hover:!text-red-600"><i class="fa-solid fa-trash text-xs"></i>Discard</button>
         @endif
-        @if (in_array($s, [ActivityStatus::Draft, ActivityStatus::Returned]) && $can('activities.submit'))
-            <button type="button" wire:click="submitForDecision" wire:loading.attr="disabled" wire:target="submitForDecision" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-paper-plane text-xs"></i>{{ $can('activities.decide') ? 'Submit for decision' : 'Submit to CEO' }}</button>
+        @if (in_array($s, [ActivityStatus::UnderReview, ActivityStatus::Returned]) && $can('memos.review') && ! $withChiefOfStaffOnly)
+            <button type="button" wire:click="$set('showReturnHod', true)" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-reply text-xs"></i>Return for correction</button>
+        @endif
+        @if (in_array($s, [ActivityStatus::Draft, ActivityStatus::UnderReview, ActivityStatus::Returned]) && $can('activities.submit') && ! $a->isDepartmentDraft() && ! $withChiefOfStaffOnly)
+            <button type="button" wire:click="$set('showForward', true)" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-paper-plane text-xs"></i>{{ $forwardsToChiefOfStaff ? 'Forward to Chief of Staff' : ($can('activities.decide') ? 'Submit for decision' : 'Forward to CEO') }}</button>
         @endif
         @if ($s === ActivityStatus::AwaitingDecision && $can('activities.decide'))
             <button type="button" wire:click="openDecide('returned')" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-rotate-left text-xs"></i>Return</button>
             <button type="button" wire:click="openDecide('declined')" class="{{ Ui::BTN_DANGER }}"><i class="fa-solid fa-xmark text-xs"></i>Decline</button>
-            <button type="button" wire:click="openDecide('approved')" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-check text-xs"></i>Approve</button>
+            <button type="button" wire:click="openDecide('approved')" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-check text-xs"></i>Approve and authorise</button>
         @endif
         @if (in_array($s, [ActivityStatus::Draft, ActivityStatus::AwaitingDecision, ActivityStatus::Returned]) && $can('decisions.record') && ! $can('activities.decide'))
             <button type="button" wire:click="$set('showRecordDecision', true)" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-file-signature text-xs"></i>Record CEO decision</button>
@@ -87,8 +90,16 @@
 
     @if ($s->isReadOnly())
         <div class="px-4 py-3 rounded-lg text-sm bg-slate-100 border border-slate-200 text-slate-600"><i class="fa-solid fa-lock mr-2"></i>This activity is {{ strtolower($s->label()) }} and read only.@if ($a->status_reason) Reason: {{ $a->status_reason }}@endif</div>
-    @elseif ($s === ActivityStatus::Returned && $a->status_reason)
-        <div class="px-4 py-3 rounded-lg text-sm bg-orange-50 border border-orange-200 text-orange-800"><i class="fa-solid fa-rotate-left mr-2"></i><strong>Returned by the CEO:</strong> {{ $a->status_reason }}</div>
+    @endif
+    @if ($a->isDepartmentDraft())
+        <div class="px-4 py-3 rounded-lg text-sm bg-sky-50 border border-sky-200 text-sky-800"><i class="fa-solid fa-circle-info mr-2"></i>The Head of Department is still preparing this memo. It reaches you when they submit it for review.</div>
+    @endif
+    @if ($s->isPendingDecision() || $s->isWithDepartment() || $a->reviewNotes->isNotEmpty())
+        <x-memo.workflow :activity="$a">
+            @if (($s->isPendingDecision() || $s === ActivityStatus::ReturnedToHod) && $can('memos.review'))
+                <x-slot:actions><button type="button" wire:click="$set('showNote', true)" class="{{ Ui::BTN_TINT }}"><i class="fa-solid fa-comment text-[9px]"></i>Add comment</button></x-slot:actions>
+            @endif
+        </x-memo.workflow>
     @endif
     @if ($a->commencementRag() && in_array($a->commencementRag()->value, ['amber', 'red']))
         <div class="px-4 py-3 rounded-lg text-sm {{ $a->commencementRag()->badgeClasses() }} border border-current/20"><i class="fa-solid fa-triangle-exclamation mr-2"></i>The start date has passed and commencement has not been confirmed.</div>
@@ -120,6 +131,10 @@
                             <div><dt class="{{ Ui::MICRO }}">Source memo</dt><dd class="text-sm text-slate-700 font-numeric">{{ $a->source_reference ?: '—' }}{{ $a->source_received_on ? ', received '.Ui::date($a->source_received_on) : '' }}</dd></div>
                             <div class="sm:col-span-2"><dt class="{{ Ui::MICRO }}">Objective</dt><dd class="text-sm text-slate-700 whitespace-pre-line">{{ $a->purpose }}</dd></div>
                             @if ($a->expected_outputs)<div class="sm:col-span-2"><dt class="{{ Ui::MICRO }}">Expected outputs</dt><dd class="text-sm text-slate-700 whitespace-pre-line">{{ $a->expected_outputs }}</dd></div>@endif
+                            @if ($a->justification)<div class="sm:col-span-2"><dt class="{{ Ui::MICRO }}">Justification</dt><dd class="text-sm text-slate-700 whitespace-pre-line">{{ $a->justification }}</dd></div>@endif
+                            @if ($a->target_audience)<div class="sm:col-span-2"><dt class="{{ Ui::MICRO }}">Participants and stakeholders</dt><dd class="text-sm text-slate-700">{{ $a->target_audience }}</dd></div>@endif
+                            @if ($a->responsibleHodLabel())<div><dt class="{{ Ui::MICRO }}">Head of Department</dt><dd class="text-sm text-slate-700">{{ $a->responsibleHodLabel() }}@if ($a->isPreparedOnBehalf())<span class="text-[11px] text-purple-700"> · prepared on their behalf by {{ $a->creator?->name }}</span>@endif</dd></div>@endif
+                            @if ($a->requested_budget !== null)<div><dt class="{{ Ui::MICRO }}">Department's estimate</dt><dd class="text-sm text-slate-700 font-numeric">KES {{ Money::format(Money::toCents($a->requested_budget)) }}</dd></div>@endif
                             @if ($a->notes)<div class="sm:col-span-2"><dt class="{{ Ui::MICRO }}">Notes</dt><dd class="text-sm text-slate-700 whitespace-pre-line">{{ $a->notes }}</dd></div>@endif
                             <div><dt class="{{ Ui::MICRO }}">Budget line</dt><dd class="text-sm text-slate-700">{{ $a->budgetLine?->label() ?? '—' }}</dd></div>
                             <div><dt class="{{ Ui::MICRO }}">Approval</dt><dd class="text-sm text-slate-700">{{ $a->approval_mode ? $a->approval_mode->label().($a->approval_reference ? ' ('.$a->approval_reference.')' : '').', '.Ui::date($a->approved_at) : 'Not yet approved' }}</dd></div>
@@ -192,7 +207,17 @@
                                                 @else{{ $p->staff?->staff_number }} · {{ $p->department?->name ?? $p->staff?->department?->name }}{{ $p->job_grade ? ' · '.$p->job_grade : '' }}@endif
                                             </p>
                                             @if (isset($conflicts[$p->id]))
-                                                <p class="text-[11px] text-red-600 mt-0.5"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Also on {{ $conflicts[$p->id]->pluck('reference')->implode(', ') }}@if ($p->conflict_reason)<span class="text-slate-500"> · Reason: {{ $p->conflict_reason }}</span>@else<span class="font-semibold"> · no reason given</span>@endif</p>
+                                                <p class="text-[11px] text-red-600 mt-0.5">
+                                                    <i class="fa-solid fa-triangle-exclamation mr-1"></i>Also on {{ $conflicts[$p->id]->pluck('reference')->implode(', ') }}
+                                                    @if ($p->conflict_reason)
+                                                        <span class="text-slate-500"> · Reason: {{ $p->conflict_reason }}</span>
+                                                    @else
+                                                        <span class="font-semibold"> · no reason given</span>
+                                                        @if ($editable)
+                                                            <button type="button" wire:click="openExplain({{ $p->id }})" class="ml-1.5 font-semibold text-emerald-700 hover:underline">Give reason</button>
+                                                        @endif
+                                                    @endif
+                                                </p>
                                             @endif
                                         </td>
                                         <td class="{{ Ui::TD }}">{{ $p->role->label() }}</td>
@@ -482,6 +507,49 @@
         </x-slot:footer>
     </x-ui.modal>
 
+    <x-ui.modal show="showForward" :open="$showForward" size="medium" icon="fa-paper-plane" :title="$forwardsToChiefOfStaff ? 'Forward to the Chief of Staff?' : 'Forward to the CEO?'" :subtitle="$a->reference.' · '.$a->title">
+        <p class="text-[13px] text-slate-600">
+            @if ($forwardsToChiefOfStaff)
+                The Chief of Staff reviews it next, then forwards it to the CEO.
+            @else
+                It goes to the CEO's decision queue. Forwarding is not an approval: only the CEO approves and authorises.
+            @endif
+        </p>
+        <x-ui.field label="Recommendation" for="f-rec" error="recommendation">
+            <select id="f-rec" wire:model="recommendation" class="{{ $sel }}"><option value="">No recommendation</option>@foreach ($recommendationOptions as $r)<option value="{{ $r->value }}">{{ $r->label() }}</option>@endforeach</select>
+        </x-ui.field>
+        <x-ui.field label="Review comment (optional)" for="f-text" error="reviewText" hint="Kept in the memo's history as written.">
+            <textarea id="f-text" wire:model="reviewText" rows="3" class="{{ Ui::CONTROL }}" maxlength="2000"></textarea>
+        </x-ui.field>
+        <x-slot:footer>
+            <button type="button" wire:click="$set('showForward', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
+            <button type="button" wire:click="forward" wire:loading.attr="disabled" wire:target="forward" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-paper-plane text-xs"></i>{{ $forwardsToChiefOfStaff ? 'Forward to Chief of Staff' : 'Forward to CEO' }}</button>
+        </x-slot:footer>
+    </x-ui.modal>
+
+    <x-ui.modal show="showReturnHod" :open="$showReturnHod" size="medium" icon="fa-reply" title="Return for correction?" :subtitle="($a->responsibleHodLabel() ?? 'The Head of Department').' can change the memo and resubmit it.'">
+        <x-ui.field label="What must be corrected" for="r-text" error="reviewText" required hint="Be specific, e.g. 'Add the justification: why the review is needed this quarter.'">
+            <textarea id="r-text" wire:model="reviewText" rows="4" class="{{ Ui::CONTROL }}" maxlength="2000"></textarea>
+        </x-ui.field>
+        <x-slot:footer>
+            <button type="button" wire:click="$set('showReturnHod', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
+            <button type="button" wire:click="returnToHod" wire:loading.attr="disabled" wire:target="returnToHod" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-reply text-xs"></i>Return for correction</button>
+        </x-slot:footer>
+    </x-ui.modal>
+
+    <x-ui.modal show="showNote" :open="$showNote" size="slim" icon="fa-comment" title="Add a review comment" subtitle="Comments are kept as written and cannot be edited or deleted.">
+        <x-ui.field label="Comment" for="n-text" error="reviewText" required>
+            <textarea id="n-text" wire:model="reviewText" rows="4" class="{{ Ui::CONTROL }}" maxlength="2000"></textarea>
+        </x-ui.field>
+        <x-ui.field label="Recommendation" for="n-rec" error="recommendation">
+            <select id="n-rec" wire:model="recommendation" class="{{ $sel }}"><option value="">None</option>@foreach ($recommendationOptions as $r)<option value="{{ $r->value }}">{{ $r->label() }}</option>@endforeach</select>
+        </x-ui.field>
+        <x-slot:footer>
+            <button type="button" wire:click="$set('showNote', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
+            <button type="button" wire:click="addNote" wire:loading.attr="disabled" wire:target="addNote" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-comment text-xs"></i>Add comment</button>
+        </x-slot:footer>
+    </x-ui.modal>
+
     <x-ui.modal show="showDiscard" :open="$showDiscard" size="alert" tone="red" icon="fa-trash" title="Discard this draft?" subtitle="Only drafts can be discarded. It is kept in the audit trail.">
         <x-slot:footer>
             <button type="button" wire:click="$set('showDiscard', false)" class="{{ Ui::BTN_NEUTRAL }}">Keep</button>
@@ -540,6 +608,10 @@
                 <option value="">All duty stations</option>
                 @foreach ($picker['offices'] ?? [] as $o)<option value="{{ $o->id }}">{{ $o->name }}</option>@endforeach
             </select>
+            <select wire:model.live="staffSort" class="{{ $sel }} lg:w-52 shrink-0" aria-label="Order">
+                <option value="name">By name</option>
+                <option value="fewest">Fewest field days first</option>
+            </select>
             <select wire:model="role" class="{{ $sel }} lg:w-44 shrink-0" aria-label="Role for the people added">
                 @foreach (ParticipantRole::cases() as $r)<option value="{{ $r->value }}">Add as {{ $r->label() }}</option>@endforeach
             </select>
@@ -597,6 +669,11 @@
                                     <span class="min-w-0 flex-1">
                                         <span class="block text-[13px] font-medium text-slate-700">{{ $st->name }} <span class="text-slate-400 font-numeric">{{ $st->staff_number }}</span></span>
                                         <span class="block text-[11px] text-slate-400">{{ $st->designation?->name ?? 'No designation' }} · {{ $st->job_grade ?: 'no job grade (DSA cannot be computed)' }}</span>
+                                        @php $overYear = $picker['yearLimit'] > 0 && $c['yearDays'] + $a->days > $picker['yearLimit']; @endphp
+                                        <span class="block text-[11px] font-numeric {{ $overYear ? 'text-amber-700' : 'text-slate-500' }}" title="Planned field days on approved activities in {{ $picker['yearLabel'] }}, not counting this one">
+                                            <i class="fa-solid fa-person-walking-luggage mr-1"></i>{{ $c['yearDays'] }} field {{ Str::plural('day', $c['yearDays']) }} in {{ $picker['yearLabel'] }}@if ($picker['yearLimit'] > 0) of {{ $picker['yearLimit'] }}@endif
+                                            @if ($overYear) · would pass the limit with this activity @endif
+                                        </span>
                                         @if ($c['conflicts']->isNotEmpty())<span class="block text-[11px] text-red-600"><i class="fa-solid fa-triangle-exclamation mr-1"></i>On {{ $c['conflicts']->implode(', ') }} during these dates</span>@endif
                                     </span>
                                 </label>
@@ -653,10 +730,36 @@
             @if ($pdOver)<p class="text-[11px] text-amber-800 mt-0.5">Runs past the activity's last day, {{ Ui::date($a->end_date) }}.</p>@endif
         </div>
         <button type="button" wire:click="$set('daysStart', '{{ $a->start_date->toDateString() }}')" class="{{ Ui::BTN_TINT }} w-fit">Start on the activity's first day</button>
+        @if ($daysOverlap->isNotEmpty())
+            <div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-[12px] text-red-700" role="alert">
+                <i class="fa-solid fa-triangle-exclamation mr-1"></i>On these days {{ $editingDays?->displayName() }} is also on {{ $daysOverlap->map(fn ($o) => $o->reference.' ('.Ui::dateRange($o->start_date, $o->end_date).')')->implode(', ') }}.
+            </div>
+            @unless ($editingDays?->conflict_reason)
+                <x-ui.field label="Reason to proceed despite the overlap" for="pd-o" error="overlapReason" required><input id="pd-o" type="text" wire:model="overlapReason" maxlength="500" class="{{ Ui::CONTROL }}"></x-ui.field>
+            @endunless
+        @endif
         @if ($amend)<x-ui.field label="Reason for the change" for="pd-r" error="reason" required hint="The activity has been submitted or approved, so this is recorded as an amendment."><input id="pd-r" type="text" wire:model="reason" maxlength="1000" class="{{ Ui::CONTROL }}"></x-ui.field>@endif
         <x-slot:footer>
             <button type="button" wire:click="$set('showDays', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
             <button type="button" wire:click="saveDays" wire:loading.attr="disabled" wire:target="saveDays" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-floppy-disk text-xs"></i>Save days</button>
+        </x-slot:footer>
+    </x-ui.modal>
+
+    <x-ui.modal show="showExplain" :open="$showExplain" size="slim" icon="fa-triangle-exclamation" :title="'Overlap: '.($explaining?->displayName() ?? 'participant')"
+        subtitle="This person is also on another approved activity on some of these days. Record why they may be on both, or remove them from one.">
+        @if ($explaining && isset($conflicts[$explaining->id]))
+            <ul class="text-[13px] text-slate-600 space-y-1">
+                @foreach ($conflicts[$explaining->id] as $other)
+                    <li><a href="{{ route('activities.show', $other) }}" wire:navigate class="font-semibold text-emerald-700 hover:underline font-numeric">{{ $other->reference }}</a> {{ $other->title }} · <span class="font-numeric">{{ Ui::dateRange($other->start_date, $other->end_date) }}</span></li>
+                @endforeach
+            </ul>
+        @endif
+        <x-ui.field label="Reason" for="ex-r" error="overlapReason" required hint="Shown to the CEO with the conflict. Approval is refused while an overlap has no reason.">
+            <input id="ex-r" type="text" wire:model="overlapReason" maxlength="500" class="{{ Ui::CONTROL }}" placeholder="e.g. Joins the second team after the first two days">
+        </x-ui.field>
+        <x-slot:footer>
+            <button type="button" wire:click="$set('showExplain', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
+            <button type="button" wire:click="explainConflict" wire:loading.attr="disabled" wire:target="explainConflict" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-floppy-disk text-xs"></i>Save reason</button>
         </x-slot:footer>
     </x-ui.modal>
 

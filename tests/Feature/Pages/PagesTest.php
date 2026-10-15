@@ -36,7 +36,7 @@ it('renders the activity page at each stage for each user', function () {
     $ceo = ceo();
     $activity = capturedActivity($cos, ['start_date' => today()->toDateString()]);
 
-    $this->actingAs($cos)->get(route('activities.show', $activity))->assertOk()->assertSee('Submit to CEO');
+    $this->actingAs($cos)->get(route('activities.show', $activity))->assertOk()->assertSee('Forward to CEO');
 
     app(ActivityLifecycle::class)->submitForDecision($activity, $cos);
     $this->actingAs($ceo)->get(route('activities.show', $activity))->assertOk()->assertSee('Approve')->assertSee('Decline');
@@ -168,4 +168,14 @@ it('gives the CEO every permission the Chief of Staff and the Assistant have', f
     expect($activity->status->value)->toBe('awaiting_decision');
 
     $this->actingAs($ceo)->get(route('activities.show', capturedActivity($ceo)))->assertOk()->assertSee('Submit for decision');
+});
+
+it('marks a printed or PDF report RESTRICTED once, with the user and time', function () {
+    capturedActivity(chiefOfStaff());
+    $ceo = ceo();
+
+    $html = $this->actingAs($ceo)->get(route('reports.export', ['activity-register', 'print']))->assertOk()->getContent();
+
+    expect(substr_count($html, 'RESTRICTED: FOR THE OFFICE OF THE CEO ONLY'))->toBe(1)
+        ->and($html)->toContain('Produced by '.$ceo->name);
 });

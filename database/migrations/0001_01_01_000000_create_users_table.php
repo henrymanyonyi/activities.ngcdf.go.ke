@@ -15,8 +15,20 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->string('email')->unique();
+            // Heads of Department only: the department whose memos they see. The
+            // foreign key is added with the departments table (reference data).
+            $table->foreignId('department_id')->nullable();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
+            // Fortify two-factor authentication (CF-03).
+            $table->text('two_factor_secret')->nullable();
+            $table->text('two_factor_recovery_codes')->nullable();
+            $table->timestamp('two_factor_confirmed_at')->nullable();
+            // CF-04: deactivated, never deleted; lockout after repeated failed sign-ins.
+            $table->boolean('is_active')->default(true);
+            $table->unsignedSmallInteger('failed_login_attempts')->default(0);
+            $table->dateTime('locked_until')->nullable();
+            $table->dateTime('last_login_at')->nullable();
             $table->rememberToken();
             $table->foreignId('current_team_id')->nullable();
             $table->string('profile_photo_path', 2048)->nullable();

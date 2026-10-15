@@ -185,7 +185,7 @@ it('takes a submission through a magic link as a Draft for review', function () 
     $csv = "Staff Number,Name,Department,Designation,Job Grade,Office,Region,Role,Days,External,Organisation,External Category,Email,Phone\nPF900,Mary Atieno,Projects Planning & M&E,Officer,NGCDF 5,Headquarters,Nyanza,Team lead,3,No,,,,\n,Hon. B,,,,,,Member,2,Yes,National Assembly,MP,,\n";
     $bad = "Staff Number,Name,Role\nPF1,,Member\n";
 
-    $component = Livewire::test(Submit::class, ['token' => $token])
+    $component = Livewire::withCookie(config('privacy.cookie'), visitorPrivacyConsent())->test(Submit::class, ['token' => $token])
         ->assertSee('Q2 plan')
         ->set('participantList', UploadedFile::fake()->createWithContent('bad.csv', $bad))
         ->assertSet('listErrors', ['Row 2: Name is required.'])

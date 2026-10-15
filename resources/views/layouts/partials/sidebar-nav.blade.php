@@ -1,15 +1,21 @@
 @use('App\Enums\ActivityStatus')
 @use('App\Models\Activity')
 @use('App\Models\Directive')
+@use('App\Services\MemoTracker')
 @php
     $user = auth()->user();
-    $awaiting = Activity::query()->status(ActivityStatus::AwaitingDecision)->count();
-    $drafts = Activity::query()->status(ActivityStatus::Draft, ActivityStatus::Returned)->count();
-    $overdueDirectives = Directive::query()->overdue()->count();
+    $officeView = $user->can('activities.view');
+    $awaiting = $officeView ? Activity::query()->status(ActivityStatus::AwaitingDecision)->count() : 0;
+    // A Head of Department's own unsubmitted draft is not the Office of the CEO's to act on.
+    $drafts = $officeView ? Activity::query()->where(fn ($q) => $q->status(ActivityStatus::Returned)
+        ->orWhere(fn ($d) => $d->status(ActivityStatus::Draft)->where(fn ($o) => $o->whereNull('responsible_hod_id')->orWhereColumn('responsible_hod_id', '!=', 'created_by'))))->count() : 0;
+    $overdueDirectives = $officeView ? Directive::query()->overdue()->count() : 0;
+    $memoActions = app(MemoTracker::class)->actionCount($user);
 
     $sections = [
         '' => [
             ['route' => 'dashboard', 'match' => 'dashboard', 'icon' => 'fa-gauge-high', 'label' => 'Dashboard', 'can' => 'activities.view'],
+            ['route' => 'memos.index', 'match' => 'memos.*', 'icon' => 'fa-envelope-open-text', 'label' => 'Activity memos', 'can' => ['memos.originate', 'memos.review'], 'count' => $memoActions],
             ['route' => 'decisions.index', 'match' => 'decisions.*', 'icon' => 'fa-gavel', 'label' => 'Decision queue', 'can' => 'activities.view', 'count' => $awaiting],
             ['route' => 'activities.index', 'match' => 'activities.*', 'icon' => 'fa-table-list', 'label' => 'Activity register', 'can' => 'activities.view', 'count' => $user->can('activities.submit') ? $drafts : 0],
             ['route' => 'calendar', 'match' => 'calendar', 'icon' => 'fa-calendar-days', 'label' => 'Calendar', 'can' => 'activities.view'],
@@ -32,7 +38,7 @@
 @endphp
 
 @foreach ($sections as $heading => $items)
-    @php $visible = collect($items)->filter(fn ($item) => empty($item['hidden']) && $user->can($item['can']) && Route::has($item['route'])); @endphp
+    @php $visible = collect($items)->filter(fn ($item) => empty($item['hidden']) && $user->canAny((array) $item['can']) && Route::has($item['route'])); @endphp
     @continue($visible->isEmpty())
 
     @if ($heading !== '')

@@ -2,6 +2,7 @@
 @php
     $sortIcon = fn ($col) => $sort === $col ? ($direction === 'asc' ? 'fa-arrow-up' : 'fa-arrow-down') : 'fa-sort text-slate-300';
     $sel = Ui::CONTROL.' appearance-none pr-8';
+    $canManage = auth()->user()->can('activities.manage');
 @endphp
 
 <x-ui.page icon="fa-table-list" title="Activity register" subtitle="Every activity recorded, with its status, dates, team and cost." scroll="inner">
@@ -104,6 +105,7 @@
                                 </th>
                             @endforeach
                             <th class="{{ Ui::TH }}"><span class="sr-only">Flags</span></th>
+                            <th class="{{ Ui::TH }}"><span class="sr-only">Actions</span></th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
@@ -126,6 +128,11 @@
                                         @if ($a->is_retrospective)<x-ui.badge classes="bg-red-50 text-red-700" icon="fa-backward">Retrospective</x-ui.badge>@endif
                                     </div>
                                 </td>
+                                <td class="{{ Ui::TD }} text-right">
+                                    @if ($canManage && ! $a->status->isReadOnly())
+                                        <a href="{{ route('activities.edit', $a) }}" wire:navigate class="{{ Ui::BTN_ICON }} inline-flex" title="Edit {{ $a->reference }}" aria-label="Edit {{ $a->reference }}"><i class="fa-solid fa-pen text-xs"></i></a>
+                                    @endif
+                                </td>
                             </tr>
                         @endforeach
                     </tbody>
@@ -134,7 +141,8 @@
 
             <div class="lg:hidden flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100">
                 @foreach ($activities as $a)
-                    <a href="{{ route('activities.show', $a) }}" wire:navigate wire:key="card-{{ $a->id }}" class="block px-5 py-4 hover:bg-slate-50">
+                    <div wire:key="card-{{ $a->id }}">
+                    <a href="{{ route('activities.show', $a) }}" wire:navigate class="block px-5 py-4 hover:bg-slate-50">
                         <div class="flex items-start justify-between gap-3">
                             <div class="min-w-0">
                                 <p class="text-[11px] font-numeric font-semibold text-emerald-700">{{ $a->reference }}</p>
@@ -145,6 +153,10 @@
                         </div>
                         <div class="mt-1.5 flex items-center justify-between"><x-ui.rag :rag="$a->rag()" /><x-ui.money :value="$a->cost_total" class="text-sm text-slate-700" /></div>
                     </a>
+                    @if ($canManage && ! $a->status->isReadOnly())
+                        <div class="px-5 pb-3 -mt-1 flex justify-end"><a href="{{ route('activities.edit', $a) }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }} !py-1" aria-label="Edit {{ $a->reference }}"><i class="fa-solid fa-pen text-[10px]"></i>Edit</a></div>
+                    @endif
+                    </div>
                 @endforeach
             </div>
 

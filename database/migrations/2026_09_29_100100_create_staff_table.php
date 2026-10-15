@@ -17,6 +17,8 @@ return new class extends Migration
             $table->string('phone', 30)->nullable();
             $table->foreignId('department_id')->nullable()->constrained()->nullOnDelete();
             $table->foreignId('designation_id')->nullable()->constrained()->nullOnDelete();
+            // MD-01: job grade drives the DSA rate.
+            $table->string('job_grade', 20)->nullable();
             $table->foreignId('office_id')->nullable()->constrained()->nullOnDelete();
             $table->boolean('is_active')->default(true);
             // Employment window: participation comparisons only count the period someone was employed.

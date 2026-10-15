@@ -1,10 +1,16 @@
 @use('App\Support\Ui')
-@php $sel = Ui::CONTROL.' appearance-none pr-8'; @endphp
+@php
+    $sel = Ui::CONTROL.' appearance-none pr-8';
+    $back = match (true) {
+        ! $office => $activity ? route('memos.show', $activity) : route('memos.index'),
+        default => $activity ? route('activities.show', $activity) : route('activities.index'),
+    };
+@endphp
 
-<x-ui.page icon="{{ $activity ? 'fa-pen' : 'fa-plus' }}" :title="$activity ? 'Edit '.$activity->reference : 'Record activity'"
-    subtitle="Capture the activity from the departmental memo, work plan or request for approval.">
+<x-ui.page icon="{{ $activity ? 'fa-pen' : 'fa-plus' }}" :title="$activity ? 'Edit '.$activity->reference : ($office ? 'Record activity' : 'Create activity memo')"
+    :subtitle="$office ? 'Capture the activity from the departmental memo, work plan or request for approval.' : 'Describe the activity your department intends to carry out. It stays a draft, visible only to your department, until you submit it for review.'">
     <x-slot:actions>
-        <a href="{{ $activity ? route('activities.show', $activity) : route('activities.index') }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-arrow-left text-xs"></i>Back</a>
+        <a href="{{ $back }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-arrow-left text-xs"></i>Back</a>
     </x-slot:actions>
 
     <form wire:submit="save" class="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -26,11 +32,17 @@
                             @foreach ($types as $t)<option value="{{ $t->id }}">{{ $t->name }}</option>@endforeach
                         </select>
                     </x-ui.field>
-                    <x-ui.field label="Objective" for="purpose" error="purpose" required class="sm:col-span-2">
+                    <x-ui.field label="Purpose (objective)" for="purpose" error="purpose" required class="sm:col-span-2" hint="What the activity is for, in a sentence or two.">
                         <textarea id="purpose" wire:model="purpose" rows="3" class="{{ Ui::CONTROL }}"></textarea>
                     </x-ui.field>
-                    <x-ui.field label="Expected outputs" for="outputs" error="expected_outputs" class="sm:col-span-2" hint="What the department will deliver; compared with the back-to-office report.">
+                    <x-ui.field label="Justification" for="justification" error="justification" class="sm:col-span-2" hint="Why it is needed now. Reviewers often return memos that leave this out.">
+                        <textarea id="justification" wire:model="justification" rows="3" class="{{ Ui::CONTROL }}"></textarea>
+                    </x-ui.field>
+                    <x-ui.field label="Expected outcomes and deliverables" for="outputs" error="expected_outputs" class="sm:col-span-2" hint="What the department will deliver; compared with the back-to-office report.">
                         <textarea id="outputs" wire:model="expected_outputs" rows="2" class="{{ Ui::CONTROL }}"></textarea>
+                    </x-ui.field>
+                    <x-ui.field label="Participants and stakeholders" for="audience" error="target_audience" class="sm:col-span-2" hint="Who takes part or is targeted, e.g. ICT staff and invited departmental representatives.">
+                        <input id="audience" type="text" wire:model="target_audience" class="{{ Ui::CONTROL }}" maxlength="255">
                     </x-ui.field>
                     <x-ui.field label="Notes" for="notes" error="notes" class="sm:col-span-2" hint="Venue, purpose or any other reference detail.">
                         <textarea id="notes" wire:model="notes" rows="2" class="{{ Ui::CONTROL }}"></textarea>
@@ -56,8 +68,8 @@
                 @endif
             </x-ui.card>
 
-            @unless ($activity)
-                <x-ui.card title="First location" icon="fa-location-dot" padded>
+            @if (! $activity || $activity->locations()->doesntExist())
+                <x-ui.card :title="$office ? 'First location' : 'Venue and location'" icon="fa-location-dot" padded>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <x-ui.field label="Region" for="region" error="region_id">
                             <select id="region" wire:model.live="region_id" class="{{ $sel }}"><option value="">Any</option>@foreach ($regions as $r)<option value="{{ $r->id }}">{{ $r->name }}</option>@endforeach</select>
@@ -72,17 +84,36 @@
                             <input id="venue" type="text" wire:model="venue" class="{{ Ui::CONTROL }}" maxlength="255">
                         </x-ui.field>
                     </div>
-                    <p class="text-[11px] text-slate-400 mt-3">More locations can be added on the activity page.</p>
+                    <p class="text-[11px] text-slate-400 mt-3">{{ $office ? 'More locations can be added on the activity page.' : 'For example, venue: NGCDF Board headquarters.' }}</p>
                 </x-ui.card>
-            @endunless
+            @endif
         </div>
 
         <div class="space-y-4">
             <x-ui.card title="Source" icon="fa-envelope-open-text" padded>
                 <div class="space-y-4">
-                    <x-ui.field label="Requesting department" for="dept" error="organising_department_id" required>
-                        <select id="dept" wire:model.live="organising_department_id" class="{{ $sel }}"><option value="">Choose…</option>@foreach ($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select>
-                    </x-ui.field>
+                    @if ($office)
+                        <x-ui.field label="Requesting department" for="dept" error="organising_department_id" required>
+                            <select id="dept" wire:model.live="organising_department_id" class="{{ $sel }}"><option value="">Choose…</option>@foreach ($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select>
+                        </x-ui.field>
+                        <x-ui.field label="Head of Department" for="hod" error="responsible_hod_id" hint="When you prepare the memo on a Head of Department's behalf. You are recorded as the preparer.">
+                            <select id="hod" wire:model.live="responsible_hod_id" class="{{ $sel }}" @disabled($heads->isEmpty())>
+                                <option value="">{{ $heads->isEmpty() ? 'No account for this department: type the name below' : 'Choose…' }}</option>
+                                @foreach ($heads as $h)<option value="{{ $h->id }}">{{ $h->name }}{{ $h->is_active ? '' : ' (inactive)' }}</option>@endforeach
+                            </select>
+                        </x-ui.field>
+                        @if ($responsible_hod_id === '')
+                            <x-ui.field label="Head of Department's name" for="hod-name" error="responsible_hod_name">
+                                <input id="hod-name" type="text" wire:model="responsible_hod_name" class="{{ Ui::CONTROL }}" maxlength="255" placeholder="e.g. Head of ICT">
+                            </x-ui.field>
+                        @endif
+                    @else
+                        <div>
+                            <p class="{{ Ui::LABEL }}">Requesting department</p>
+                            <p class="text-sm font-semibold text-slate-700">{{ $departments->firstWhere('id', (int) $organising_department_id)?->name ?? auth()->user()->department?->name }}</p>
+                            <p class="text-[11px] text-slate-400 mt-1">You are recorded as the responsible Head of Department.</p>
+                        </div>
+                    @endif
                     <x-ui.field label="Memo number" for="ref" error="source_reference">
                         <input id="ref" type="text" wire:model="source_reference" class="{{ Ui::CONTROL }}" maxlength="100" placeholder="e.g. NGCDF/PPME/12/2026">
                     </x-ui.field>
@@ -90,7 +121,7 @@
                         <input id="recv" type="date" wire:model="source_received_on" class="{{ Ui::CONTROL }}">
                     </x-ui.field>
                     @unless ($activity)
-                        <x-ui.field label="Source document" for="memo" error="memo" hint="Memo, concept note or terms of reference (PDF, Word or image, up to 10 MB). Required before submitting to the CEO.">
+                        <x-ui.field :label="$office ? 'Source document' : 'Signed memo or concept note'" for="memo" error="memo" :hint="$office ? 'Memo, concept note or terms of reference (PDF, Word or image, up to 10 MB). Required before submitting to the CEO.' : 'PDF, Word or image, up to 10 MB. You can also attach it later; it is needed before you submit.'">
                             <input id="memo" type="file" wire:model="memo" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" class="block w-full text-[13px] text-slate-600 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700 file:font-semibold">
                             <div wire:loading wire:target="memo" class="text-[11px] text-slate-400 mt-1">Uploading…</div>
                         </x-ui.field>
@@ -100,20 +131,25 @@
 
             <x-ui.card title="Costing" icon="fa-coins" padded>
                 <div class="space-y-4">
+                    <x-ui.field label="Estimated budget (KES)" for="requested" error="requested_budget" :hint="$office ? 'The department\'s own estimate. The costed plan comes from the team and cost lines.' : 'Your estimate. The Office of the CEO costs the team, travel and allowances during review.'">
+                        <input id="requested" type="text" inputmode="decimal" wire:model="requested_budget" class="{{ Ui::CONTROL }} font-numeric" placeholder="e.g. 250000">
+                    </x-ui.field>
                     <x-ui.field label="Budget line" for="budget" error="budget_line_id" :hint="$budgetLines->isEmpty() ? 'No budget lines recorded for this department and year.' : null">
                         <select id="budget" wire:model="budget_line_id" class="{{ $sel }}"><option value="">None</option>@foreach ($budgetLines as $b)<option value="{{ $b->id }}">{{ $b->label() }}</option>@endforeach</select>
                     </x-ui.field>
+                    @if ($office)
                     <label class="flex items-start gap-2.5 text-[13px] text-slate-600">
                         <input type="checkbox" wire:model="count_externals_in_per_head" class="mt-0.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
                         <span>Count external participants in cost per head<span class="block text-[11px] text-slate-400">Staff-only per-head cost is always shown as well.</span></span>
                     </label>
+                    @endif
                 </div>
             </x-ui.card>
 
             <div class="flex justify-end gap-2">
-                <a href="{{ $activity ? route('activities.show', $activity) : route('activities.index') }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}">Cancel</a>
+                <a href="{{ $back }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}">Cancel</a>
                 <button type="submit" class="{{ Ui::BTN_PRIMARY }}" wire:loading.attr="disabled" wire:target="save,memo">
-                    <i class="fa-solid fa-floppy-disk text-xs"></i><span wire:loading.remove wire:target="save">{{ $activity ? 'Save changes' : 'Save as draft' }}</span><span wire:loading wire:target="save">Saving…</span>
+                    <i class="fa-solid fa-floppy-disk text-xs"></i><span wire:loading.remove wire:target="save">{{ $activity ? 'Save changes' : 'Save draft' }}</span><span wire:loading wire:target="save">Saving…</span>
                 </button>
             </div>
         </div>

@@ -9,7 +9,9 @@
 <x-ui.page :icon="$definition->icon()" :title="$definition->title()" :subtitle="$definition->description()" scroll="inner">
     <x-slot:pills><span class="inline-flex items-center px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-semibold">{{ $definition->subtitle($this->filters()) }}</span></x-slot:pills>
     <x-slot:actions>
-        <a href="{{ route('reports.index') }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-arrow-left text-xs"></i>Reports</a>
+        @can('activities.view')
+            <a href="{{ route('reports.index') }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-arrow-left text-xs"></i>Reports</a>
+        @endcan
         @can('reports.export')
             <a href="{{ route('reports.export', ['report' => $definition->key(), 'format' => 'xlsx'] + $exportQuery) }}" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-file-excel text-xs text-emerald-600"></i>Excel</a>
             <a href="{{ route('reports.export', ['report' => $definition->key(), 'format' => 'pdf'] + $exportQuery) }}" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-file-pdf text-xs text-red-600"></i>PDF</a>
@@ -49,7 +51,7 @@
                         @foreach ($rows as $row)
                             <tr class="hover:bg-slate-50/60">
                                 @foreach ($columns as $key => [$label, $type])
-                                    <td class="{{ Ui::TD }} {{ $numeric($type) || $type === 'date' ? 'font-numeric whitespace-nowrap' : '' }} {{ $numeric($type) ? 'text-right' : '' }}">
+                                    <td class="{{ Ui::TD }} {{ $numeric($type) || $type === 'date' || $loop->first ? 'font-numeric whitespace-nowrap' : '' }} {{ $numeric($type) ? 'text-right' : '' }}">
                                         @if ($loop->first && ! empty($row['_activity_id']))
                                             <a href="{{ route('activities.show', $row['_activity_id']) }}" wire:navigate class="text-emerald-700 hover:underline">{{ $definition->format($row[$key] ?? null, $type) }}</a>
                                         @else
