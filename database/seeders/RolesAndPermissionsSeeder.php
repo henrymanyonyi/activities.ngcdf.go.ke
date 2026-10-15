@@ -11,7 +11,8 @@ use Spatie\Permission\PermissionRegistrar;
 /**
  * FRD Section 4.1 permission matrix for the three roles, with the CEO given
  * every permission (OI-13), plus the System Administrator (settings,
- * configuration and logs only). To change it, edit MATRIX and re-run the
+ * configuration and logs only) and Heads of Department (their own
+ * department's memos only). To change it, edit MATRIX and re-run the
  * seeder. Safe to re-run; removes any role that is not in MATRIX.
  */
 class RolesAndPermissionsSeeder extends Seeder
@@ -33,6 +34,8 @@ class RolesAndPermissionsSeeder extends Seeder
         'reports.export' => 'Export and print',
         'users.manage' => 'Manage the three user accounts',
         'audit.view' => 'View audit trail and access log',
+        'memos.originate' => 'Prepare and submit memos for their own department (Head of Department)',
+        'memos.review' => 'Review memos, comment, return them for correction and forward them',
     ];
 
     /** @var array<string, list<string>> */
@@ -44,19 +47,27 @@ class RolesAndPermissionsSeeder extends Seeder
             'activities.view', 'activities.manage', 'activities.submit', 'activities.decide', 'decisions.record', 'directives.manage',
             'activities.postpone', 'activities.cancel', 'activities.execute', 'activities.close',
             'reference.manage', 'links.manage', 'reports.export', 'users.manage', 'audit.view',
+            'memos.originate', 'memos.review',
         ],
         User::ROLE_CHIEF_OF_STAFF => [
             'activities.view', 'activities.manage', 'activities.submit', 'decisions.record', 'directives.manage',
             'activities.postpone', 'activities.cancel', 'activities.execute', 'activities.close',
             'reference.manage', 'links.manage', 'reports.export', 'users.manage', 'audit.view',
+            'memos.review',
         ],
         User::ROLE_ASSISTANT_CHIEF_OF_STAFF => [
             'activities.view', 'activities.manage', 'activities.submit', 'activities.postpone', 'activities.execute',
+            'memos.review',
         ],
         // Settings, configuration and logs; no activities.view, so no activity, dashboard or report
         // other than the access and audit log (CEO's approval, 11 October 2026).
         User::ROLE_ADMIN => [
             'reference.manage', 'users.manage', 'audit.view', 'reports.export',
+        ],
+        // Their own department's memos only: prepare, submit, correct and follow them to the
+        // CEO's decision. No activities.view, so no register, dashboard, calendar or report.
+        User::ROLE_HOD => [
+            'memos.originate',
         ],
     ];
 

@@ -13,7 +13,8 @@ class DocumentController extends Controller
 {
     public function __invoke(Request $request, ActivityDocument $document, DocumentStore $store, AccessLogger $log): Response
     {
-        abort_unless($request->user()->can('activities.view'), 403);
+        // The Office of the CEO sees every file; a Head of Department only their own department's.
+        abort_unless($document->activity?->isVisibleTo($request->user()), 403);
 
         $log->log(AccessLogger::DOWNLOAD, $document, ['activity_id' => $document->activity_id, 'name' => $document->original_name]);
 

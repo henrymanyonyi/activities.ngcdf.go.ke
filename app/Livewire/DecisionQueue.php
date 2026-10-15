@@ -54,7 +54,7 @@ class DecisionQueue extends Component
     {
         $items = Activity::query()
             ->status(ActivityStatus::AwaitingDecision)
-            ->with(['organisingDepartment', 'type', 'participants.staff', 'locations.county', 'locations.region', 'locations.constituency', 'amendments', 'documents'])
+            ->with(['organisingDepartment', 'type', 'participants.staff', 'locations.county', 'locations.region', 'locations.constituency', 'amendments', 'documents', 'reviewNotes.user', 'responsibleHod', 'creator'])
             ->orderBy('start_date')
             ->get()
             ->map(fn (Activity $a) => [

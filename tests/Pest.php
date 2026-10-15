@@ -87,3 +87,33 @@ function capturedActivity(User $by, array $overrides = [], ?array $team = null):
 
     return $activity->fresh();
 }
+
+function headOfDepartment(?Department $department = null): User
+{
+    return User::factory()->headOf($department ?? Department::query()->where('name', 'ICT')->firstOrFail())->create();
+}
+
+/**
+ * A memo a Head of Department prepares for their own department: details,
+ * the venue and the signed memo, saved as a Draft (not yet submitted).
+ *
+ * @param  array<string, mixed>  $overrides
+ */
+function departmentMemo(User $hod, array $overrides = []): Activity
+{
+    $editor = app(ActivityEditor::class);
+
+    $memo = $editor->create(array_merge([
+        'title' => 'ICT Department Quarterly Systems Review and Staff Training',
+        'purpose' => 'Review the performance of departmental systems and train designated staff.',
+        'activity_category_id' => ActivityCategory::query()->value('id'),
+        'start_date' => today()->addDays(30)->toDateString(),
+        'days' => 1,
+        'requested_budget' => '250000.00',
+    ], $overrides), $hod);
+
+    $editor->addLocation($memo, ['venue' => 'NGCDF Board headquarters'], $hod);
+    app(DocumentStore::class)->store($memo, UploadedFile::fake()->create('memo.pdf', 20, 'application/pdf'), ActivityDocument::KIND_MEMO, $hod);
+
+    return $memo->fresh();
+}

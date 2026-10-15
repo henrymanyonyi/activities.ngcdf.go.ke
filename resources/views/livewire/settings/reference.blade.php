@@ -145,10 +145,12 @@
                             <div class="sm:col-span-2">
                                 @if ($key === 'dsa_basis')
                                     <select id="set-{{ $key }}" wire:model="settings.{{ $key }}" class="{{ $sel }}"><option value="nights">Per night away</option><option value="days">Per day of activity</option></select>
+                                @elseif (in_array($key, AppSettings::SWITCHES, true))
+                                    <select id="set-{{ $key }}" wire:model="settings.{{ $key }}" class="{{ $sel }} sm:w-40"><option value="0">No</option><option value="1">Yes</option></select>
                                 @else
                                     <input id="set-{{ $key }}" type="number" min="0" max="1000" wire:model="settings.{{ $key }}" class="{{ Ui::CONTROL }} font-numeric w-40">
                                 @endif
-                                <p class="text-[11px] text-slate-400 mt-1">{{ $help }} Default: {{ $default }}.</p>
+                                <p class="text-[11px] text-slate-400 mt-1">{{ $help }} Default: {{ in_array($key, AppSettings::SWITCHES, true) ? ($default ? 'Yes' : 'No') : $default }}.</p>
                                 @error("settings.{$key}")<p class="text-xs text-red-600">{{ $message }}</p>@enderror
                             </div>
                         </div>

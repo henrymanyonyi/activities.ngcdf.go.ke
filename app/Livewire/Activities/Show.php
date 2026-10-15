@@ -8,6 +8,8 @@ use App\Enums\ExternalCategory;
 use App\Enums\ImprestStatus;
 use App\Enums\ParticipantRole;
 use App\Enums\ParticipationStatus;
+use App\Enums\ReviewOffice;
+use App\Enums\ReviewRecommendation;
 use App\Enums\TravelMode;
 use App\Livewire\Concerns\RunsActions;
 use App\Models\Activity;
@@ -95,6 +97,17 @@ class Show extends Component
     public bool $showDays = false;
 
     public bool $showExplain = false;
+
+    // Memo review: forward, return to the Head of Department, comment.
+    public bool $showForward = false;
+
+    public bool $showReturnHod = false;
+
+    public bool $showNote = false;
+
+    public string $reviewText = '';
+
+    public string $recommendation = '';
 
     /** Reason someone may stay on two overlapping activities (BR-04), for the days and explain popups. */
     public string $overlapReason = '';
@@ -230,6 +243,7 @@ class Show extends Component
     {
         $this->reset([
             'showDecide', 'showRecordDecision', 'showPostpone', 'showExtend', 'showCancel', 'showComplete', 'showReport', 'showClose', 'showDiscard',
+            'showForward', 'showReturnHod', 'showNote', 'reviewText', 'recommendation',
             'showAddStaff', 'showAddExternal', 'showRemoveParticipant', 'staffDepartment', 'staffOffice', 'showSelectedOnly', 'sameConflictReason', 'showDays', 'showExplain', 'overlapReason', 'staffSort', 'daysStart', 'daysCount', 'showCost', 'showOverride', 'showLocation', 'showDirective', 'showImprest', 'showDocument',
             'comment', 'memoReference', 'memoDate', 'scan', 'reason', 'newStart', 'newDays', 'extraDays', 'actualDate', 'reportReceivedOn', 'outputsAchieved',
             'findings', 'recommendations', 'reportFile', 'staffSearch', 'selectedStaff', 'conflictReasons', 'externalName', 'externalOrganisation',
@@ -284,9 +298,53 @@ class Show extends Component
 
     public function submitForDecision(ActivityLifecycle $lifecycle): void
     {
-        if ($this->attempt(fn () => $lifecycle->submitForDecision($this->activity, $this->user()))) {
-            $this->done('Submitted to the CEO\'s decision queue.');
+        $this->forward($lifecycle);
+    }
+
+    // ── Memo review ───────────────────────────────────────────────────
+
+    /** Forward to the CEO (or to the Chief of Staff, when Settings route the Assistant's memos there). */
+    public function forward(ActivityLifecycle $lifecycle): void
+    {
+        $this->validate($this->reviewRules(required: false));
+
+        $where = $this->attempt(fn () => $lifecycle->forward($this->activity, $this->user(), $this->recommendationValue(), $this->reviewText));
+
+        if (is_string($where)) {
+            $this->done("Forwarded to {$where}.");
         }
+    }
+
+    public function returnToHod(ActivityLifecycle $lifecycle): void
+    {
+        $this->validate(['reviewText' => ['required', 'string', 'max:2000']], ['reviewText.required' => 'Say what the Head of Department must correct.'], ['reviewText' => 'what to correct']);
+
+        if ($this->attempt(fn () => $lifecycle->returnForCorrection($this->activity, $this->reviewText, $this->user()))) {
+            $this->done('Returned to the Head of Department for correction.');
+        }
+    }
+
+    public function addNote(ActivityLifecycle $lifecycle): void
+    {
+        $this->validate($this->reviewRules(required: true));
+
+        if ($this->attempt(fn () => $lifecycle->addReviewNote($this->activity, $this->reviewText, $this->recommendationValue(), $this->user()))) {
+            $this->done('Comment added.');
+        }
+    }
+
+    /** @return array<string, list<string>> */
+    private function reviewRules(bool $required): array
+    {
+        return [
+            'reviewText' => [$required ? 'required' : 'nullable', 'string', 'max:2000'],
+            'recommendation' => ['nullable', 'in:'.implode(',', array_column(ReviewRecommendation::cases(), 'value'))],
+        ];
+    }
+
+    private function recommendationValue(): ?ReviewRecommendation
+    {
+        return $this->recommendation !== '' ? ReviewRecommendation::from($this->recommendation) : null;
     }
 
     // ── Execution (7.6 / 7.7 / 7.8) ───────────────────────────────────
@@ -754,7 +812,7 @@ class Show extends Component
             'category', 'type', 'organisingDepartment', 'budgetLine', 'locations.region', 'locations.county', 'locations.constituency',
             'participants.staff.department', 'participants.designation', 'participants.department', 'costs.category', 'costs.participant.staff',
             'documents', 'decisions.recorder', 'decisions.document', 'directives.department', 'report.document', 'report.recorder',
-            'statusHistory.user', 'amendments.user', 'approver', 'creator', 'submissionLink',
+            'statusHistory.user', 'amendments.user', 'approver', 'creator', 'submissionLink', 'reviewNotes.user', 'responsibleHod',
         ]);
 
         $conflicts = $checks->conflictsFor($activity);
@@ -819,6 +877,9 @@ class Show extends Component
             'removing' => $this->participantId ? $activity->participants->firstWhere('id', $this->participantId) : null,
             'overriding' => $this->costId ? $activity->costs->firstWhere('id', $this->costId) : null,
             'user' => $this->user(),
+            'forwardsToChiefOfStaff' => ReviewOffice::forUser($this->user()) === ReviewOffice::AssistantChiefOfStaff && app(AppSettings::class)->bool('acos_forwards_via_cos'),
+            'withChiefOfStaffOnly' => $activity->status === ActivityStatus::UnderReview && $activity->review_office === ReviewOffice::ChiefOfStaff && ReviewOffice::forUser($this->user()) === ReviewOffice::AssistantChiefOfStaff,
+            'recommendationOptions' => ReviewRecommendation::cases(),
         ])->title($activity->reference.' · '.$activity->title);
     }
 }

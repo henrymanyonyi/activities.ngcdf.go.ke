@@ -20,6 +20,12 @@
                     </div>
                     <p class="text-[12px] text-slate-500 mt-0.5 font-numeric">{{ $a->reference }} · {{ $a->organisingDepartment?->name }} · {{ $a->type?->name ?? 'No type' }} · memo {{ $a->source_reference ?: '—' }}</p>
                     <p class="text-[13px] text-slate-600 mt-2 line-clamp-2">{{ $a->purpose }}</p>
+                    @if ($a->responsibleHodLabel())
+                        <p class="text-[12px] text-slate-500 mt-1"><i class="fa-solid fa-user-tie mr-1"></i>Head of Department: {{ $a->responsibleHodLabel() }}@if ($a->isPreparedOnBehalf()) · prepared on their behalf by {{ $a->creator?->name }}@endif</p>
+                    @endif
+                    @if ($note = $a->reviewNotes->first())
+                        <p class="text-[12px] text-slate-600 mt-1 border-l-2 border-sky-300 pl-2.5"><span class="font-semibold">{{ $note->user?->name }}:</span> {{ $note->body }}@if ($note->recommendation) <x-ui.badge :classes="$note->recommendation->badgeClasses()">{{ $note->recommendation->label() }}</x-ui.badge>@endif</p>
+                    @endif
                     @if ($item['returnedAmendment'])
                         <p class="text-[12px] text-orange-700 mt-1"><i class="fa-solid fa-circle-info mr-1"></i>{{ $item['returnedAmendment']->summary }}. Reason: {{ $item['returnedAmendment']->reason }}</p>
                     @endif
@@ -46,7 +52,7 @@
 
                 <div class="flex lg:flex-col gap-2 shrink-0">
                     @can('activities.decide')
-                        <button type="button" wire:click="open({{ $a->id }}, 'approved')" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-check text-xs"></i>Approve</button>
+                        <button type="button" wire:click="open({{ $a->id }}, 'approved')" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-check text-xs"></i>Approve and authorise</button>
                         <button type="button" wire:click="open({{ $a->id }}, 'returned')" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-rotate-left text-xs"></i>Return</button>
                         <button type="button" wire:click="open({{ $a->id }}, 'declined')" class="{{ Ui::BTN_NEUTRAL }} hover:!text-red-600"><i class="fa-solid fa-xmark text-xs"></i>Decline</button>
                     @else
@@ -56,7 +62,7 @@
             </div>
         </article>
     @empty
-        <div class="{{ Ui::CARD }} flex"><x-ui.empty icon="fa-check-double" title="Nothing awaiting decision" line="Activities appear here when the Chief of Staff or Assistant submits them." /></div>
+        <div class="{{ Ui::CARD }} flex"><x-ui.empty icon="fa-check-double" title="Nothing awaiting decision" line="Memos appear here when the Chief of Staff or Assistant forwards them." /></div>
     @endforelse
 
     <x-ui.modal show="showDecide" :open="$showDecide" :size="$decision === 'approved' ? 'slim' : 'medium'" :tone="$decision === 'declined' ? 'red' : 'emerald'" icon="fa-gavel"

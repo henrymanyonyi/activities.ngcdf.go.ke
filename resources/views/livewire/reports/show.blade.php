@@ -51,7 +51,7 @@
                         @foreach ($rows as $row)
                             <tr class="hover:bg-slate-50/60">
                                 @foreach ($columns as $key => [$label, $type])
-                                    <td class="{{ Ui::TD }} {{ $numeric($type) || $type === 'date' ? 'font-numeric whitespace-nowrap' : '' }} {{ $numeric($type) ? 'text-right' : '' }}">
+                                    <td class="{{ Ui::TD }} {{ $numeric($type) || $type === 'date' || $loop->first ? 'font-numeric whitespace-nowrap' : '' }} {{ $numeric($type) ? 'text-right' : '' }}">
                                         @if ($loop->first && ! empty($row['_activity_id']))
                                             <a href="{{ route('activities.show', $row['_activity_id']) }}" wire:navigate class="text-emerald-700 hover:underline">{{ $definition->format($row[$key] ?? null, $type) }}</a>
                                         @else

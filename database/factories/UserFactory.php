@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\Department;
 use App\Models\PrivacyConsent;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -96,5 +97,11 @@ class UserFactory extends Factory
     public function assistant(): static
     {
         return $this->role(User::ROLE_ASSISTANT_CHIEF_OF_STAFF);
+    }
+
+    /** A Head of Department of the given department. */
+    public function headOf(Department $department): static
+    {
+        return $this->state(fn (array $attributes) => ['department_id' => $department->id])->role(User::ROLE_HOD);
     }
 }

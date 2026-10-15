@@ -11,6 +11,7 @@ final class ReportCatalog
         Definitions\FieldActivityPlan::class,
         Definitions\WeeklyFieldSchedule::class,
         Definitions\DecisionsRegister::class,
+        Definitions\MemoWorkflow::class,
         Definitions\PlannedAgainstActual::class,
         Definitions\OfficerFieldDays::class,
         Definitions\DepartmentFieldExpenditure::class,

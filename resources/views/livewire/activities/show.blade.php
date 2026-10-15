@@ -44,13 +44,16 @@
         @if ($s === ActivityStatus::Draft && $can('activities.manage'))
             <button type="button" wire:click="$set('showDiscard', true)" class="{{ Ui::BTN_NEUTRAL }} hover:!text-red-600"><i class="fa-solid fa-trash text-xs"></i>Discard</button>
         @endif
-        @if (in_array($s, [ActivityStatus::Draft, ActivityStatus::Returned]) && $can('activities.submit'))
-            <button type="button" wire:click="submitForDecision" wire:loading.attr="disabled" wire:target="submitForDecision" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-paper-plane text-xs"></i>{{ $can('activities.decide') ? 'Submit for decision' : 'Submit to CEO' }}</button>
+        @if (in_array($s, [ActivityStatus::UnderReview, ActivityStatus::Returned]) && $can('memos.review') && ! $withChiefOfStaffOnly)
+            <button type="button" wire:click="$set('showReturnHod', true)" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-reply text-xs"></i>Return for correction</button>
+        @endif
+        @if (in_array($s, [ActivityStatus::Draft, ActivityStatus::UnderReview, ActivityStatus::Returned]) && $can('activities.submit') && ! $a->isDepartmentDraft() && ! $withChiefOfStaffOnly)
+            <button type="button" wire:click="$set('showForward', true)" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-paper-plane text-xs"></i>{{ $forwardsToChiefOfStaff ? 'Forward to Chief of Staff' : ($can('activities.decide') ? 'Submit for decision' : 'Forward to CEO') }}</button>
         @endif
         @if ($s === ActivityStatus::AwaitingDecision && $can('activities.decide'))
             <button type="button" wire:click="openDecide('returned')" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-rotate-left text-xs"></i>Return</button>
             <button type="button" wire:click="openDecide('declined')" class="{{ Ui::BTN_DANGER }}"><i class="fa-solid fa-xmark text-xs"></i>Decline</button>
-            <button type="button" wire:click="openDecide('approved')" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-check text-xs"></i>Approve</button>
+            <button type="button" wire:click="openDecide('approved')" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-check text-xs"></i>Approve and authorise</button>
         @endif
         @if (in_array($s, [ActivityStatus::Draft, ActivityStatus::AwaitingDecision, ActivityStatus::Returned]) && $can('decisions.record') && ! $can('activities.decide'))
             <button type="button" wire:click="$set('showRecordDecision', true)" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-file-signature text-xs"></i>Record CEO decision</button>
@@ -87,8 +90,16 @@
 
     @if ($s->isReadOnly())
         <div class="px-4 py-3 rounded-lg text-sm bg-slate-100 border border-slate-200 text-slate-600"><i class="fa-solid fa-lock mr-2"></i>This activity is {{ strtolower($s->label()) }} and read only.@if ($a->status_reason) Reason: {{ $a->status_reason }}@endif</div>
-    @elseif ($s === ActivityStatus::Returned && $a->status_reason)
-        <div class="px-4 py-3 rounded-lg text-sm bg-orange-50 border border-orange-200 text-orange-800"><i class="fa-solid fa-rotate-left mr-2"></i><strong>Returned by the CEO:</strong> {{ $a->status_reason }}</div>
+    @endif
+    @if ($a->isDepartmentDraft())
+        <div class="px-4 py-3 rounded-lg text-sm bg-sky-50 border border-sky-200 text-sky-800"><i class="fa-solid fa-circle-info mr-2"></i>The Head of Department is still preparing this memo. It reaches you when they submit it for review.</div>
+    @endif
+    @if ($s->isPendingDecision() || $s->isWithDepartment() || $a->reviewNotes->isNotEmpty())
+        <x-memo.workflow :activity="$a">
+            @if (($s->isPendingDecision() || $s === ActivityStatus::ReturnedToHod) && $can('memos.review'))
+                <x-slot:actions><button type="button" wire:click="$set('showNote', true)" class="{{ Ui::BTN_TINT }}"><i class="fa-solid fa-comment text-[9px]"></i>Add comment</button></x-slot:actions>
+            @endif
+        </x-memo.workflow>
     @endif
     @if ($a->commencementRag() && in_array($a->commencementRag()->value, ['amber', 'red']))
         <div class="px-4 py-3 rounded-lg text-sm {{ $a->commencementRag()->badgeClasses() }} border border-current/20"><i class="fa-solid fa-triangle-exclamation mr-2"></i>The start date has passed and commencement has not been confirmed.</div>
@@ -120,6 +131,10 @@
                             <div><dt class="{{ Ui::MICRO }}">Source memo</dt><dd class="text-sm text-slate-700 font-numeric">{{ $a->source_reference ?: '—' }}{{ $a->source_received_on ? ', received '.Ui::date($a->source_received_on) : '' }}</dd></div>
                             <div class="sm:col-span-2"><dt class="{{ Ui::MICRO }}">Objective</dt><dd class="text-sm text-slate-700 whitespace-pre-line">{{ $a->purpose }}</dd></div>
                             @if ($a->expected_outputs)<div class="sm:col-span-2"><dt class="{{ Ui::MICRO }}">Expected outputs</dt><dd class="text-sm text-slate-700 whitespace-pre-line">{{ $a->expected_outputs }}</dd></div>@endif
+                            @if ($a->justification)<div class="sm:col-span-2"><dt class="{{ Ui::MICRO }}">Justification</dt><dd class="text-sm text-slate-700 whitespace-pre-line">{{ $a->justification }}</dd></div>@endif
+                            @if ($a->target_audience)<div class="sm:col-span-2"><dt class="{{ Ui::MICRO }}">Participants and stakeholders</dt><dd class="text-sm text-slate-700">{{ $a->target_audience }}</dd></div>@endif
+                            @if ($a->responsibleHodLabel())<div><dt class="{{ Ui::MICRO }}">Head of Department</dt><dd class="text-sm text-slate-700">{{ $a->responsibleHodLabel() }}@if ($a->isPreparedOnBehalf())<span class="text-[11px] text-purple-700"> · prepared on their behalf by {{ $a->creator?->name }}</span>@endif</dd></div>@endif
+                            @if ($a->requested_budget !== null)<div><dt class="{{ Ui::MICRO }}">Department's estimate</dt><dd class="text-sm text-slate-700 font-numeric">KES {{ Money::format(Money::toCents($a->requested_budget)) }}</dd></div>@endif
                             @if ($a->notes)<div class="sm:col-span-2"><dt class="{{ Ui::MICRO }}">Notes</dt><dd class="text-sm text-slate-700 whitespace-pre-line">{{ $a->notes }}</dd></div>@endif
                             <div><dt class="{{ Ui::MICRO }}">Budget line</dt><dd class="text-sm text-slate-700">{{ $a->budgetLine?->label() ?? '—' }}</dd></div>
                             <div><dt class="{{ Ui::MICRO }}">Approval</dt><dd class="text-sm text-slate-700">{{ $a->approval_mode ? $a->approval_mode->label().($a->approval_reference ? ' ('.$a->approval_reference.')' : '').', '.Ui::date($a->approved_at) : 'Not yet approved' }}</dd></div>
@@ -489,6 +504,49 @@
         <x-slot:footer>
             <button type="button" wire:click="$set('showCancel', false)" class="{{ Ui::BTN_NEUTRAL }}">Keep it</button>
             <button type="button" wire:click="cancel" wire:loading.attr="disabled" wire:target="cancel" class="{{ Ui::BTN_DANGER }}"><i class="fa-solid fa-ban text-xs"></i>Cancel activity</button>
+        </x-slot:footer>
+    </x-ui.modal>
+
+    <x-ui.modal show="showForward" :open="$showForward" size="medium" icon="fa-paper-plane" :title="$forwardsToChiefOfStaff ? 'Forward to the Chief of Staff?' : 'Forward to the CEO?'" :subtitle="$a->reference.' · '.$a->title">
+        <p class="text-[13px] text-slate-600">
+            @if ($forwardsToChiefOfStaff)
+                The Chief of Staff reviews it next, then forwards it to the CEO.
+            @else
+                It goes to the CEO's decision queue. Forwarding is not an approval: only the CEO approves and authorises.
+            @endif
+        </p>
+        <x-ui.field label="Recommendation" for="f-rec" error="recommendation">
+            <select id="f-rec" wire:model="recommendation" class="{{ $sel }}"><option value="">No recommendation</option>@foreach ($recommendationOptions as $r)<option value="{{ $r->value }}">{{ $r->label() }}</option>@endforeach</select>
+        </x-ui.field>
+        <x-ui.field label="Review comment (optional)" for="f-text" error="reviewText" hint="Kept in the memo's history as written.">
+            <textarea id="f-text" wire:model="reviewText" rows="3" class="{{ Ui::CONTROL }}" maxlength="2000"></textarea>
+        </x-ui.field>
+        <x-slot:footer>
+            <button type="button" wire:click="$set('showForward', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
+            <button type="button" wire:click="forward" wire:loading.attr="disabled" wire:target="forward" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-paper-plane text-xs"></i>{{ $forwardsToChiefOfStaff ? 'Forward to Chief of Staff' : 'Forward to CEO' }}</button>
+        </x-slot:footer>
+    </x-ui.modal>
+
+    <x-ui.modal show="showReturnHod" :open="$showReturnHod" size="medium" icon="fa-reply" title="Return for correction?" :subtitle="($a->responsibleHodLabel() ?? 'The Head of Department').' can change the memo and resubmit it.'">
+        <x-ui.field label="What must be corrected" for="r-text" error="reviewText" required hint="Be specific, e.g. 'Add the justification: why the review is needed this quarter.'">
+            <textarea id="r-text" wire:model="reviewText" rows="4" class="{{ Ui::CONTROL }}" maxlength="2000"></textarea>
+        </x-ui.field>
+        <x-slot:footer>
+            <button type="button" wire:click="$set('showReturnHod', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
+            <button type="button" wire:click="returnToHod" wire:loading.attr="disabled" wire:target="returnToHod" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-reply text-xs"></i>Return for correction</button>
+        </x-slot:footer>
+    </x-ui.modal>
+
+    <x-ui.modal show="showNote" :open="$showNote" size="slim" icon="fa-comment" title="Add a review comment" subtitle="Comments are kept as written and cannot be edited or deleted.">
+        <x-ui.field label="Comment" for="n-text" error="reviewText" required>
+            <textarea id="n-text" wire:model="reviewText" rows="4" class="{{ Ui::CONTROL }}" maxlength="2000"></textarea>
+        </x-ui.field>
+        <x-ui.field label="Recommendation" for="n-rec" error="recommendation">
+            <select id="n-rec" wire:model="recommendation" class="{{ $sel }}"><option value="">None</option>@foreach ($recommendationOptions as $r)<option value="{{ $r->value }}">{{ $r->label() }}</option>@endforeach</select>
+        </x-ui.field>
+        <x-slot:footer>
+            <button type="button" wire:click="$set('showNote', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
+            <button type="button" wire:click="addNote" wire:loading.attr="disabled" wire:target="addNote" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-comment text-xs"></i>Add comment</button>
         </x-slot:footer>
     </x-ui.modal>
 

@@ -42,8 +42,19 @@ class ActivityEditor
      */
     public function create(array $attributes, ?User $user, ?string $actorName = null): Activity
     {
-        if ($user) {
-            $this->authorize($user, 'activities.manage');
+        if ($user && ! $user->can('activities.manage')) {
+            // A Head of Department prepares memos for their own department, as the responsible head.
+            $this->authorize($user, 'memos.originate');
+
+            if (! $user->department_id) {
+                throw new AuthorizationException('Your account is not linked to a department. Ask the System Administrator.');
+            }
+
+            $attributes = array_merge($attributes, [
+                'organising_department_id' => $user->department_id,
+                'responsible_hod_id' => $user->id,
+                'responsible_hod_name' => $user->name,
+            ]);
         }
 
         return DB::transaction(function () use ($attributes, $user, $actorName) {
@@ -66,8 +77,13 @@ class ActivityEditor
      */
     public function update(Activity $activity, array $attributes, User $user): Activity
     {
-        $this->authorize($user, 'activities.manage');
+        $this->authorizeDetails($activity, $user);
         $this->assertEditable($activity);
+
+        if (! $user->can('activities.manage')) {
+            // The department and responsible head stay as they are.
+            unset($attributes['organising_department_id'], $attributes['responsible_hod_id'], $attributes['responsible_hod_name']);
+        }
 
         $attributes = $this->withDates($attributes + ['start_date' => $activity->start_date, 'days' => $activity->days]);
 
@@ -97,7 +113,7 @@ class ActivityEditor
     /** @param  array{region_id?: ?int, county_id?: ?int, constituency_id?: ?int, venue?: ?string}  $data */
     public function addLocation(Activity $activity, array $data, User $user): ActivityLocation
     {
-        $this->authorize($user, 'activities.manage');
+        $this->authorizeDetails($activity, $user);
         $this->assertEditable($activity);
 
         if (blank($data['region_id'] ?? null) && blank($data['county_id'] ?? null) && blank($data['constituency_id'] ?? null) && blank($data['venue'] ?? null)) {
@@ -112,8 +128,8 @@ class ActivityEditor
 
     public function removeLocation(ActivityLocation $location, User $user): void
     {
-        $this->authorize($user, 'activities.manage');
         $activity = $location->loadMissing('activity')->activity;
+        $this->authorizeDetails($activity, $user);
         $this->assertEditable($activity);
         $location->delete();
         $this->dsa->recalculate($activity);
@@ -470,6 +486,28 @@ class ActivityEditor
     {
         if ($activity->status->isReadOnly()) {
             throw new ActivityWorkflowException("A {$activity->status->label()} activity is read only.");
+        }
+    }
+
+    /**
+     * The Office of the CEO edits any activity's details. A Head of
+     * Department edits only their own department's memo, and only while it
+     * is with them (a draft, or returned for correction).
+     */
+    public function authorizeDetails(Activity $activity, User $user): void
+    {
+        if ($user->can('activities.manage')) {
+            return;
+        }
+
+        $this->authorize($user, 'memos.originate');
+
+        if (! $activity->isVisibleTo($user)) {
+            throw new AuthorizationException('This memo belongs to another department.');
+        }
+
+        if (! $activity->status->isWithDepartment()) {
+            throw new ActivityWorkflowException('This memo is with the Office of the CEO. It can be changed again only if it is returned to you for correction.');
         }
     }
 

@@ -6,10 +6,13 @@ use App\Enums\ActivityStatus;
 use App\Enums\DecisionMode;
 use App\Enums\DecisionType;
 use App\Enums\ParticipationStatus;
+use App\Enums\ReviewOffice;
+use App\Enums\ReviewRecommendation;
 use App\Exceptions\ActivityWorkflowException;
 use App\Models\Activity;
 use App\Models\ActivityAmendment;
 use App\Models\ActivityDocument;
+use App\Models\ActivityReviewNote;
 use App\Models\ActivityStatusHistory;
 use App\Models\CeoDecision;
 use App\Models\ReportReceipt;
@@ -45,14 +48,130 @@ class ActivityLifecycle
         $this->history($activity, null, ActivityStatus::Draft, null, $user, $actorName);
     }
 
-    /** CD-01: Chief of Staff / Assistant submit to the CEO's decision queue. */
+    /** CD-01: Chief of Staff / Assistant submit to the CEO's decision queue (see forward()). */
     public function submitForDecision(Activity $activity, User $user): void
     {
+        $this->forward($activity, $user);
+    }
+
+    // ── Activity memo workflow ─────────────────────────────────────────
+
+    /**
+     * A Head of Department submits their memo for review by the Assistant
+     * Chief of Staff or the Chief of Staff, or resubmits it after correcting
+     * it. A resubmission goes back to the office that returned it.
+     */
+    public function submitForReview(Activity $activity, User $user, ?ReviewOffice $office = null, ?string $note = null): void
+    {
+        $this->authorize($user, 'memos.originate');
+        $this->assertDepartmentMemo($activity, $user);
+
+        if (! $activity->status->isWithDepartment()) {
+            throw new ActivityWorkflowException('This memo has already been submitted. It is now '.strtolower($activity->status->label()).'.');
+        }
+
+        $this->assertReadyForReview($activity);
+
+        $resubmitted = $activity->status === ActivityStatus::ReturnedToHod;
+        $office = ($resubmitted ? $activity->review_office : null) ?? $office ?? ReviewOffice::AssistantChiefOfStaff;
+        $note = trim((string) $note);
+        $reason = ($resubmitted ? 'Corrected and resubmitted to the ' : 'Submitted for review by the ').$office->label().($note !== '' ? ": {$note}" : '');
+
+        $this->move($activity, ActivityStatus::UnderReview, $reason, $user, extra: ['review_office' => $office, 'status_reason' => null]);
+        $this->alerts->toOffice($office, ActivityAlert::submittedForReview($activity, $resubmitted));
+    }
+
+    /** The reviewer sends the memo back to the Head of Department, saying what to correct. */
+    public function returnForCorrection(Activity $activity, string $reason, User $user): void
+    {
+        $this->authorize($user, 'memos.review');
+        $this->requireReason($reason, 'Say what the Head of Department must correct.');
+
+        if (! in_array($activity->status, [ActivityStatus::UnderReview, ActivityStatus::Returned], true)) {
+            throw new ActivityWorkflowException('Only a memo under review, or one the CEO returned, can be returned for correction.');
+        }
+
+        $this->assertMayReview($activity, $user);
+
+        if (! $this->departmentHasHead($activity)) {
+            throw new ActivityWorkflowException('There is no active Head of Department account for this department to correct the memo. Make the corrections yourself instead.');
+        }
+
+        $office = ReviewOffice::forUser($user) ?? $activity->review_office ?? ReviewOffice::AssistantChiefOfStaff;
+        $reason = trim($reason);
+
+        $this->move($activity, ActivityStatus::ReturnedToHod, $reason, $user, extra: ['status_reason' => $reason, 'review_office' => $office]);
+        $this->alerts->toDepartment($activity, ActivityAlert::returnedForCorrection($activity));
+    }
+
+    /**
+     * Send the memo on: to the CEO's decision queue, or, when the Assistant
+     * forwards and Settings require it, to the Chief of Staff first. Works
+     * from a draft the Office of the CEO prepared, a memo under review, or
+     * one the CEO returned. Returns where it went.
+     */
+    public function forward(Activity $activity, User $user, ?ReviewRecommendation $recommendation = null, ?string $comment = null): string
+    {
         $this->authorize($user, 'activities.submit');
+
+        if (! in_array($activity->status, [ActivityStatus::Draft, ActivityStatus::UnderReview, ActivityStatus::Returned], true)) {
+            throw new ActivityWorkflowException("A memo that is {$activity->status->label()} cannot be forwarded.");
+        }
+
+        if ($activity->isDepartmentDraft()) {
+            throw new ActivityWorkflowException('The Head of Department has not submitted this memo yet.');
+        }
+
+        if ($activity->status === ActivityStatus::UnderReview) {
+            $this->assertMayReview($activity, $user);
+        }
+
+        $comment = trim((string) $comment);
+        $viaChiefOfStaff = ReviewOffice::forUser($user) === ReviewOffice::AssistantChiefOfStaff && $this->settings->bool('acos_forwards_via_cos');
+
+        if ($viaChiefOfStaff) {
+            DB::transaction(function () use ($activity, $user, $recommendation, $comment) {
+                $this->note($activity, $user, $comment, $recommendation);
+
+                if ($activity->status === ActivityStatus::UnderReview) {
+                    $this->lockAt($activity, ActivityStatus::UnderReview);
+                    $activity->forceFill(['review_office' => ReviewOffice::ChiefOfStaff])->save();
+                    $this->history($activity, ActivityStatus::UnderReview, ActivityStatus::UnderReview, 'Forwarded to the Chief of Staff', $user, null);
+                } else {
+                    $this->move($activity, ActivityStatus::UnderReview, 'Forwarded to the Chief of Staff', $user, extra: ['review_office' => ReviewOffice::ChiefOfStaff, 'status_reason' => null]);
+                }
+            });
+
+            $this->alerts->toOffice(ReviewOffice::ChiefOfStaff, ActivityAlert::forwardedToOffice($activity, ReviewOffice::AssistantChiefOfStaff));
+            $this->alerts->toDepartment($activity, ActivityAlert::progressed($activity, 'With the Chief of Staff for review'));
+
+            return 'the Chief of Staff';
+        }
+
         $this->assertReadyForDecision($activity);
 
-        $this->move($activity, ActivityStatus::AwaitingDecision, null, $user);
+        DB::transaction(function () use ($activity, $user, $recommendation, $comment) {
+            $this->note($activity, $user, $comment, $recommendation);
+            $this->move($activity, ActivityStatus::AwaitingDecision, 'Forwarded to the CEO', $user, extra: ['review_office' => null, 'status_reason' => null]);
+        });
+
         $this->alerts->toCeo(ActivityAlert::awaitingDecision($activity));
+        $this->alerts->toDepartment($activity, ActivityAlert::progressed($activity, 'With the CEO for decision'));
+
+        return 'the CEO';
+    }
+
+    /** A review comment or recommendation, kept as written (never edited or deleted). */
+    public function addReviewNote(Activity $activity, string $body, ?ReviewRecommendation $recommendation, User $user): ActivityReviewNote
+    {
+        $this->authorize($user, 'memos.review');
+        $this->requireReason($body, 'Write the comment first.');
+
+        if (! $activity->status->isPendingDecision() && $activity->status !== ActivityStatus::ReturnedToHod) {
+            throw new ActivityWorkflowException('Comments can be added while the memo is being reviewed or decided.');
+        }
+
+        return $this->note($activity, $user, trim($body), $recommendation);
     }
 
     /** CD-02: the CEO decides in the system. A comment is mandatory to decline or return. */
@@ -167,10 +286,17 @@ class ActivityLifecycle
         $this->move($activity, ActivityStatus::Cancelled, $reason, $user, extra: ['status_reason' => $reason]);
     }
 
-    /** CF-10: a Draft may be discarded; anything else is cancelled. */
+    /** CF-10: a Draft may be discarded; anything else is cancelled. A Head of Department may discard only their own department's draft. */
     public function discardDraft(Activity $activity, User $user): void
     {
-        $this->authorize($user, 'activities.manage');
+        if (! $user->can('activities.manage')) {
+            $this->authorize($user, 'memos.originate');
+            $this->assertDepartmentMemo($activity, $user);
+
+            if (! $activity->isDepartmentDraft()) {
+                throw new AuthorizationException('Only the Office of the CEO can discard a draft it prepared.');
+            }
+        }
 
         if ($activity->status !== ActivityStatus::Draft) {
             throw new ActivityWorkflowException('Only a draft can be discarded. Cancel the activity instead.');
@@ -415,9 +541,69 @@ class ActivityLifecycle
             $this->move($activity, $decision->status(), trim($label.($comment ? ": {$comment}" : '')), $user, extra: $extra);
 
             $this->alerts->toStaffOfCeo(ActivityAlert::decided($activity, $decision));
+            $this->alerts->toDepartment($activity, ActivityAlert::progressed($activity, match ($decision) {
+                DecisionType::Approved => 'Approved and authorised by the CEO',
+                DecisionType::Declined => 'Declined by the CEO',
+                DecisionType::Returned => 'Returned by the CEO to the Office of the CEO for clarification',
+            }));
 
             return $record;
         });
+    }
+
+    /** What a reviewer needs before a Head of Department's memo can be submitted. */
+    private function assertReadyForReview(Activity $activity): void
+    {
+        if ($activity->locations()->doesntExist()) {
+            throw new ActivityWorkflowException('Add the venue or location before submitting.');
+        }
+
+        if ($activity->documents()->where('kind', ActivityDocument::KIND_MEMO)->doesntExist()) {
+            throw new ActivityWorkflowException('Attach the signed memo or concept note before submitting.');
+        }
+    }
+
+    /** A Head of Department acts only on their own department's memos. */
+    private function assertDepartmentMemo(Activity $activity, User $user): void
+    {
+        if (! $activity->isVisibleTo($user)) {
+            throw new AuthorizationException('This memo belongs to another department.');
+        }
+    }
+
+    /**
+     * The office holding a memo under review acts on it. The Chief of Staff
+     * (and the CEO, who holds every permission) may also act on a memo with
+     * the Assistant; the Assistant may not act on one with the Chief of Staff.
+     */
+    private function assertMayReview(Activity $activity, User $user): void
+    {
+        if ($activity->status === ActivityStatus::UnderReview
+            && $activity->review_office === ReviewOffice::ChiefOfStaff
+            && ReviewOffice::forUser($user) === ReviewOffice::AssistantChiefOfStaff) {
+            throw new ActivityWorkflowException('This memo is with the Chief of Staff for review.');
+        }
+    }
+
+    private function departmentHasHead(Activity $activity): bool
+    {
+        return User::query()->role(User::ROLE_HOD)->where('is_active', true)
+            ->where(fn ($q) => $q->where('department_id', $activity->organising_department_id)->when($activity->responsible_hod_id, fn ($q, $id) => $q->orWhereKey($id)))
+            ->exists();
+    }
+
+    private function note(Activity $activity, User $user, string $body, ?ReviewRecommendation $recommendation): ?ActivityReviewNote
+    {
+        if ($body === '' && ! $recommendation) {
+            return null;
+        }
+
+        return ActivityReviewNote::create([
+            'activity_id' => $activity->id,
+            'user_id' => $user->id,
+            'recommendation' => $recommendation,
+            'body' => $body !== '' ? $body : $recommendation->label(),
+        ]);
     }
 
     private function assertReadyForDecision(Activity $activity): void
@@ -478,9 +664,23 @@ class ActivityLifecycle
         }
 
         DB::transaction(function () use ($activity, $from, $to, $reason, $user, $actorName, $extra) {
+            $this->lockAt($activity, $from);
             $activity->forceFill(['status' => $to] + $extra)->save();
             $this->history($activity, $from, $to, $reason, $user, $actorName);
         });
+    }
+
+    /**
+     * Lock the row and confirm nobody moved the activity since it was loaded,
+     * so a double click or two people acting at once cannot apply twice.
+     */
+    private function lockAt(Activity $activity, ActivityStatus $expected): void
+    {
+        $current = Activity::query()->whereKey($activity->id)->lockForUpdate()->toBase()->value('status');
+
+        if ($current !== $expected->value) {
+            throw new ActivityWorkflowException('Someone else changed this memo a moment ago. Reload the page to see where it is now.');
+        }
     }
 
     private function history(Activity $activity, ?ActivityStatus $from, ActivityStatus $to, ?string $reason, ?User $user, ?string $actorName): void

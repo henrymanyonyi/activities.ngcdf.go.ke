@@ -22,7 +22,7 @@ enum DecisionType: string
     public function actionLabel(): string
     {
         return match ($this) {
-            self::Approved => 'Approve',
+            self::Approved => 'Approve and authorise',
             self::Declined => 'Decline',
             self::Returned => 'Return with directive',
         };

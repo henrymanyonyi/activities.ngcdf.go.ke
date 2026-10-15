@@ -28,7 +28,7 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified',
 });
 
 /*
-| The three users only (FRD CF-01..CF-05): signed in, active, two-factor
+| The authorised users only (FRD CF-01..CF-05): signed in, active, two-factor
 | confirmed. Every action inside is also checked against the permission
 | matrix by the services (CF-02).
 */
@@ -57,9 +57,18 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified',
         Route::get('/department-costs', Livewire\DepartmentCosts::class)->name('department-costs');
 
         Route::get('/reports', Livewire\Reports\Index::class)->name('reports.index');
-        Route::get('/documents/{document}', DocumentController::class)->name('documents.show');
         Route::get('/templates/participant-list', ParticipantTemplateController::class)->name('templates.participants');
     });
+
+    // Activity memo workflow. A Head of Department sees only their own
+    // department's memos (Activity::scopeVisibleTo), checked again in every service.
+    Route::get('/memos', Livewire\Memos\Board::class)->middleware('permission:memos.originate|memos.review')->name('memos.index');
+    Route::middleware('permission:memos.originate')->group(function () {
+        Route::get('/memos/create', Livewire\Activities\Form::class)->name('memos.create');
+        Route::get('/memos/{activity}', Livewire\Memos\Show::class)->name('memos.show');
+        Route::get('/memos/{activity}/edit', Livewire\Activities\Form::class)->name('memos.edit');
+    });
+    Route::get('/documents/{document}', DocumentController::class)->middleware('permission:activities.view|memos.originate')->name('documents.show');
 
     Route::get('/links', Livewire\Links::class)->middleware('permission:links.manage')->name('links.index');
     Route::get('/staff', Livewire\StaffList::class)->middleware('permission:reference.manage')->name('staff.index');

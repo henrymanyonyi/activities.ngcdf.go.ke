@@ -36,7 +36,7 @@ it('renders the activity page at each stage for each user', function () {
     $ceo = ceo();
     $activity = capturedActivity($cos, ['start_date' => today()->toDateString()]);
 
-    $this->actingAs($cos)->get(route('activities.show', $activity))->assertOk()->assertSee('Submit to CEO');
+    $this->actingAs($cos)->get(route('activities.show', $activity))->assertOk()->assertSee('Forward to CEO');
 
     app(ActivityLifecycle::class)->submitForDecision($activity, $cos);
     $this->actingAs($ceo)->get(route('activities.show', $activity))->assertOk()->assertSee('Approve')->assertSee('Decline');
