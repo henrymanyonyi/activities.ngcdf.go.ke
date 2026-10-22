@@ -20,7 +20,7 @@ Status: **Built** (implemented and covered by tests), **Partial** (see note), **
 
 | ID | Status | Where |
 |---|---|---|
-| MD-01 staff list, PF no., grade, dept, station; Excel import; no free-text staff | Built | `StaffList`, `StaffImporter` |
+| MD-01 staff list, PF no., grade, dept, station; Excel import; no free-text staff | Built | `StaffList`, `StaffImporter`. Since 22 Oct 2026 the list holds permanent staff, casuals and attachees (`EmploymentType`; PF number required only for permanent staff), with contract end date; the import has a Check file step and rejects unknown departments and duty stations. Unified template and the October 2026 register onboarding: `docs/hr-import/` |
 | MD-02 departments as reference data | Built | Settings › Departments (rename, deactivate, merge). The Board's 16 departments are seeded (`ReferenceDataSeeder::DEPARTMENTS`); older installations are reconciled once by `departments_board_structure` |
 | MD-03 activity types | Built | Settings › Categories / Activity types (OI-03 open) |
 | MD-04 region (10), county, constituency (290), venue; several per activity | Built | `GeographySeeder` (snapshot of Smart), `activity_locations` |

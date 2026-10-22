@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\EmploymentType;
 use App\Models\Concerns\Auditable;
 use Database\Factories\StaffFactory;
 use Illuminate\Database\Eloquent\Builder;
@@ -30,10 +31,12 @@ class Staff extends Model
         'department_id',
         'designation_id',
         'job_grade',
+        'employment_type',
         'office_id',
         'is_active',
         'joined_on',
         'exited_on',
+        'contract_ends_on',
         'smart_hq_staff_id',
         'source',
         'created_by',
@@ -45,6 +48,8 @@ class Staff extends Model
             'is_active' => 'boolean',
             'joined_on' => 'date',
             'exited_on' => 'date',
+            'contract_ends_on' => 'date',
+            'employment_type' => EmploymentType::class,
         ];
     }
 

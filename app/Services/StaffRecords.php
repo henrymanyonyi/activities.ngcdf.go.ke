@@ -15,7 +15,7 @@ use Illuminate\Auth\Access\AuthorizationException;
 class StaffRecords
 {
     /**
-     * @param  array{staff_number: string, name: string, email?: ?string, phone?: ?string, department_id: int|string, designation_id?: mixed, job_grade?: ?string, office_id?: mixed, is_active?: bool}  $attributes
+     * @param  array{staff_number: ?string, name: string, employment_type?: string, contract_ends_on?: ?string, email?: ?string, phone?: ?string, department_id: int|string, designation_id?: mixed, job_grade?: ?string, office_id?: mixed, is_active?: bool}  $attributes
      */
     public function save(array $attributes, User $user, ?Staff $staff = null): Staff
     {
@@ -29,7 +29,7 @@ class StaffRecords
         }
 
         $attributes = array_merge($attributes, [
-            'staff_number' => strtoupper(trim($attributes['staff_number'])),
+            'staff_number' => filled($attributes['staff_number'] ?? null) ? strtoupper(trim($attributes['staff_number'])) : null,
             'job_grade' => filled($attributes['job_grade'] ?? null) ? strtoupper(trim($attributes['job_grade'])) : null,
         ]);
 

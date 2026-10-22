@@ -148,7 +148,7 @@ it('imports the HR staff list and updates by PF number (MD-01)', function () {
     $cos = chiefOfStaff();
     Staff::factory()->create(['staff_number' => 'PF001', 'name' => 'Old Name']);
 
-    $csv = "PF Number,Name,Designation,Job Grade,Department,Duty Station,Email,Phone,Active\nPF001,New Name,Officer,NGCDF 6,ICT,Headquarters,,,Yes\nPF002,Second Person,Clerk,NGCDF 8,Procurement,Headquarters,,,Yes\n";
+    $csv = "PF Number,Name,Designation,Job Grade,Department,Duty Station,Email,Phone,Active\nPF001,New Name,Officer,NGCDF 6,ICT,Headquarters,,,Yes\nPF002,Second Person,Clerk,NGCDF 8,Supply Chain,Headquarters,,,Yes\n";
     $file = UploadedFile::fake()->createWithContent('staff.csv', $csv);
 
     Livewire::actingAs($cos)->test(StaffList::class)->set('file', $file)->call('import')->assertHasNoErrors()->assertSet('importErrors', []);

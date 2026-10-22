@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Enums\EmploymentType;
 use App\Livewire\Concerns\RunsActions;
 use App\Models\Department;
 use App\Models\Designation;
@@ -65,6 +66,10 @@ class StaffList extends Component
 
     public string $office_id = '';
 
+    public string $employment_type = 'permanent';
+
+    public string $contract_ends_on = '';
+
     public bool $is_active = true;
 
     public $file = null;
@@ -72,17 +77,24 @@ class StaffList extends Component
     /** @var list<string> */
     public array $importErrors = [];
 
+    /** What a checked file would do, before it is imported. */
+    public ?string $importCheck = null;
+
     public function updated(string $property): void
     {
         if (in_array($property, ['search', 'department_id', 'state'], true)) {
             $this->resetPage();
+        }
+
+        if ($property === 'file') {
+            $this->reset(['importErrors', 'importCheck']);
         }
     }
 
     public function edit(?int $id = null): void
     {
         $this->resetErrorBag();
-        $this->reset(['staff_number', 'name', 'email', 'phone', 'form_department_id', 'designation_id', 'job_grade', 'office_id']);
+        $this->reset(['staff_number', 'name', 'email', 'phone', 'form_department_id', 'designation_id', 'job_grade', 'office_id', 'employment_type', 'contract_ends_on']);
         $this->is_active = true;
         $this->editingId = $id;
 
@@ -97,6 +109,8 @@ class StaffList extends Component
             $this->designation_id = (string) ($s->designation_id ?? '');
             $this->job_grade = (string) $s->job_grade;
             $this->office_id = (string) ($s->office_id ?? '');
+            $this->employment_type = $s->employment_type->value;
+            $this->contract_ends_on = (string) $s->contract_ends_on?->toDateString();
             $this->is_active = $s->is_active;
         }
 
@@ -106,7 +120,9 @@ class StaffList extends Component
     public function save(StaffRecords $records): void
     {
         $data = $this->validate([
-            'staff_number' => ['required', 'string', 'max:30', Rule::unique('staff', 'staff_number')->ignore($this->editingId)],
+            'staff_number' => [Rule::requiredIf($this->employment_type === EmploymentType::Permanent->value), 'nullable', 'string', 'max:30', Rule::unique('staff', 'staff_number')->ignore($this->editingId)],
+            'employment_type' => ['required', Rule::enum(EmploymentType::class)],
+            'contract_ends_on' => ['nullable', 'date'],
             'name' => ['required', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:30'],
@@ -115,11 +131,13 @@ class StaffList extends Component
             'job_grade' => ['nullable', 'string', 'max:20'],
             'office_id' => ['nullable', 'exists:offices,id'],
             'is_active' => ['boolean'],
-        ], [], ['staff_number' => 'PF number', 'form_department_id' => 'department']);
+        ], ['staff_number.required' => 'The PF number is required for permanent staff.'], ['staff_number' => 'PF number', 'form_department_id' => 'department', 'contract_ends_on' => 'contract end date']);
 
         $attributes = [
-            'staff_number' => $data['staff_number'],
+            'staff_number' => $data['staff_number'] ?: null,
             'name' => $data['name'],
+            'employment_type' => $data['employment_type'],
+            'contract_ends_on' => $data['contract_ends_on'] ?: null,
             'email' => $data['email'] ?: null,
             'phone' => $data['phone'] ?: null,
             'department_id' => $data['form_department_id'],
@@ -137,6 +155,20 @@ class StaffList extends Component
         }
     }
 
+    /** Runs every check and reports what the import would do, without saving anything. */
+    public function checkImport(StaffImporter $importer): void
+    {
+        abort_unless(Auth::user()->canAny(['reference.manage', 'staff.add']), 403);
+        $this->validate(['file' => ['required', 'file', 'mimes:xlsx,xls,csv,txt', 'max:'.config('activities.max_list_kb')]]);
+
+        $result = $importer->import($this->file->getRealPath(), Auth::user(), dryRun: true);
+        $this->importErrors = $result['errors'];
+        $this->importCheck = $result['errors'] === []
+            ? "The file is ready: {$result['created']} would be added and {$result['updated']} updated"
+                .($result['skipped'] ? ", {$result['skipped']} left as they are" : '').'. Nothing has been saved yet.'
+            : null;
+    }
+
     public function import(StaffImporter $importer): void
     {
         abort_unless(Auth::user()->canAny(['reference.manage', 'staff.add']), 403);
@@ -144,9 +176,10 @@ class StaffList extends Component
 
         $result = $importer->import($this->file->getRealPath(), Auth::user());
         $this->importErrors = $result['errors'];
+        $this->importCheck = null;
 
         if ($result['errors'] === []) {
-            $this->reset(['showImport', 'file']);
+            $this->reset(['showImport', 'file', 'importCheck']);
             $this->toast("Staff list imported: {$result['created']} added, {$result['updated']} updated."
                 .($result['skipped'] ? " {$result['skipped']} already on the list were left as they are." : ''));
         }
@@ -171,6 +204,7 @@ class StaffList extends Component
             'designations' => Designation::query()->ordered()->get(['id', 'name']),
             'offices' => Office::query()->ordered()->get(['id', 'name']),
             'columns' => StaffImporter::COLUMNS,
+            'employmentTypes' => EmploymentType::cases(),
             'records' => app(StaffRecords::class),
             'manages' => Auth::user()->can('reference.manage'),
             'counts' => [

@@ -1,0 +1,163 @@
+<?php
+
+use App\Enums\EmploymentType;
+use App\Livewire\StaffList;
+use App\Models\Department;
+use App\Models\Staff;
+use App\Services\StaffImporter;
+use Illuminate\Http\UploadedFile;
+use Livewire\Livewire;
+
+function hrCsv(string $content): string
+{
+    $path = tempnam(sys_get_temp_dir(), 'hr').'.csv';
+    file_put_contents($path, $content);
+
+    return $path;
+}
+
+it('imports permanent staff, casuals and attachees from the unified Excel template', function () {
+    // PF Number is a text cell with a leading zero; the first two rows' dates are Excel date cells, the third's are text.
+    $path = base_path('tests/Fixtures/hr-staff-list-unified.xlsx');
+
+    $result = app(StaffImporter::class)->import($path);
+
+    expect($result)->toBe(['created' => 3, 'updated' => 0, 'skipped' => 0, 'errors' => []]);
+    expect(Staff::query()->where('name', 'Jane Akinyi Otieno')->sole())
+        ->staff_number->toBe('0012345678')
+        ->employment_type->toBe(EmploymentType::Permanent)
+        ->contract_ends_on->toDateString()->toBe('2028-03-24')
+        ->office->name->toBe('Western Region');
+    expect(Staff::query()->where('name', 'Peter Kamau Njoroge')->sole())
+        ->staff_number->toBeNull()
+        ->employment_type->toBe(EmploymentType::Casual)
+        ->joined_on->toDateString()->toBe('2025-12-01')
+        ->contract_ends_on->toDateString()->toBe('2026-12-14');
+    expect(Staff::query()->where('name', 'Mary Wanjiru')->sole())
+        ->employment_type->toBe(EmploymentType::Attachee)
+        ->department->name->toBe('Research & Statistics');
+});
+
+it('rejects the whole file with a message for every faulty row and saves nothing', function () {
+    $path = hrCsv(implode("\n", [
+        'PF Number,Name,Employment Type,Department,Duty Station,Date Joined,Contract End Date',
+        ',No Number,Permanent,ICT,,,',
+        'PF1,,Permanent,ICT,,,',
+        'PF2,Bad Type,Contract,ICT,,,',
+        'PF3,Bad Department,Permanent,Finance & Planning,Mars Region,,',
+        'PF4,Bad Dates,Permanent,ICT,,31/02/2026,someday',
+        'PF5,Backwards,Casual,ICT,,2026-06-01,2026-01-01',
+        'PF6,First,Permanent,ICT,,,',
+        'pf6,Second,Permanent,ICT,,,',
+        ',Same Casual,Casual,ICT,,,',
+        ',same casual,Casual,ICT,,,',
+        ',Fine Casual,Casual,ICT,,,',
+    ])."\n");
+
+    $result = app(StaffImporter::class)->import($path);
+
+    expect($result['errors'])->toBe([
+        'Row 2: PF Number is required for permanent staff.',
+        'Row 3: Name is required.',
+        'Row 4: Employment Type "Contract" is not Permanent, Casual or Attachee.',
+        'Row 5: Department "Finance & Planning" is not on the list of departments. Duty Station "Mars Region" is not on the list of duty stations.',
+        'Row 6: Date Joined "31/02/2026" is not a date (use YYYY-MM-DD). Contract End Date "someday" is not a date (use YYYY-MM-DD).',
+        'Row 7: Contract End Date is before Date Joined.',
+        'Row 9: PF Number PF6 also appears on row 8.',
+        'Row 11: same casual has no PF Number and also appears on row 10.',
+    ]);
+    expect(Staff::query()->count())->toBe(0);
+});
+
+it('numbers rows by their line in the file when the file has blank rows', function () {
+    $path = hrCsv("PF Number,Name\nPF1,One\n,\nPF2,\n");
+
+    expect(app(StaffImporter::class)->import($path)['errors'])->toBe(['Row 4: Name is required.']);
+});
+
+it('updates a casual without a PF number by exact name and keeps their type when the column is blank', function () {
+    $casual = Staff::factory()->create(['staff_number' => null, 'name' => 'Peter Kamau Njoroge', 'employment_type' => EmploymentType::Casual, 'email' => 'peter@example.com']);
+    $path = hrCsv("PF Number,Name,Employment Type,Job Grade,Email,Contract End Date\n,peter kamau njoroge,,NGCDF 9,,2027-01-31\n");
+
+    $result = app(StaffImporter::class)->import($path);
+
+    expect($result)->toMatchArray(['created' => 0, 'updated' => 1])
+        ->and(Staff::query()->count())->toBe(1);
+    expect($casual->fresh())
+        ->employment_type->toBe(EmploymentType::Casual)
+        ->job_grade->toBe('NGCDF 9')
+        ->email->toBe('peter@example.com')
+        ->contract_ends_on->toDateString()->toBe('2027-01-31');
+});
+
+it('rejects an officer without a PF number whose name matches two officers', function () {
+    Staff::factory()->count(2)->create(['staff_number' => null, 'name' => 'John Mwangi']);
+    $path = hrCsv("PF Number,Name,Employment Type\n,John Mwangi,Casual\n");
+
+    $result = app(StaffImporter::class)->import($path);
+
+    expect($result['errors'])->toBe(['Row 2: John Mwangi has no PF Number and matches 2 officers on the list; add the PF Number or correct the list on screen.'])
+        ->and(Staff::query()->count())->toBe(2);
+});
+
+it('does not merge an officer without a PF number into a namesake who has one', function () {
+    Staff::factory()->create(['staff_number' => 'PF500', 'name' => 'Juma Baraka Example']);
+    $path = hrCsv("PF Number,Name,Employment Type\n,Juma Baraka Example,Attachee\n");
+
+    $result = app(StaffImporter::class)->import($path);
+
+    expect($result)->toMatchArray(['created' => 1, 'updated' => 0])
+        ->and(Staff::query()->where('name', 'Juma Baraka Example')->count())->toBe(2);
+});
+
+it('updates an officer already on the list by PF number and records them inactive', function () {
+    $officer = Staff::factory()->create(['staff_number' => 'PF700', 'name' => 'Old Name', 'is_active' => true]);
+    $path = hrCsv("PF Number,Name,Employment Type,Active\npf700,New Name,Permanent,No\n");
+
+    $result = app(StaffImporter::class)->import($path);
+
+    expect($result)->toMatchArray(['created' => 0, 'updated' => 1]);
+    expect($officer->fresh())->name->toBe('New Name')->is_active->toBeFalse();
+});
+
+it('checks a file without saving anything', function () {
+    $officer = Staff::factory()->create(['staff_number' => 'PF700', 'name' => 'Old Name']);
+    $path = hrCsv("PF Number,Name,Employment Type,Designation\nPF700,New Name,,Brand New Title\n,New Casual,Casual,\n");
+
+    $result = app(StaffImporter::class)->import($path, dryRun: true);
+
+    expect($result)->toBe(['created' => 1, 'updated' => 1, 'skipped' => 0, 'errors' => []])
+        ->and(Staff::query()->count())->toBe(1)
+        ->and($officer->fresh()->name)->toBe('Old Name');
+    $this->assertDatabaseMissing('designations', ['name' => 'Brand New Title']);
+});
+
+it('shows on screen what a checked file would do', function () {
+    Livewire::actingAs(chiefOfStaff())->test(StaffList::class)
+        ->set('showImport', true)
+        ->set('file', UploadedFile::fake()->createWithContent('staff.csv', "PF Number,Name,Employment Type\n,New Casual,Casual\n"))
+        ->call('checkImport')
+        ->assertSet('importErrors', [])
+        ->assertSee('The file is ready: 1 would be added and 0 updated. Nothing has been saved yet.');
+
+    expect(Staff::query()->count())->toBe(0);
+});
+
+it('requires a PF number on screen only for permanent staff', function () {
+    $ict = Department::query()->where('name', 'ICT')->value('id');
+
+    Livewire::actingAs(chiefOfStaff())->test(StaffList::class)
+        ->call('edit')
+        ->set(['name' => 'Permanent Officer', 'form_department_id' => (string) $ict, 'employment_type' => 'permanent'])
+        ->call('save')
+        ->assertHasErrors(['staff_number' => 'required'])
+        ->set(['name' => 'Casual Officer', 'employment_type' => 'casual', 'contract_ends_on' => '2026-12-31'])
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect(Staff::query()->sole())
+        ->name->toBe('Casual Officer')
+        ->staff_number->toBeNull()
+        ->employment_type->toBe(EmploymentType::Casual)
+        ->contract_ends_on->toDateString()->toBe('2026-12-31');
+});
