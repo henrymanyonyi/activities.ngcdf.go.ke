@@ -6,7 +6,6 @@ use App\Enums\CostScope;
 use App\Livewire\Concerns\RunsActions;
 use App\Models\ActivityCategory;
 use App\Models\ActivityType;
-use App\Models\BudgetLine;
 use App\Models\CostCategory;
 use App\Models\County;
 use App\Models\Department;
@@ -17,7 +16,6 @@ use App\Models\Region;
 use App\Models\Staff;
 use App\Services\AppSettings;
 use App\Services\AuditLogger;
-use App\Support\FinancialYear;
 use App\Support\Money;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -42,7 +40,7 @@ class Reference extends Component
 
     /** Name-keyed lists and every column that points at them (used by merge). */
     private const LOOKUPS = [
-        'departments' => [Department::class, 'Department', [['staff', 'department_id'], ['activities', 'organising_department_id'], ['activity_participants', 'department_id'], ['directives', 'responsible_department_id'], ['budget_lines', 'department_id'], ['submission_links', 'department_id']]],
+        'departments' => [Department::class, 'Department', [['staff', 'department_id'], ['activities', 'organising_department_id'], ['activity_participants', 'department_id'], ['directives', 'responsible_department_id'], ['budget_lines', 'department_id'], ['department_budgets', 'department_id'], ['submission_links', 'department_id']]],
         'designations' => [Designation::class, 'Designation', [['staff', 'designation_id'], ['activity_participants', 'designation_id']]],
         'offices' => [Office::class, 'Duty station', [['staff', 'office_id'], ['activity_participants', 'office_id']]],
     ];
@@ -73,17 +71,6 @@ class Reference extends Component
 
     public string $rateFrom = '';
 
-    // Budget lines
-    public string $budgetDepartment = '';
-
-    public string $budgetYear = '';
-
-    public string $budgetCode = '';
-
-    public string $budgetName = '';
-
-    public string $budgetAmount = '';
-
     /** @var array<string, string> */
     public array $settings = [];
 
@@ -94,7 +81,6 @@ class Reference extends Component
     {
         $this->settings = collect($appSettings->all())->map(fn ($v) => (string) $v)->all();
         $this->destinations = County::query()->pluck('dsa_destination_category', 'id')->map(fn ($v) => (string) $v)->all();
-        $this->budgetYear = FinancialYear::current()->label();
         $this->rateFrom = today()->toDateString();
     }
 
@@ -188,7 +174,7 @@ class Reference extends Component
         $this->toast('Merged. The duplicate is kept, inactive, for the record.');
     }
 
-    // ── Cost types, counties, DSA rates, budget lines, thresholds ───────
+    // ── Cost types, counties, DSA rates, thresholds ──────────────────────
 
     public function setCostScope(int $id, string $scope): void
     {
@@ -248,29 +234,6 @@ class Reference extends Component
         $this->toast('Rate added. Any earlier open rate for the same grade and destination now ends the day before.');
     }
 
-    public function addBudgetLine(): void
-    {
-        $this->guard();
-        $this->validate([
-            'budgetDepartment' => ['required', 'exists:departments,id'],
-            'budgetYear' => ['required', 'regex:/^\d{4}\/\d{2}$/'],
-            'budgetCode' => ['nullable', 'string', 'max:40'],
-            'budgetName' => ['required', 'string', 'max:255'],
-            'budgetAmount' => ['required', 'regex:/^\d{1,3}(,?\d{3})*(\.\d{1,2})?$/'],
-        ], [], ['budgetDepartment' => 'department', 'budgetYear' => 'financial year', 'budgetName' => 'name', 'budgetAmount' => 'allocation']);
-
-        BudgetLine::create([
-            'department_id' => $this->budgetDepartment,
-            'financial_year' => $this->budgetYear,
-            'code' => $this->budgetCode ?: null,
-            'name' => $this->budgetName,
-            'amount' => Money::fromCents(Money::toCents($this->budgetAmount)),
-        ]);
-
-        $this->reset(['budgetCode', 'budgetName', 'budgetAmount']);
-        $this->toast('Budget line added.');
-    }
-
     public function saveSettings(AppSettings $appSettings): void
     {
         $this->guard();
@@ -310,7 +273,6 @@ class Reference extends Component
                 'costs' => ['icon' => 'fa-coins', 'label' => 'Cost types'],
                 'destinations' => ['icon' => 'fa-map', 'label' => 'DSA destinations'],
                 'rates' => ['icon' => 'fa-money-bill-wave', 'label' => 'DSA rates'],
-                'budgets' => ['icon' => 'fa-wallet', 'label' => 'Budget lines'],
                 'thresholds' => ['icon' => 'fa-sliders', 'label' => 'Thresholds'],
             ],
         ];
@@ -322,7 +284,6 @@ class Reference extends Component
             'costs' => ['items' => CostCategory::query()->ordered()->get()],
             'destinations' => ['items' => County::query()->orderBy('name')->get(), 'known' => County::query()->whereNotNull('dsa_destination_category')->distinct()->pluck('dsa_destination_category')],
             'rates' => ['items' => DsaRate::query()->orderBy('job_grade')->orderBy('destination_category')->orderByDesc('effective_from')->get(), 'known' => County::query()->whereNotNull('dsa_destination_category')->distinct()->pluck('dsa_destination_category'), 'grades' => Staff::query()->whereNotNull('job_grade')->distinct()->orderBy('job_grade')->pluck('job_grade')],
-            'budgets' => ['items' => BudgetLine::query()->with('department')->orderByDesc('financial_year')->orderBy('name')->get(), 'departments' => Department::query()->active()->ordered()->get(['id', 'name']), 'years' => FinancialYear::options()],
             default => [],
         };
 

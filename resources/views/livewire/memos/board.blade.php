@@ -54,6 +54,15 @@
         @endif
     </x-slot:filters>
 
+    @if ($budget)
+        @php $kes = fn (?int $c) => $c === null ? 'Not set' : Money::format($c); @endphp
+        <x-slot:stats>
+            <x-ui.stat :index="0" icon="fa-wallet" :label="'Budget FY '.$budget['financial_year']" :value="$kes($budget['allocation'])" :money="$budget['allocation'] !== null" :sub="$budget['allocation'] === null ? 'No allocation recorded yet' : 'your department\'s allocation'" />
+            <x-ui.stat :index="1" icon="fa-receipt" label="Spent" :value="$kes($budget['spent'])" money tone="amber" :sub="'from Finance returns'.($budget['spent_percent'] !== null ? ' · '.$budget['spent_percent'].'%' : '')" />
+            <x-ui.stat :index="2" icon="fa-file-signature" label="Committed" :value="$kes($budget['committed'])" money tone="purple" :sub="$budget['approved_count'].' approved '.Str::plural('memo', $budget['approved_count']).' not yet spent'" />
+            <x-ui.stat :index="3" icon="fa-scale-balanced" label="Available balance" :value="$kes($budget['balance'])" :money="$budget['balance'] !== null" :tone="($budget['balance'] ?? 0) < 0 ? 'red' : 'blue'" :sub="$budget['pending_count'] ? 'KES '.Money::format($budget['pending']).' more awaiting decision' : 'nothing awaiting decision'" />
+        </x-slot:stats>
+    @endif
     @if ($summary)
         <x-slot:stats>
             <x-ui.stat :index="0" icon="fa-envelope-open-text" label="Memos" :value="number_format($summary['originated'])" :sub="$summary['with_department'].' with departments'" />

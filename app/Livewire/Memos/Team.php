@@ -30,8 +30,10 @@ use Livewire\Component;
  * officer's job grade and the location, as for the Office of the CEO.
  *
  * Deliberately narrower than the Office of the CEO's activity page: an
- * overlap with another activity is flagged without naming it, and no field-day
- * totals across activities are shown.
+ * officer held by another approved activity is shown as unavailable, with
+ * the days but without naming the activity, and cannot be added (only a
+ * release, or the Office of the CEO, can clear it); no field-day totals
+ * across activities are shown.
  */
 #[Layout('layouts.admin')]
 class Team extends Component
@@ -48,8 +50,6 @@ class Team extends Component
 
     public bool $showDays = false;
 
-    public bool $showExplain = false;
-
     public bool $showCost = false;
 
     public bool $showStaffForm = false;
@@ -64,9 +64,6 @@ class Team extends Component
 
     public string $role = 'member';
 
-    /** @var array<int, string> staff id => reason for an overlap */
-    public array $conflictReasons = [];
-
     // External participant.
     public string $externalName = '';
 
@@ -74,14 +71,12 @@ class Team extends Component
 
     public string $externalCategory = 'other';
 
-    // One participant's days, or an overlap to explain.
+    // One participant's days.
     public ?int $participantId = null;
 
     public string $daysStart = '';
 
     public ?int $daysCount = null;
-
-    public string $overlapReason = '';
 
     // A planned cost line.
     public ?int $costId = null;
@@ -119,9 +114,9 @@ class Team extends Component
     private function done(string $message, array $warnings = []): void
     {
         $this->reset([
-            'showAdd', 'showExternal', 'showRemove', 'showDays', 'showExplain', 'showCost', 'showStaffForm',
-            'staffSearch', 'staffDepartment', 'selectedStaff', 'role', 'conflictReasons', 'externalName', 'externalOrganisation', 'externalCategory',
-            'participantId', 'daysStart', 'daysCount', 'overlapReason', 'costId', 'costCategoryId', 'costParticipantId', 'costDescription', 'costAmount', 'costTravelMode',
+            'showAdd', 'showExternal', 'showRemove', 'showDays', 'showCost', 'showStaffForm',
+            'staffSearch', 'staffDepartment', 'selectedStaff', 'role', 'externalName', 'externalOrganisation', 'externalCategory',
+            'participantId', 'daysStart', 'daysCount', 'costId', 'costCategoryId', 'costParticipantId', 'costDescription', 'costAmount', 'costTravelMode',
         ]);
         $this->activity->refresh();
         $this->toast($message);
@@ -135,7 +130,7 @@ class Team extends Component
 
     // ── Team ───────────────────────────────────────────────────────────
 
-    public function addStaff(ActivityEditor $editor, ParticipantChecks $checks): void
+    public function addStaff(ActivityEditor $editor): void
     {
         $this->validate([
             'selectedStaff' => ['required', 'array', 'min:1'],
@@ -143,11 +138,7 @@ class Team extends Component
             'role' => ['required', $this->roleRule()],
         ], ['selectedStaff.required' => 'Tick at least one officer.'], ['selectedStaff' => 'officers']);
 
-        $overlaps = $checks->conflictingStaff($this->activity->start_date, $this->activity->end_date, $this->activity->id);
-        $reasons = collect($this->selectedStaff)->map(fn ($id) => (int) $id)->filter(fn ($id) => isset($overlaps[$id]))
-            ->mapWithKeys(fn ($id) => [$id => trim((string) ($this->conflictReasons[$id] ?? ''))])->filter()->all();
-
-        $result = $this->attempt(fn () => $editor->addStaff($this->activity, array_map('intval', $this->selectedStaff), ParticipantRole::from($this->role), Auth::user(), $reasons));
+        $result = $this->attempt(fn () => $editor->addStaff($this->activity, array_map('intval', $this->selectedStaff), ParticipantRole::from($this->role), Auth::user()));
 
         if (is_array($result)) {
             $this->done($result['added'].' added to the team.', $result['warnings']);
@@ -195,7 +186,6 @@ class Team extends Component
         $this->participantId = $id;
         $this->daysStart = $participant->startOn($this->activity)->toDateString();
         $this->daysCount = $participant->plannedDays($this->activity);
-        $this->overlapReason = '';
         $this->showDays = true;
     }
 
@@ -220,27 +210,8 @@ class Team extends Component
 
         $participant = $this->activity->participants()->findOrFail($this->participantId);
 
-        if ($this->attempt(fn () => $editor->setParticipantDates($participant, $start, $end, Auth::user(), null, $this->overlapReason ?: null)) !== null) {
+        if ($this->attempt(fn () => $editor->setParticipantDates($participant, $start, $end, Auth::user())) !== null) {
             $this->done($participant->displayName()."'s days updated.");
-        }
-    }
-
-    public function openExplain(int $id): void
-    {
-        $this->activity->participants()->findOrFail($id);
-        $this->resetErrorBag();
-        $this->participantId = $id;
-        $this->overlapReason = '';
-        $this->showExplain = true;
-    }
-
-    public function explainConflict(ActivityEditor $editor): void
-    {
-        $this->validate(['overlapReason' => ['required', 'string', 'max:500']], [], ['overlapReason' => 'reason']);
-        $participant = $this->activity->participants()->findOrFail($this->participantId);
-
-        if ($this->attempt(fn () => $editor->explainConflict($participant, $this->overlapReason, Auth::user())) !== null) {
-            $this->done('Reason recorded for '.$participant->displayName().'.');
         }
     }
 
@@ -351,17 +322,19 @@ class Team extends Component
             'participants.staff', 'participants.department', 'participants.designation', 'costs.category', 'costs.participant.staff',
         ]);
 
-        // Overlaps are flagged, never named: the other activity may belong to another department.
+        // Overlaps are flagged with the days, never named: the other activity may belong to another department.
         $overlapping = array_keys($checks->conflictsFor($activity));
 
         $candidates = collect();
-        $candidateOverlaps = [];
+        $unavailable = [];
+        $pending = [];
         if ($this->showAdd) {
             $onTeam = $activity->participants->whereNotNull('staff_id')->pluck('staff_id')->all();
             $candidates = Staff::query()->active()->search($this->staffSearch)->whereNotIn('id', $onTeam)
                 ->when($this->staffDepartment, fn ($q, $id) => $q->where('department_id', $id))
                 ->with(['department', 'designation'])->orderBy('name')->limit(100)->get();
-            $candidateOverlaps = $checks->conflictingStaff($activity->start_date, $activity->end_date, $activity->id);
+            $unavailable = $checks->unavailableStaff($activity->start_date, $activity->end_date, $activity->id);
+            $pending = $checks->pendingStaff($activity->start_date, $activity->end_date, $activity->id);
         }
 
         return view('livewire.memos.team', [
@@ -369,7 +342,8 @@ class Team extends Component
             'editable' => $activity->status->isWithDepartment(),
             'overlapping' => $overlapping,
             'candidates' => $candidates,
-            'candidateOverlaps' => $candidateOverlaps,
+            'unavailable' => $unavailable,
+            'pending' => $pending,
             'selectedIds' => array_map('intval', $this->selectedStaff),
             'roles' => ParticipantRole::cases(),
             'externalCategories' => ExternalCategory::cases(),

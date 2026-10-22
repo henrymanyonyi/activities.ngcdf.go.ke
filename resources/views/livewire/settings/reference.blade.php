@@ -114,29 +114,6 @@
                 @endif
             @endif
 
-            @if ($tab === 'budgets')
-                <form wire:submit="addBudgetLine" class="grid grid-cols-1 sm:grid-cols-6 gap-3 mb-4 items-end">
-                    <x-ui.field label="Department" for="b-d" error="budgetDepartment" class="sm:col-span-2"><select id="b-d" wire:model="budgetDepartment" class="{{ $sel }}"><option value="">Choose…</option>@foreach ($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select></x-ui.field>
-                    <x-ui.field label="Year" for="b-y" error="budgetYear"><select id="b-y" wire:model="budgetYear" class="{{ $sel }}">@foreach ($years as $y)<option value="{{ $y }}">{{ $y }}</option>@endforeach</select></x-ui.field>
-                    <x-ui.field label="Code" for="b-c" error="budgetCode"><input id="b-c" type="text" wire:model="budgetCode" maxlength="40" class="{{ Ui::CONTROL }}"></x-ui.field>
-                    <x-ui.field label="Name" for="b-n" error="budgetName"><input id="b-n" type="text" wire:model="budgetName" maxlength="255" class="{{ Ui::CONTROL }}"></x-ui.field>
-                    <x-ui.field label="Allocation (KES)" for="b-a" error="budgetAmount"><input id="b-a" type="text" inputmode="decimal" wire:model="budgetAmount" class="{{ Ui::CONTROL }} font-numeric"></x-ui.field>
-                    <div class="sm:col-span-6 flex justify-end"><button type="submit" class="{{ Ui::BTN_PRIMARY }}" wire:loading.attr="disabled" wire:target="addBudgetLine"><i class="fa-solid fa-plus text-xs"></i>Add budget line</button></div>
-                </form>
-                @if ($items->isEmpty())
-                    <x-ui.empty icon="fa-wallet" title="No budget lines" line="Optional (MD-08, OI-08). With them, department costs show the allocation and what remains." />
-                @else
-                    <table class="w-full">
-                        <thead class="border-b border-slate-100"><tr><th class="{{ Ui::TH }}">Year</th><th class="{{ Ui::TH }}">Department</th><th class="{{ Ui::TH }}">Line</th><th class="{{ Ui::TH }} text-right">Allocation</th></tr></thead>
-                        <tbody class="divide-y divide-slate-100">
-                            @foreach ($items as $b)
-                                <tr wire:key="b-{{ $b->id }}"><td class="{{ Ui::TD }} font-numeric">{{ $b->financial_year }}</td><td class="{{ Ui::TD }}">{{ $b->department?->name }}</td><td class="{{ Ui::TD }}">{{ $b->code ? $b->code.' · ' : '' }}{{ $b->name }}</td><td class="{{ Ui::TD }} text-right"><x-ui.money :value="$b->amount" /></td></tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                @endif
-            @endif
-
             @if ($tab === 'thresholds')
                 <form wire:submit="saveSettings" class="space-y-4 max-w-3xl">
                     @foreach (AppSettings::DEFINITIONS as $key => [$label, $default, $help])

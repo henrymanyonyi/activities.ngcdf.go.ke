@@ -5,6 +5,7 @@ namespace App\Reports\Definitions;
 use App\Enums\ActivityStatus;
 use App\Models\Activity;
 use App\Models\Directive;
+use App\Models\ReportReceipt;
 use App\Reports\Report;
 use Illuminate\Support\Collection;
 
@@ -55,6 +56,7 @@ class OverdueReportsAndDirectives extends Report
     public function rows(array $filters): Collection
     {
         $reports = Activity::query()->status(ActivityStatus::Completed)->whereDate('report_due_on', '<', today())
+            ->whereDoesntHave('report', fn ($r) => $r->where('status', '!=', ReportReceipt::STATUS_RETURNED))
             ->with('organisingDepartment')->get()
             ->map(fn (Activity $a) => [
                 'kind' => 'Back-to-office report',

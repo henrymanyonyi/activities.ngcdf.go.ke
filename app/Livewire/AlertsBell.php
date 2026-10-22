@@ -23,10 +23,12 @@ class AlertsBell extends Component
 
         $user = Auth::user();
         $activityId = $alert->data['activity_id'] ?? null;
+        $url = $alert->data['url'] ?? null;
 
         $this->redirect(match (true) {
             $activityId && $user->can('activities.view') => route('activities.show', $activityId),
             $activityId && $user->can('memos.originate') => route('memos.show', $activityId),
+            $url && $user->canAny(['budgets.prepare', 'budgets.approve']) => $url,
             default => route('home'),
         }, navigate: true);
     }

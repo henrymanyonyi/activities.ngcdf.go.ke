@@ -83,12 +83,13 @@ class DsaCalculator
 
                 $units = $this->units($activity, $participant);
                 $computed = Money::fromCents(Money::toCents($rate->amount) * $units);
+                $description = sprintf('DSA %d %s × %s', $units, $this->settings->get('dsa_basis') === 'days' ? 'days' : 'nights', Money::format(Money::toCents($rate->amount)));
 
                 if (! $line) {
                     $activity->costs()->create([
                         'cost_category_id' => $category->id,
                         'activity_participant_id' => $participant->id,
-                        'description' => sprintf('DSA %d %s × %s', $units, $this->settings->get('dsa_basis') === 'days' ? 'days' : 'nights', Money::format(Money::toCents($rate->amount))),
+                        'description' => $description,
                         'quantity' => $units,
                         'unit_rate' => $rate->amount,
                         'estimated_amount' => $computed,
@@ -102,7 +103,9 @@ class DsaCalculator
                 }
 
                 $wasOverridden = $line->isOverridden();
+                // The description follows the nights too, so it never shows the count from when the line was first made.
                 $line->fill([
+                    'description' => $description,
                     'quantity' => $units,
                     'unit_rate' => $rate->amount,
                     'dsa_rate_id' => $rate->id,

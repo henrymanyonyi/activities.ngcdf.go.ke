@@ -82,6 +82,12 @@ class ActivityParticipant extends Model
         return $this->belongsTo(Office::class);
     }
 
+    /** @return HasMany<ParticipantRelease, $this> */
+    public function releases(): HasMany
+    {
+        return $this->hasMany(ParticipantRelease::class, 'activity_participant_id')->orderBy('id');
+    }
+
     /** @return HasMany<ActivityCost, $this> */
     public function costs(): HasMany
     {

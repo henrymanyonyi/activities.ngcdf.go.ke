@@ -10,6 +10,7 @@ use App\Enums\ReviewOffice;
 use App\Models\Concerns\Auditable;
 use App\Support\FinancialYear;
 use App\Support\Money;
+use App\Support\WorkingDays;
 use Database\Factories\ActivityFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -44,6 +45,8 @@ class Activity extends Model
         'purpose',
         'expected_outputs',
         'justification',
+        'risks',
+        'memo_sections',
         'requested_budget',
         'responsible_hod_id',
         'responsible_hod_name',
@@ -105,6 +108,7 @@ class Activity extends Model
             'actual_total' => 'decimal:2',
             'cost_total' => 'decimal:2',
             'requested_budget' => 'decimal:2',
+            'memo_sections' => 'array',
         ];
     }
 
@@ -247,6 +251,21 @@ class Activity extends Model
         return $this->belongsTo(User::class, 'responsible_hod_id');
     }
 
+    /** @return HasMany<ParticipantRelease, $this> */
+    public function releases(): HasMany
+    {
+        return $this->hasMany(ParticipantRelease::class)->orderBy('id');
+    }
+
+    /**
+     * Prepared in the system by the responsible Head of Department, so the
+     * memo the system generates stands as the memo (no signed upload needed).
+     */
+    public function isDepartmentOriginated(): bool
+    {
+        return $this->responsible_hod_id !== null && (int) $this->responsible_hod_id === (int) $this->created_by;
+    }
+
     /** @return HasMany<ActivityReviewNote, $this> */
     public function reviewNotes(): HasMany
     {
@@ -267,7 +286,7 @@ class Activity extends Model
     /** A draft the Head of Department is still preparing (not one the Office of the CEO is recording). */
     public function isDepartmentDraft(): bool
     {
-        return $this->status === ActivityStatus::Draft && $this->responsible_hod_id !== null && (int) $this->responsible_hod_id === (int) $this->created_by;
+        return $this->status === ActivityStatus::Draft && $this->isDepartmentOriginated();
     }
 
     /** Who holds the memo now. */
@@ -338,9 +357,63 @@ class Activity extends Model
         return $heads > 0 ? Money::divide(Money::toCents($this->cost_total), $heads) : null;
     }
 
+    /** Completed, past the report due date, and the department's report is not in (none yet, or returned for correction). */
     public function isReportOverdue(): bool
     {
-        return $this->status === ActivityStatus::Completed && $this->report_due_on?->isBefore(today());
+        if ($this->status !== ActivityStatus::Completed || ! $this->report_due_on?->isBefore(today())) {
+            return false;
+        }
+        $report = $this->reportReceipt();
+
+        return ! $report || $report->isReturned();
+    }
+
+    /** The report, loaded if a list did not load it (lists call rag() on every row). */
+    private function reportReceipt(): ?ReportReceipt
+    {
+        return $this->relationLoaded('report') ? $this->report : $this->report()->first();
+    }
+
+    /**
+     * Whether the activity report reached the CEO within the due period
+     * (Settings › Thresholds, working days after the end date). Timed from
+     * the date it was first received.
+     *
+     * @return array{status: 'on_time'|'late'|'due'|'overdue', days: int, received_on: ?Carbon, due_on: Carbon}|null
+     */
+    public function reportTimeliness(): ?array
+    {
+        if (! $this->report_due_on) {
+            return null;
+        }
+
+        $received = $this->reportReceipt()?->received_on;
+        if ($received) {
+            $late = WorkingDays::between($this->report_due_on, $received);
+
+            return ['status' => $late > 0 ? 'late' : 'on_time', 'days' => $late, 'received_on' => $received, 'due_on' => $this->report_due_on];
+        }
+
+        $late = WorkingDays::between($this->report_due_on, today());
+
+        return $late > 0
+            ? ['status' => 'overdue', 'days' => $late, 'received_on' => null, 'due_on' => $this->report_due_on]
+            : ['status' => 'due', 'days' => WorkingDays::between(today(), $this->report_due_on), 'received_on' => null, 'due_on' => $this->report_due_on];
+    }
+
+    /** "Submitted on time", "Submitted 2 working days late", "Due in 3 working days", "Overdue by 4 working days". */
+    public function reportTimelinessLabel(): ?string
+    {
+        $t = $this->reportTimeliness();
+        $days = fn (int $n) => $n.' working '.($n === 1 ? 'day' : 'days');
+
+        return match ($t['status'] ?? null) {
+            'on_time' => 'Submitted on time',
+            'late' => 'Submitted '.$days($t['days']).' late',
+            'overdue' => 'Overdue by '.$days($t['days']),
+            'due' => $t['days'] === 0 ? 'Due today' : 'Due in '.$days($t['days']),
+            default => null,
+        };
     }
 
     /**

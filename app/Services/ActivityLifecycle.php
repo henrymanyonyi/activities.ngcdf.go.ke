@@ -39,6 +39,7 @@ class ActivityLifecycle
         private AppSettings $settings,
         private DocumentStore $documents,
         private Alerts $alerts,
+        private MemoDocument $memoDocument,
     ) {}
 
     /** Record the starting status of a newly created activity. */
@@ -339,6 +340,9 @@ class ActivityLifecycle
         if ($activity->status !== ActivityStatus::Completed) {
             throw new ActivityWorkflowException('A report can be recorded once the activity is completed.');
         }
+        if ($activity->report()->exists()) {
+            throw new ActivityWorkflowException('The department has submitted its report. Accept it, or return it for correction.');
+        }
 
         return DB::transaction(function () use ($activity, $data, $file, $user) {
             $document = $file ? $this->documents->store($activity, $file, ActivityDocument::KIND_REPORT, $user) : null;
@@ -356,6 +360,108 @@ class ActivityLifecycle
             $this->move($activity, ActivityStatus::ReportReceived, 'Back-to-office report received', $user);
 
             return $receipt;
+        });
+    }
+
+    /**
+     * The Head of Department's activity report once the activity is complete,
+     * with what was actually spent on each cost line (business owner, 21
+     * October 2026). The actual amounts count as spent at once; the report
+     * waits for the Office of the CEO to accept it or return it for
+     * correction. A returned report is corrected and submitted again.
+     *
+     * @param  array{outputs_achieved: string, findings?: ?string, recommendations?: ?string}  $data
+     * @param  array<int|string, string|null>  $actuals  cost line id => amount spent
+     */
+    public function submitReport(Activity $activity, array $data, array $actuals, ?UploadedFile $file, User $user): ReportReceipt
+    {
+        $this->authorize($user, 'memos.originate');
+        if (! $activity->isVisibleTo($user)) {
+            throw new AuthorizationException('This activity is not your department\'s.');
+        }
+        if ($activity->status !== ActivityStatus::Completed) {
+            throw new ActivityWorkflowException('The report is submitted once the activity is complete.');
+        }
+        if (trim($data['outputs_achieved']) === '') {
+            throw new ActivityWorkflowException('Say what the activity achieved.');
+        }
+
+        $lines = $activity->costs()->get();
+        if ($lines->contains(fn ($line) => blank($actuals[$line->id] ?? null))) {
+            throw new ActivityWorkflowException('Enter what was actually spent on every cost line (0 if nothing was spent).');
+        }
+
+        return DB::transaction(function () use ($activity, $data, $actuals, $file, $user, $lines) {
+            $this->lockAt($activity, ActivityStatus::Completed);
+            $existing = ReportReceipt::query()->where('activity_id', $activity->id)->lockForUpdate()->first();
+            if ($existing && ! $existing->isReturned()) {
+                throw new ActivityWorkflowException($existing->isSubmitted()
+                    ? 'The report has been submitted and is waiting for the Office of the CEO.'
+                    : 'The report has already been accepted.');
+            }
+
+            $document = $file ? $this->documents->store($activity, $file, ActivityDocument::KIND_REPORT, $user) : null;
+
+            $receipt = $existing ?? new ReportReceipt(['activity_id' => $activity->id]);
+            $receipt->fill([
+                // Timed from the first submission: a report returned for correction still came in on that day.
+                'received_on' => $existing?->received_on ?? today(),
+                'outputs_achieved' => trim($data['outputs_achieved']),
+                'findings' => ($data['findings'] ?? null) ?: null,
+                'recommendations' => ($data['recommendations'] ?? null) ?: null,
+                'document_id' => $document?->id ?? $existing?->document_id,
+                'recorded_by' => $user->id,
+                'submitted_by' => $user->id,
+                'submitted_at' => now(),
+            ])->forceFill(['status' => ReportReceipt::STATUS_SUBMITTED, 'return_reason' => null])->save();
+
+            foreach ($lines as $line) {
+                $line->update([
+                    'actual_amount' => Money::fromCents(Money::toCents($actuals[$line->id])),
+                    'actual_recorded_by' => $user->id,
+                ]);
+            }
+            $this->costing->refresh($activity);
+
+            $alert = ActivityAlert::reportSubmitted($activity, $existing !== null);
+            $this->alerts->toCeo($alert);
+            $this->alerts->toStaffOfCeo($alert);
+
+            return $receipt;
+        });
+    }
+
+    /** The Office of the CEO accepts the department's report: the activity moves to Report received. */
+    public function acceptReport(Activity $activity, User $user): void
+    {
+        $this->authorize($user, 'activities.execute');
+
+        DB::transaction(function () use ($activity, $user) {
+            $receipt = ReportReceipt::query()->where('activity_id', $activity->id)->lockForUpdate()->first();
+            if (! $receipt?->isSubmitted()) {
+                throw new ActivityWorkflowException('There is no submitted report waiting to be accepted.');
+            }
+
+            $receipt->forceFill(['status' => ReportReceipt::STATUS_ACCEPTED, 'reviewed_by' => $user->id, 'reviewed_at' => now()])->save();
+            $this->move($activity, ActivityStatus::ReportReceived, 'Activity report accepted', $user);
+            $this->alerts->toDepartment($activity, ActivityAlert::progressed($activity, 'Report accepted by the Office of the CEO'));
+        });
+    }
+
+    /** The Office of the CEO returns the department's report for correction; the activity stays Completed. */
+    public function returnReport(Activity $activity, string $reason, User $user): void
+    {
+        $this->authorize($user, 'activities.execute');
+        $this->requireReason($reason, 'Say what needs to be corrected in the report.');
+
+        DB::transaction(function () use ($activity, $reason, $user) {
+            $receipt = ReportReceipt::query()->where('activity_id', $activity->id)->lockForUpdate()->first();
+            if (! $receipt?->isSubmitted()) {
+                throw new ActivityWorkflowException('There is no submitted report waiting for review.');
+            }
+
+            $receipt->forceFill(['status' => ReportReceipt::STATUS_RETURNED, 'reviewed_by' => $user->id, 'reviewed_at' => now(), 'return_reason' => trim($reason)])->save();
+            $this->alerts->toDepartment($activity, ActivityAlert::reportReturned($activity));
         });
     }
 
@@ -420,6 +526,25 @@ class ActivityLifecycle
         $change = Money::percentChange(Money::toCents($activity->approved_estimated_total), Money::toCents($activity->estimated_total));
 
         return $change !== null && $change > $this->settings->int('tolerance_cost_increase_percent');
+    }
+
+    /**
+     * Daily: an approved activity is under way from its start date (business
+     * owner, 21 October 2026). Postponed and cancelled ones are not approved,
+     * so they are left alone.
+     */
+    public function startDueActivities(): int
+    {
+        $count = 0;
+        Activity::query()->status(ActivityStatus::Approved)->whereDate('start_date', '<=', today())->each(function (Activity $activity) use (&$count) {
+            $this->move($activity, ActivityStatus::InProgress, 'Start date reached', null, 'System', [
+                'commenced_at' => now(),
+                'actual_start_date' => $activity->start_date,
+            ]);
+            $count++;
+        });
+
+        return $count;
     }
 
     /** Daily: move in-progress activities whose end date has passed to Completed (RP-01). */
@@ -508,10 +633,15 @@ class ActivityLifecycle
 
         if ($decision === DecisionType::Approved) {
             $this->assertHasTeam($activity);
-            $this->assertConflictsExplained($activity, 'approving');
         }
 
         return DB::transaction(function () use ($activity, $decision, $comment, $mode, $user, $memoReference, $memoDate, $documentId) {
+            if ($decision === DecisionType::Approved) {
+                // Under a lock on the team, so two activities sharing an officer cannot both be approved at once.
+                $this->checks->lockStaff($activity->participants()->whereNotNull('staff_id')->pluck('staff_id')->all());
+                $this->assertConflictsExplained($activity, 'approving');
+            }
+
             $record = CeoDecision::create([
                 'activity_id' => $activity->id,
                 'decision' => $decision,
@@ -551,15 +681,18 @@ class ActivityLifecycle
         });
     }
 
-    /** What a reviewer needs before a Head of Department's memo can be submitted. */
+    /**
+     * What a reviewer needs before a Head of Department's memo can be
+     * submitted: the generated memo must have nothing blocking missing. It
+     * stands as the memo, so no signed upload is needed (business owner's
+     * decision, 21 October 2026).
+     */
     private function assertReadyForReview(Activity $activity): void
     {
-        if ($activity->locations()->doesntExist()) {
-            throw new ActivityWorkflowException('Add the venue or location before submitting.');
-        }
+        $missing = $this->memoDocument->blockingIssues($activity);
 
-        if ($activity->documents()->where('kind', ActivityDocument::KIND_MEMO)->doesntExist()) {
-            throw new ActivityWorkflowException('Attach the signed memo or concept note before submitting.');
+        if ($missing !== []) {
+            throw new ActivityWorkflowException('Before submitting: '.implode(' ', $missing));
         }
     }
 
@@ -614,7 +747,8 @@ class ActivityLifecycle
             throw new ActivityWorkflowException('Add at least one location before submitting.');
         }
 
-        if ($activity->documents()->where('kind', ActivityDocument::KIND_MEMO)->doesntExist()) {
+        // A memo the Head of Department prepared in the system is the generated memo itself.
+        if (! $activity->isDepartmentOriginated() && $activity->documents()->where('kind', ActivityDocument::KIND_MEMO)->doesntExist()) {
             throw new ActivityWorkflowException('Attach the source document (memo, concept note or terms of reference) before submitting.');
         }
 

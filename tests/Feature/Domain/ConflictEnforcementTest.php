@@ -95,7 +95,7 @@ it('asks for a reason when one person\'s days are moved onto an overlap', functi
     $this->editor->setParticipantDates($participant, today()->addDays(25), today()->addDays(27), $this->cos);
 
     expect(fn () => $this->editor->setParticipantDates($participant->fresh(), today()->addDays(29), today()->addDays(31), $this->cos))
-        ->toThrow(ActivityWorkflowException::class, 'Peter Otieno is already on '.$this->first->reference);
+        ->toThrow(ActivityWorkflowException::class, 'Peter Otieno is not available: already on another approved activity from '.today()->addDays(30)->format('d M Y').' to '.today()->addDays(32)->format('d M Y').' ('.$this->first->reference.')');
 
     $this->editor->setParticipantDates($participant->fresh(), today()->addDays(29), today()->addDays(31), $this->cos, conflictReason: 'Covers both sites');
     expect($participant->fresh()->conflict_reason)->toBe('Covers both sites');

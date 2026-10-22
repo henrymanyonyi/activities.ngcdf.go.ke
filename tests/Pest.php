@@ -1,11 +1,14 @@
 <?php
 
+use App\Enums\BudgetStatus;
 use App\Enums\ParticipantRole;
 use App\Models\Activity;
 use App\Models\ActivityCategory;
 use App\Models\ActivityDocument;
+use App\Models\BudgetLine;
 use App\Models\County;
 use App\Models\Department;
+use App\Models\DepartmentBudget;
 use App\Models\PrivacyConsent;
 use App\Models\Staff;
 use App\Models\User;
@@ -95,7 +98,8 @@ function headOfDepartment(?Department $department = null): User
 
 /**
  * A memo a Head of Department prepares for their own department: details,
- * the venue and the signed memo, saved as a Draft (not yet submitted).
+ * the introduction, the venue, one officer and the signed memo, saved as a
+ * Draft (not yet submitted) with nothing blocking its submission.
  *
  * @param  array<string, mixed>  $overrides
  */
@@ -106,6 +110,7 @@ function departmentMemo(User $hod, array $overrides = []): Activity
     $memo = $editor->create(array_merge([
         'title' => 'ICT Department Quarterly Systems Review and Staff Training',
         'purpose' => 'Review the performance of departmental systems and train designated staff.',
+        'justification' => 'The departmental systems are due for their quarterly review.',
         'activity_category_id' => ActivityCategory::query()->value('id'),
         'start_date' => today()->addDays(30)->toDateString(),
         'days' => 1,
@@ -114,6 +119,19 @@ function departmentMemo(User $hod, array $overrides = []): Activity
 
     $editor->addLocation($memo, ['venue' => 'NGCDF Board headquarters'], $hod);
     app(DocumentStore::class)->store($memo, UploadedFile::fake()->create('memo.pdf', 20, 'application/pdf'), ActivityDocument::KIND_MEMO, $hod);
+    $editor->addStaff($memo, [Staff::factory()->create(['department_id' => $hod->department_id])->id], ParticipantRole::Member, $hod);
 
     return $memo->fresh();
+}
+
+/**
+ * A department budget the CEO has approved, with one line: what the budget
+ * position counts. Returns the line.
+ */
+function approvedBudgetLine(Department $department, string $financialYear, string $amount, ?string $code = null, string $name = 'Domestic travel'): BudgetLine
+{
+    $budget = DepartmentBudget::query()->firstOrNew(['department_id' => $department->id, 'financial_year' => $financialYear]);
+    $budget->forceFill(['status' => BudgetStatus::Approved, 'approved_at' => now()])->save();
+
+    return $budget->lines()->create(['department_id' => $department->id, 'financial_year' => $financialYear, 'code' => $code, 'name' => $name, 'amount' => $amount]);
 }

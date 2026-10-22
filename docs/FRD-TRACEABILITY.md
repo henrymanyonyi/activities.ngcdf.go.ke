@@ -27,7 +27,7 @@ Status: **Built** (implemented and covered by tests), **Partial** (see note), **
 | MD-05 DSA rate table by grade × destination, effective dates, history | Built | Settings › DSA rates, `DsaRate::lookup` |
 | MD-06 travel modes | Built | `TravelMode` |
 | MD-07 financial years and quarters | Built | `FinancialYear`, `Period` |
-| MD-08 budget lines | Built | Settings › Budget lines |
+| MD-08 budget lines | Built | Budgeting › Department budgets (moved out of Reference data, 21 Oct 2026). A department's budget for a year is prepared as a draft by the CEO, COS or ACOS, submitted to the CEO, and approved or returned for correction by the CEO only; only approved budgets count and only their lines can be charged by a memo. Adjustments during the year (supplementary, reduction, reallocation between lines) follow the same approval. `App\Services\Budgeting`, `DepartmentBudget`, `BudgetAdjustment`; Budget position menu item opens Department costs › Budget position. Business owner's request, 21 Oct 2026; record in the next FRD revision |
 | PL-01 record planned activity | Built | `Activities\Form`, `ActivityEditor::create` |
 | PL-02 end date and nights as you type | Built | BR-01 in `ActivityEditor::withDates` |
 | PL-03 Draft, editable until submitted | Built | |
@@ -39,33 +39,36 @@ Status: **Built** (implemented and covered by tests), **Partial** (see note), **
 | PT-01 participants from staff list | Built | |
 | PT-02 roles | Built | `ParticipantRole` |
 | PT-03 non-staff participants | Built | External participants; count-per-head switch (OI-09) |
-| PT-04 overlap conflict with reason | Built | `ParticipantChecks::conflicts`, BR-04. Enforced when adding staff, changing a person's days, submitting and approving (in system or recorded). An overlap that appears later is explained with `ActivityEditor::explainConflict` (Team tab › Give reason). See `docs/audit/2026-10-11-activity-register-audit.md` |
+| PT-04 overlap conflict with reason | Built, changed | Business owner's decision, 21 Oct 2026: an officer is **unavailable** on their own days on any activity approved or later (approved, in progress, postponed, completed, report received, closed). A Head of Department cannot place them at all and is told the days, not the activity; only the Office of the CEO may, with a written reason (`ActivityEditor::assertMayOverride`). Memos under review, awaiting decision or returned by the CEO are a warning only; drafts, declined and cancelled hold nobody. Checked under a lock on the staff rows when adding and again at approval, so two activities cannot both take the same officer (`ParticipantChecks::lockStaff`). `ParticipantChecks`, BR-04 |
+| Recall, release, reassignment of an officer part-way (Oct 2026) | Built | `ParticipantReleases`, `participant_releases`, Team tab › release button. Office of the CEO only (`activities.execute`). Last day kept, free from the next day, original assignment kept. Only computed DSA is reduced automatically; other lines stay payable unless revised with a reason; an extra cost can be added. Effect shown before confirming; recorded as an amendment against the approved total (a rise beyond tolerance returns it to the CEO). Reassignment places the officer on the destination activity from the next day |
 | PT-05 leave clash | Not built (Could) | Needs leave data (OI-12) |
 | PT-06 cumulative field days vs threshold | Built | `ParticipantChecks::fieldDayFlags`; thresholds in Settings (OI-05). The add-officers picker shows each officer's field days this year and can list the fewest first (`plannedFieldDaysByStaff`) |
 | PT-07 amendments after approval; beyond tolerance back to CEO | Built | `ActivityLifecycle::recordAmendment` |
 | CB-01 computed DSA, logged override | Built | `DsaCalculator` |
 | CB-02 / CB-03 travel and other costs | Built | |
 | CB-04 totals per participant and activity | Built | `ActivityCosting` |
-| CB-05 against budget | Partial | Department costs show allocation and remainder; no warning at approval yet |
+| CB-05 against budget | Built | `BudgetPosition` (definitions agreed 21 Oct 2026): allocation, pending (not deducted), approved, committed, spent (Finance returns), adjustments, released by cancellations, balance = allocation − spent − committed, utilisation. Department costs › Budget position tab with a department drill-down; report `budget-position` (Excel, PDF, print); the CEO's approval popup shows the balance if approved and warns when it goes over the allocation |
 | CB-06 exact money | Built | `Money` (integer cents), DECIMAL(15,2) |
 | CD-01 decision queue | Built | `DecisionQueue` |
 | Memo workflow (Oct 2026): HOD drafts and submits; ACOS / COS review, comment, return for correction, forward; CEO decides | Built | `ActivityLifecycle::submitForReview`, `returnForCorrection`, `forward`, `addReviewNote`; statuses Under review and Returned for correction; `Memos\Board`, `Memos\Show`; route via the Chief of Staff is the setting `acos_forwards_via_cos` |
 | Memo prepared on a Head of Department's behalf, real preparer kept | Built | `responsible_hod_id` / `responsible_hod_name`, `created_by` |
-| Head of Department builds the whole memo: locations, team, external participants, days, planned costs (DSA computed) | Built | `Memos\Team`, `Memos\Show` (Add location); `ActivityEditor::authorizeDetails` limits them to their own department's memo while it is a draft or returned. An overlap is flagged without naming the other activity |
-| Head of Department sees the staff list and adds missing officers (MD-01) | Built | `staff.add`; `StaffRecords` (corrects only officers they added, cannot deactivate); `staff.created_by` |
+| Generated memo and annexes (Oct 2026), template `files/MEMO Template .docx` | Built | `MemoDocument`, `resources/views/memos/document.blade.php`, route `memos.document`. Memo in the template layout (To, From, Date, Ref No, Subject, numbered sections incl. Key risks and any extra sections, Request for approval, signature blocks filled from the audit trail), then Annex A budget breakdown, B detailed budget, C itinerary, each on its own page, "Page n of N", access-logged. No RESTRICTED banner on the memo itself (business owner, 21 Oct 2026; a departure from CF-07 to record in the next FRD revision). Totals come from one source. Missing items listed; blocking ones stop a Head of Department's submission. The generated memo replaces the signed upload for memos a Head of Department prepares in the system (business owner, 21 Oct 2026); the Office of the CEO's own path still needs the source document |
+| Head of Department builds the whole memo: locations, team, external participants, days, planned costs (DSA computed) | Built | `Memos\Team`, `Memos\Show` (Add location); `ActivityEditor::authorizeDetails` limits them to their own department's memo while it is a draft or returned. An unavailable officer is shown with the days, without naming the other activity, and cannot be ticked |
+| Head of Department sees their own department's budget (Oct 2026) | Built | Allocation, spent, committed, pending and available balance for their department only: memos board (current year), memo form (year of the start date, beside the budget line), memo page (balance if this memo is approved). `BudgetPosition::forDepartment`, `forActivity`. Business owner's request, 21 Oct 2026; record with the HOD role in the next FRD revision |
+| Head of Department sees the staff list and adds missing officers (MD-01) | Built | `staff.add`; `StaffRecords` (corrects only officers they added, cannot deactivate); `staff.created_by`. Since 21 Oct 2026 also by importing a list (`StaffImporter` with the user): new officers become theirs, their own are updated, others' are skipped, the Active column is ignored |
 | Memo reporting: counts by stage, time per stage, pending too long, budgets | Built | `MemoTracker`, report `memo-workflow`, daily reminder (`memo_review_reminder_working_days`) |
 | CD-02 approve / decline / return, comment mandatory | Built | |
 | CD-03 decision recorded on CEO's behalf with memo, date, scan | Built | |
 | CD-04 directives tracked to completion | Built | `Directives` |
 | CD-05 late notice | Built | Setting `late_notice_working_days` (OI-04) |
 | CD-06 retrospective | Built | Set when approval (memo) date is after the start date |
-| EX-01 commencement prompt, amber / red | Built | `Activity::commencementRag`, daily alert |
+| EX-01 commencement prompt, amber / red | Built, changed | Since 21 Oct 2026 (business owner) `activities:daily` starts an approved activity on its start date (`ActivityLifecycle::startDueActivities`); the Office of the CEO can still confirm commencement earlier on the day |
 | EX-02 attendance; only attended count | Built | BR-07 in `ActivityCosting` |
 | EX-03 postpone / cancel, overlap re-check, history | Built | |
 | EX-04 extension, recalculation, tolerance | Built | |
 | EX-05 in the field today | Built | `FieldToday` |
-| RP-01 completed on end date; report due date | Built | `activities:daily` (OI-07) |
-| RP-02 record report | Built | |
+| RP-01 completed on end date; report due date | Built | `activities:daily`; due 7 working days after the end date (Settings › Thresholds `report_due_working_days`, default 7 at the business owner's request, 21 Oct 2026) |
+| RP-02 record report | Built, extended | The Head of Department submits the activity report on the memo page with the actual amount spent on each cost line, which counts as spent at once; the COS, ACOS or CEO accepts it (Report received) or returns it for correction (`ActivityLifecycle::submitReport`, `acceptReport`, `returnReport`). The Office of the CEO can still record a report itself. Timeliness (on time, late by n, due, overdue) from the date first received: `Activity::reportTimeliness`, report `report-compliance`. Business owner's request, 21 Oct 2026 |
 | RP-03 overdue flag, no reminder to departments | Built | |
 | FR-01 actual costs | Built | |
 | FR-02 variance by activity, department, year | Built | Department costs, Planned against Actual report |

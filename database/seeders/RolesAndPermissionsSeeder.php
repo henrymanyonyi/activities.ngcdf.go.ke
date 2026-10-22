@@ -29,7 +29,7 @@ class RolesAndPermissionsSeeder extends Seeder
         'activities.cancel' => 'Cancel an activity',
         'activities.execute' => 'Record commencement, attendance, reports and actual costs',
         'activities.close' => 'Close an activity',
-        'reference.manage' => 'Maintain reference data (staff, DSA rates, budget lines)',
+        'reference.manage' => 'Maintain reference data (staff, DSA rates, thresholds)',
         'links.manage' => 'Create and edit submission links',
         'reports.export' => 'Export and print',
         'users.manage' => 'Manage the three user accounts',
@@ -37,6 +37,8 @@ class RolesAndPermissionsSeeder extends Seeder
         'memos.originate' => 'Prepare and submit memos for their own department (Head of Department)',
         'memos.review' => 'Review memos, comment, return them for correction and forward them',
         'staff.add' => 'See the staff list and add officers who are missing (correct only those they added)',
+        'budgets.prepare' => 'Prepare department budgets and adjustments as drafts and submit them to the CEO',
+        'budgets.approve' => 'Approve department budgets and adjustments, or return them for correction',
     ];
 
     /** @var array<string, list<string>> */
@@ -48,17 +50,17 @@ class RolesAndPermissionsSeeder extends Seeder
             'activities.view', 'activities.manage', 'activities.submit', 'activities.decide', 'decisions.record', 'directives.manage',
             'activities.postpone', 'activities.cancel', 'activities.execute', 'activities.close',
             'reference.manage', 'links.manage', 'reports.export', 'users.manage', 'audit.view',
-            'memos.originate', 'memos.review', 'staff.add',
+            'memos.originate', 'memos.review', 'staff.add', 'budgets.prepare', 'budgets.approve',
         ],
         User::ROLE_CHIEF_OF_STAFF => [
             'activities.view', 'activities.manage', 'activities.submit', 'decisions.record', 'directives.manage',
             'activities.postpone', 'activities.cancel', 'activities.execute', 'activities.close',
             'reference.manage', 'links.manage', 'reports.export', 'users.manage', 'audit.view',
-            'memos.review',
+            'memos.review', 'budgets.prepare',
         ],
         User::ROLE_ASSISTANT_CHIEF_OF_STAFF => [
             'activities.view', 'activities.manage', 'activities.submit', 'activities.postpone', 'activities.execute',
-            'memos.review',
+            'memos.review', 'budgets.prepare',
         ],
         // Settings, configuration and logs; no activities.view, so no activity, dashboard or report
         // other than the access and audit log (CEO's approval, 11 October 2026).

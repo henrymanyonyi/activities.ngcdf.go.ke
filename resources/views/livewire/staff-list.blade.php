@@ -5,9 +5,7 @@
         @if ($counts['no_grade'])<span class="inline-flex items-center px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[11px] font-semibold font-numeric">{{ $counts['no_grade'] }} without job grade</span>@endif
     </x-slot:pills>
     <x-slot:actions>
-        @if ($manages)
-            <button type="button" wire:click="$set('showImport', true)" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-file-import text-xs"></i>Import HR list</button>
-        @endif
+        <button type="button" wire:click="$set('showImport', true)" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-file-import text-xs"></i>{{ $manages ? 'Import HR list' : 'Import staff list' }}</button>
         <button type="button" wire:click="edit" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-plus text-xs"></i>Add officer</button>
     </x-slot:actions>
     <x-slot:filters>
@@ -70,7 +68,7 @@
         </x-slot:footer>
     </x-ui.modal>
 
-    <x-ui.modal show="showImport" :open="$showImport" icon="fa-file-import" title="Import the HR staff list" subtitle="Existing officers are matched by PF number and updated. Nothing is deleted.">
+    <x-ui.modal show="showImport" :open="$showImport" icon="fa-file-import" :title="$manages ? 'Import the HR staff list' : 'Import a staff list'" :subtitle="$manages ? 'Existing officers are matched by PF number and updated. Nothing is deleted.' : 'Officers not yet on the list are added. Officers you added before are updated; everyone else is left as they are. Nothing is deleted.'">
         <p class="text-[13px] text-slate-600">Columns (first row): <span class="font-numeric text-slate-800">{{ implode(', ', $columns) }}</span>. Only PF Number and Name are required.</p>
         <x-ui.field label="File" for="imp-f" error="file" required hint="Excel or CSV, up to 2 MB."><input id="imp-f" type="file" wire:model="file" accept=".xlsx,.xls,.csv" class="block w-full text-[13px] text-slate-600 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700 file:font-semibold"></x-ui.field>
         @if ($importErrors)

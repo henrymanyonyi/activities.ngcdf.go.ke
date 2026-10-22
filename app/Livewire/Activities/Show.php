@@ -11,6 +11,7 @@ use App\Enums\ParticipationStatus;
 use App\Enums\ReviewOffice;
 use App\Enums\ReviewRecommendation;
 use App\Enums\TravelMode;
+use App\Exceptions\ActivityWorkflowException;
 use App\Livewire\Concerns\RunsActions;
 use App\Models\Activity;
 use App\Models\ActivityDocument;
@@ -22,6 +23,7 @@ use App\Models\County;
 use App\Models\Department;
 use App\Models\Directive;
 use App\Models\Office;
+use App\Models\ParticipantRelease;
 use App\Models\Region;
 use App\Models\Staff;
 use App\Services\AccessLogger;
@@ -29,9 +31,11 @@ use App\Services\ActivityCosting;
 use App\Services\ActivityEditor;
 use App\Services\ActivityLifecycle;
 use App\Services\AppSettings;
+use App\Services\BudgetPosition;
 use App\Services\DocumentStore;
 use App\Services\DsaCalculator;
 use App\Services\ParticipantChecks;
+use App\Services\ParticipantReleases;
 use App\Support\FinancialYear;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -71,6 +75,8 @@ class Show extends Component
     public bool $showComplete = false;
 
     public bool $showReport = false;
+
+    public bool $showReturnReport = false;
 
     public bool $showClose = false;
 
@@ -220,6 +226,30 @@ class Show extends Component
 
     public $document = null;
 
+    // Recall, release or reassignment of an officer part-way.
+    public bool $showRelease = false;
+
+    public string $releaseKind = 'recall';
+
+    public string $releaseLastDay = '';
+
+    public string $releaseInitiatedBy = '';
+
+    public string $releaseReason = '';
+
+    public string $releaseDestination = '';
+
+    /** @var array<int, string> cost line id => revised planned amount */
+    public array $releaseRevised = [];
+
+    public string $releaseRevisionReason = '';
+
+    public string $releaseExtraCategory = '';
+
+    public string $releaseExtraAmount = '';
+
+    public string $releaseExtraDescription = '';
+
     public function mount(Activity $activity, AccessLogger $log): void
     {
         $this->activity = $activity;
@@ -242,13 +272,15 @@ class Show extends Component
     private function done(?string $message = null, array $warnings = []): void
     {
         $this->reset([
-            'showDecide', 'showRecordDecision', 'showPostpone', 'showExtend', 'showCancel', 'showComplete', 'showReport', 'showClose', 'showDiscard',
+            'showDecide', 'showRecordDecision', 'showPostpone', 'showExtend', 'showCancel', 'showComplete', 'showReport', 'showReturnReport', 'showClose', 'showDiscard',
             'showForward', 'showReturnHod', 'showNote', 'reviewText', 'recommendation',
             'showAddStaff', 'showAddExternal', 'showRemoveParticipant', 'staffDepartment', 'staffOffice', 'showSelectedOnly', 'sameConflictReason', 'showDays', 'showExplain', 'overlapReason', 'staffSort', 'daysStart', 'daysCount', 'showCost', 'showOverride', 'showLocation', 'showDirective', 'showImprest', 'showDocument',
             'comment', 'memoReference', 'memoDate', 'scan', 'reason', 'newStart', 'newDays', 'extraDays', 'actualDate', 'reportReceivedOn', 'outputsAchieved',
             'findings', 'recommendations', 'reportFile', 'staffSearch', 'selectedStaff', 'conflictReasons', 'externalName', 'externalOrganisation',
             'participantId', 'costId', 'costCategoryId', 'costParticipantId', 'costDescription', 'costAmount', 'costTravelMode', 'overrideAmount',
             'locRegion', 'locCounty', 'locConstituency', 'locVenue', 'directiveBody', 'directiveDepartment', 'directiveDue', 'document',
+            'showRelease', 'releaseKind', 'releaseLastDay', 'releaseInitiatedBy', 'releaseReason', 'releaseDestination', 'releaseRevised', 'releaseRevisionReason',
+            'releaseExtraCategory', 'releaseExtraAmount', 'releaseExtraDescription',
         ]);
         $this->extraDays = 1;
         $this->activity->refresh();
@@ -415,6 +447,23 @@ class Show extends Component
             'recommendations' => $data['recommendations'] ?: null,
         ], $this->reportFile, $this->user()))) {
             $this->done('Back-to-office report recorded.');
+        }
+    }
+
+    /** The department's submitted report: accept it, so the activity moves to Report received. */
+    public function acceptReport(ActivityLifecycle $lifecycle): void
+    {
+        if ($this->attempt(fn () => $lifecycle->acceptReport($this->activity, $this->user()))) {
+            $this->done('Report accepted. The Head of Department has been told.');
+        }
+    }
+
+    public function returnReport(ActivityLifecycle $lifecycle): void
+    {
+        $this->validate(['reason' => ['required', 'string', 'max:2000']], [], ['reason' => 'what needs to be corrected']);
+
+        if ($this->attempt(fn () => $lifecycle->returnReport($this->activity, $this->reason, $this->user()))) {
+            $this->done('Report returned to the Head of Department for correction.');
         }
     }
 
@@ -594,6 +643,54 @@ class Show extends Component
         $participant = $this->activity->participants()->findOrFail($this->participantId);
         if ($this->attempt(fn () => $editor->explainConflict($participant, $this->overlapReason, $this->user())) !== null) {
             $this->done('Reason recorded for '.$participant->displayName().'.');
+        }
+    }
+
+    // ── Recall, release, reassignment ─────────────────────────────────
+
+    public function openRelease(int $id): void
+    {
+        $participant = $this->activity->participants()->whereNotNull('staff_id')->findOrFail($id);
+        $this->resetErrorBag();
+        $this->reset(['releaseKind', 'releaseInitiatedBy', 'releaseReason', 'releaseDestination', 'releaseRevised', 'releaseRevisionReason', 'releaseExtraCategory', 'releaseExtraAmount', 'releaseExtraDescription']);
+        $this->participantId = $id;
+        $start = $participant->startOn($this->activity);
+        $this->releaseLastDay = today()->between($start, $participant->endOn($this->activity)->copy()->subDay()) ? today()->toDateString() : $start->toDateString();
+        $this->showRelease = true;
+    }
+
+    public function release(ParticipantReleases $releases): void
+    {
+        $this->validate([
+            'releaseKind' => ['required', 'in:'.implode(',', array_keys(ParticipantRelease::KINDS))],
+            'releaseLastDay' => ['required', 'date'],
+            'releaseInitiatedBy' => ['required', 'string', 'max:255'],
+            'releaseReason' => ['required', 'string', 'max:1000'],
+            'releaseDestination' => [$this->releaseKind === ParticipantRelease::KIND_REASSIGNMENT ? 'required' : 'nullable', 'integer', 'exists:activities,id'],
+            'releaseRevised.*' => ['nullable', 'regex:/^\d{1,3}(,?\d{3})*(\.\d{1,2})?$/'],
+            'releaseRevisionReason' => ['nullable', 'string', 'max:1000'],
+            'releaseExtraAmount' => ['nullable', 'regex:/^\d{1,3}(,?\d{3})*(\.\d{1,2})?$/'],
+            'releaseExtraCategory' => [$this->releaseExtraAmount !== '' ? 'required' : 'nullable', 'exists:cost_categories,id'],
+            'releaseExtraDescription' => ['nullable', 'string', 'max:255'],
+        ], ['releaseRevised.*.regex' => 'Enter an amount such as 12,500.00.', 'releaseExtraAmount.regex' => 'Enter an amount such as 12,500.00.'],
+            ['releaseLastDay' => 'last day', 'releaseInitiatedBy' => 'who asked for it', 'releaseReason' => 'reason', 'releaseDestination' => 'destination activity', 'releaseExtraCategory' => 'cost type']);
+
+        $participant = $this->activity->participants()->findOrFail($this->participantId);
+        $release = $this->attempt(fn () => $releases->release($participant, [
+            'kind' => $this->releaseKind,
+            'reason' => $this->releaseReason,
+            'last_day' => Carbon::parse($this->releaseLastDay),
+            'initiated_by_name' => $this->releaseInitiatedBy,
+            'destination_activity_id' => $this->releaseDestination !== '' ? (int) $this->releaseDestination : null,
+            'revised' => $this->releaseRevised,
+            'revision_reason' => $this->releaseRevisionReason,
+            'extra' => ['amount' => $this->releaseExtraAmount, 'cost_category_id' => $this->releaseExtraCategory !== '' ? (int) $this->releaseExtraCategory : null, 'description' => $this->releaseExtraDescription],
+        ], $this->user()));
+
+        if ($release instanceof ParticipantRelease) {
+            $back = $this->activity->fresh()->status === ActivityStatus::AwaitingDecision;
+            $this->done(sprintf('%s: %s. Available from %s.%s', $participant->displayName(), strtolower($release->kindLabel()), $release->availableFrom()->format('d M Y'),
+                $back ? ' The cost rise is beyond tolerance, so the activity is back with the CEO.' : ''));
         }
     }
 
@@ -806,14 +903,29 @@ class Show extends Component
         $this->done('Directive recorded.');
     }
 
-    public function render(ActivityCosting $costing, ParticipantChecks $checks): View
+    public function render(ActivityCosting $costing, ParticipantChecks $checks, BudgetPosition $budget, ParticipantReleases $releases): View
     {
         $activity = $this->activity->load([
             'category', 'type', 'organisingDepartment', 'budgetLine', 'locations.region', 'locations.county', 'locations.constituency',
             'participants.staff.department', 'participants.designation', 'participants.department', 'costs.category', 'costs.participant.staff',
-            'documents', 'decisions.recorder', 'decisions.document', 'directives.department', 'report.document', 'report.recorder',
+            'documents', 'decisions.recorder', 'decisions.document', 'directives.department', 'report.document', 'report.recorder', 'report.reviewer',
             'statusHistory.user', 'amendments.user', 'approver', 'creator', 'submissionLink', 'reviewNotes.user', 'responsibleHod',
+            'participants.releases.recorder', 'participants.releases.destination',
         ]);
+
+        // The cost effect of a release, worked out as the form is filled in, before it is confirmed.
+        $releasing = $this->showRelease && $this->participantId ? $activity->participants->firstWhere('id', $this->participantId) : null;
+        $releasePreview = null;
+        $releaseError = null;
+        if ($releasing && $this->releaseLastDay) {
+            try {
+                $releasePreview = $releases->preview($releasing, Carbon::parse($this->releaseLastDay),
+                    collect($this->releaseRevised)->filter(fn ($v) => preg_match('/^\d{1,3}(,?\d{3})*(\.\d{1,2})?$/', (string) $v))->all(),
+                    preg_match('/^\d{1,3}(,?\d{3})*(\.\d{1,2})?$/', $this->releaseExtraAmount) ? ['amount' => $this->releaseExtraAmount, 'cost_category_id' => (int) $this->releaseExtraCategory, 'description' => $this->releaseExtraDescription] : []);
+            } catch (ActivityWorkflowException $e) {
+                $releaseError = $e->getMessage();
+            }
+        }
 
         $conflicts = $checks->conflictsFor($activity);
         $fieldDays = $activity->participants->where('is_external', false)
@@ -880,6 +992,15 @@ class Show extends Component
             'forwardsToChiefOfStaff' => ReviewOffice::forUser($this->user()) === ReviewOffice::AssistantChiefOfStaff && app(AppSettings::class)->bool('acos_forwards_via_cos'),
             'withChiefOfStaffOnly' => $activity->status === ActivityStatus::UnderReview && $activity->review_office === ReviewOffice::ChiefOfStaff && ReviewOffice::forUser($this->user()) === ReviewOffice::AssistantChiefOfStaff,
             'recommendationOptions' => ReviewRecommendation::cases(),
+            'budget' => $budget->forActivity($activity),
+            'canRelease' => ParticipantReleases::canRelease($activity) && $this->user()->can('activities.execute'),
+            'releasing' => $releasing,
+            'releasePreview' => $releasePreview,
+            'releaseError' => $releaseError,
+            'releaseKinds' => ParticipantRelease::KINDS,
+            'destinations' => $releasing ? Activity::query()->whereKeyNot($activity->id)
+                ->status(ActivityStatus::Draft, ActivityStatus::UnderReview, ActivityStatus::AwaitingDecision, ActivityStatus::Returned, ActivityStatus::Approved, ActivityStatus::InProgress)
+                ->whereDate('end_date', '>=', $this->releaseLastDay ?: today())->orderBy('start_date')->limit(200)->get(['id', 'reference', 'title', 'start_date', 'end_date']) : collect(),
         ])->title($activity->reference.' · '.$activity->title);
     }
 }

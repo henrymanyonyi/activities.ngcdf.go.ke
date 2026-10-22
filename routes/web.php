@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\MemoDocumentController;
 use App\Http\Controllers\ParticipantTemplateController;
 use App\Http\Controllers\PrivacyStatementController;
 use App\Http\Controllers\ReportExportController;
@@ -69,7 +70,16 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified',
         Route::get('/memos/{activity}/edit', Livewire\Activities\Form::class)->name('memos.edit');
         Route::get('/memos/{activity}/team', Livewire\Memos\Team::class)->name('memos.team');
     });
+    // The generated memo and annexes (PDF): the Office of the CEO, or the department's own Head.
+    Route::get('/memos/{activity}/document', MemoDocumentController::class)->middleware('permission:activities.view|memos.originate')->name('memos.document');
     Route::get('/documents/{document}', DocumentController::class)->middleware('permission:activities.view|memos.originate')->name('documents.show');
+
+    // Budgeting: the Office of the CEO prepares, only the CEO approves (App\Services\Budgeting checks again).
+    Route::middleware('permission:budgets.prepare|budgets.approve')->group(function () {
+        Route::get('/budgets', Livewire\Budgets\Index::class)->name('budgets.index');
+        Route::get('/budgets/adjustments', Livewire\Budgets\Adjustments::class)->name('budgets.adjustments');
+        Route::get('/budgets/{budget}', Livewire\Budgets\Show::class)->name('budgets.show');
+    });
 
     Route::get('/links', Livewire\Links::class)->middleware('permission:links.manage')->name('links.index');
     Route::get('/staff', Livewire\StaffList::class)->middleware('permission:reference.manage|staff.add')->name('staff.index');

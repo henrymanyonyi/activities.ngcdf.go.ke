@@ -35,11 +35,14 @@
                     <x-ui.field label="Purpose (objective)" for="purpose" error="purpose" required class="sm:col-span-2" hint="What the activity is for, in a sentence or two.">
                         <textarea id="purpose" wire:model="purpose" rows="3" class="{{ Ui::CONTROL }}"></textarea>
                     </x-ui.field>
-                    <x-ui.field label="Justification" for="justification" error="justification" class="sm:col-span-2" hint="Why it is needed now. Reviewers often return memos that leave this out.">
-                        <textarea id="justification" wire:model="justification" rows="3" class="{{ Ui::CONTROL }}"></textarea>
+                    <x-ui.field label="Introduction and justification" for="justification" error="justification" class="sm:col-span-2" hint="The narration: background, why the activity is needed now, and any letter or Act it responds to. Section 1.0 of the memo; needed before you submit.">
+                        <textarea id="justification" wire:model="justification" rows="5" class="{{ Ui::CONTROL }}"></textarea>
                     </x-ui.field>
                     <x-ui.field label="Expected outcomes and deliverables" for="outputs" error="expected_outputs" class="sm:col-span-2" hint="What the department will deliver; compared with the back-to-office report.">
                         <textarea id="outputs" wire:model="expected_outputs" rows="2" class="{{ Ui::CONTROL }}"></textarea>
+                    </x-ui.field>
+                    <x-ui.field label="Key risks to be mitigated" for="risks" error="risks" class="sm:col-span-2" hint="Section 3.0 of the memo: what could go wrong if the activity does not take place, or during it.">
+                        <textarea id="risks" wire:model="risks" rows="3" class="{{ Ui::CONTROL }}"></textarea>
                     </x-ui.field>
                     <x-ui.field label="Participants and stakeholders" for="audience" error="target_audience" class="sm:col-span-2" hint="Who takes part or is targeted, e.g. ICT staff and invited departmental representatives.">
                         <input id="audience" type="text" wire:model="target_audience" class="{{ Ui::CONTROL }}" maxlength="255">
@@ -48,6 +51,28 @@
                         <textarea id="notes" wire:model="notes" rows="2" class="{{ Ui::CONTROL }}"></textarea>
                     </x-ui.field>
                 </div>
+            </x-ui.card>
+
+            <x-ui.card title="More memo sections" icon="fa-list-ol" padded>
+                <p class="text-[12px] text-slate-500 mb-3">Add a section when the standard memo does not cover something, for example a programme, the statutory basis or a previous visit. Sections follow Key risks in the memo, numbered in order.</p>
+                <div class="space-y-3">
+                    @foreach ($memo_sections as $i => $section)
+                        <div class="rounded-lg border border-slate-200 p-3 space-y-3" wire:key="section-{{ $i }}">
+                            <div class="flex items-start gap-2">
+                                <x-ui.field label="Section heading" for="sec-h-{{ $i }}" error="memo_sections.{{ $i }}.heading" required class="flex-1">
+                                    <input id="sec-h-{{ $i }}" type="text" wire:model="memo_sections.{{ $i }}.heading" maxlength="150" class="{{ Ui::CONTROL }}" placeholder="e.g. Programme of the visit">
+                                </x-ui.field>
+                                <button type="button" wire:click="removeSection({{ $i }})" class="{{ Ui::BTN_ICON_DANGER }} mt-6" aria-label="Remove this section"><i class="fa-solid fa-xmark text-xs"></i></button>
+                            </div>
+                            <x-ui.field label="Section text" for="sec-b-{{ $i }}" error="memo_sections.{{ $i }}.body" required>
+                                <textarea id="sec-b-{{ $i }}" wire:model="memo_sections.{{ $i }}.body" rows="3" class="{{ Ui::CONTROL }}"></textarea>
+                            </x-ui.field>
+                        </div>
+                    @endforeach
+                </div>
+                @if (count($memo_sections) < 10)
+                    <button type="button" wire:click="addSection" class="{{ Ui::BTN_TINT }} mt-3"><i class="fa-solid fa-plus text-[9px]"></i>Add a section</button>
+                @endif
             </x-ui.card>
 
             <x-ui.card title="Dates" icon="fa-calendar" padded>
@@ -121,7 +146,7 @@
                         <input id="recv" type="date" wire:model="source_received_on" class="{{ Ui::CONTROL }}">
                     </x-ui.field>
                     @unless ($activity)
-                        <x-ui.field :label="$office ? 'Source document' : 'Signed memo or concept note'" for="memo" error="memo" :hint="$office ? 'Memo, concept note or terms of reference (PDF, Word or image, up to 10 MB). Required before submitting to the CEO.' : 'PDF, Word or image, up to 10 MB. You can also attach it later; it is needed before you submit.'">
+                        <x-ui.field :label="$office ? 'Source document' : 'Supporting document (optional)'" for="memo" error="memo" :hint="$office ? 'Memo, concept note or terms of reference (PDF, Word or image, up to 10 MB). Required before submitting to the CEO.' : 'The system generates the memo for you. Attach anything that supports it, such as an invitation letter. PDF, Word or image, up to 10 MB.'">
                             <input id="memo" type="file" wire:model="memo" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" class="block w-full text-[13px] text-slate-600 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700 file:font-semibold">
                             <div wire:loading wire:target="memo" class="text-[11px] text-slate-400 mt-1">Uploading…</div>
                         </x-ui.field>
@@ -134,9 +159,24 @@
                     <x-ui.field label="Estimated budget (KES)" for="requested" error="requested_budget" :hint="$office ? 'The department\'s own estimate. The costed plan comes from the team and cost lines.' : 'Your own estimate. After saving, add the team and cost lines under Team and costs; allowances (DSA) are calculated for you.'">
                         <input id="requested" type="text" inputmode="decimal" wire:model="requested_budget" class="{{ Ui::CONTROL }} font-numeric" placeholder="e.g. 250000">
                     </x-ui.field>
-                    <x-ui.field label="Budget line" for="budget" error="budget_line_id" :hint="$budgetLines->isEmpty() ? 'No budget lines recorded for this department and year.' : null">
+                    <x-ui.field label="Budget line" for="budget" error="budget_line_id" :hint="$budgetLines->isEmpty() ? 'No approved budget for this department and year yet.' : null">
                         <select id="budget" wire:model="budget_line_id" class="{{ $sel }}"><option value="">None</option>@foreach ($budgetLines as $b)<option value="{{ $b->id }}">{{ $b->label() }}</option>@endforeach</select>
                     </x-ui.field>
+                    @if ($budget)
+                        @php $kes = fn (?int $c) => $c === null ? '—' : 'KES '.\App\Support\Money::format($c); @endphp
+                        <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-[12px] text-slate-600 space-y-1" aria-live="polite">
+                            <p class="{{ Ui::MICRO }}">{{ $budget['department']?->name }} budget · FY {{ $budget['financial_year'] }}</p>
+                            @if ($budget['allocation'] === null)
+                                <p class="text-amber-700">No allocation is recorded for this year yet.</p>
+                            @else
+                                <p class="flex justify-between"><span>Allocation</span><span class="font-numeric">{{ $kes($budget['allocation']) }}</span></p>
+                                <p class="flex justify-between"><span>Spent</span><span class="font-numeric">{{ $kes($budget['spent']) }}</span></p>
+                                <p class="flex justify-between"><span>Committed</span><span class="font-numeric">{{ $kes($budget['committed']) }}</span></p>
+                                <p class="flex justify-between font-semibold {{ $budget['balance'] < 0 ? 'text-red-600' : 'text-slate-800' }}"><span>Available balance</span><span class="font-numeric">{{ $kes($budget['balance']) }}</span></p>
+                            @endif
+                            @if ($budget['pending_count'])<p class="text-purple-700">{{ $kes($budget['pending']) }} more is awaiting decision.</p>@endif
+                        </div>
+                    @endif
                     @if ($office)
                     <label class="flex items-start gap-2.5 text-[13px] text-slate-600">
                         <input type="checkbox" wire:model="count_externals_in_per_head" class="mt-0.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">

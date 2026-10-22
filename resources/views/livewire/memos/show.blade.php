@@ -5,12 +5,14 @@
     $s = $a->status;
     $returned = $s === ActivityStatus::ReturnedToHod;
     $hasMemo = $a->documents->contains('kind', \App\Models\ActivityDocument::KIND_MEMO);
+    $blocking = collect($issues)->where('blocking', true);
 @endphp
 
 <x-ui.page icon="fa-envelope-open-text" :title="$a->title" :subtitle="$a->reference.' · '.($a->organisingDepartment?->name ?? 'No department').' · '.Ui::dateRange($a->start_date, $a->end_date)">
     <x-slot:pills><x-ui.status :status="$s" /></x-slot:pills>
     <x-slot:actions>
         <a href="{{ route('memos.index') }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-arrow-left text-xs"></i>Memos</a>
+        <a href="{{ route('memos.document', $a) }}" target="_blank" rel="noopener" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-file-pdf text-xs text-red-600"></i>Preview memo</a>
         @if ($editable)
             @if ($canDiscard)
                 <button type="button" wire:click="$set('showDiscard', true)" class="{{ Ui::BTN_NEUTRAL }} hover:!text-red-600"><i class="fa-solid fa-trash text-xs"></i>Discard draft</button>
@@ -31,6 +33,63 @@
         <div class="px-4 py-3 rounded-lg text-sm bg-slate-100 border border-slate-200 text-slate-600"><i class="fa-solid fa-lock mr-2"></i>This memo is with the {{ $a->currentHolder() }}. You can follow it here; it can be changed again only if it is returned to you.</div>
     @endif
 
+    @if ($editable)
+        <x-ui.card :title="$blocking->isEmpty() ? 'Ready to submit' : 'Before you submit'" icon="{{ $blocking->isEmpty() ? 'fa-circle-check' : 'fa-list-check' }}" padded>
+            <p class="text-[13px] text-slate-600 mb-3">The system writes the memo for you from what you enter, with Annex A (budget breakdown), Annex B (detailed budget) and Annex C (participant itinerary). Press <strong>Preview memo</strong> to read it as the reviewer and the CEO will.</p>
+            @if ($issues === [])
+                <p class="text-[13px] text-emerald-700"><i class="fa-solid fa-circle-check mr-1"></i>Nothing is missing.</p>
+            @else
+                <ul class="space-y-1.5">
+                    @foreach ($issues as $issue)
+                        <li class="text-[13px] {{ $issue['blocking'] ? 'text-red-700' : 'text-amber-700' }}"><i class="fa-solid {{ $issue['blocking'] ? 'fa-circle-xmark' : 'fa-triangle-exclamation' }} mr-1.5"></i>{{ $issue['message'] }}@if ($issue['blocking'])<span class="text-[11px] font-semibold uppercase ml-1">Needed</span>@endif</li>
+                    @endforeach
+                </ul>
+            @endif
+        </x-ui.card>
+    @endif
+
+    @if (in_array($s, [ActivityStatus::InProgress, ActivityStatus::Completed, ActivityStatus::ReportReceived, ActivityStatus::Closed], true))
+        @php
+            $report = $a->report;
+            $planned = $a->costs->sum(fn ($c) => Money::toCents($c->estimated_amount));
+            $spent = $a->costs->whereNotNull('actual_amount')->sum(fn ($c) => Money::toCents($c->actual_amount));
+            $canReport = $s === ActivityStatus::Completed && (! $report || $report->isReturned());
+        @endphp
+        <x-ui.card title="Activity report" icon="fa-file-circle-check" padded>
+            <x-slot:actions>
+                @php $t = $a->reportTimeliness(); @endphp
+                @if ($t)
+                    <x-ui.badge :classes="match ($t['status']) { 'on_time' => 'bg-emerald-50 text-emerald-700', 'due' => 'bg-amber-50 text-amber-700', default => 'bg-red-50 text-red-700' }" icon="fa-clock">{{ $a->reportTimelinessLabel() }}</x-ui.badge>
+                @endif
+                @if ($canReport)
+                    <button type="button" wire:click="openReport" class="{{ Ui::BTN_TINT }}"><i class="fa-solid fa-file-circle-check text-[9px]"></i>{{ $report ? 'Correct and resubmit the report' : 'Submit activity report' }}</button>
+                @endif
+            </x-slot:actions>
+
+            @if ($s === ActivityStatus::InProgress)
+                <p class="text-[13px] text-slate-600"><i class="fa-solid fa-person-walking-luggage mr-1 text-blue-600"></i>Under way. Once it ends on {{ Ui::date($a->end_date) }} you submit the activity report here, with what was actually spent.</p>
+            @elseif ($report?->isReturned())
+                <div class="px-3 py-2 rounded-lg bg-orange-50 border border-orange-200 text-orange-800 text-[13px] mb-3"><p class="font-semibold"><i class="fa-solid fa-reply mr-1"></i>Returned for correction by {{ $report->reviewer?->name ?? 'the Office of the CEO' }} on {{ $report->reviewed_at?->format('d M Y') }}</p><p class="mt-1 whitespace-pre-line">{{ $report->return_reason }}</p></div>
+            @elseif ($report?->isSubmitted())
+                <p class="text-[13px] text-amber-700 mb-3"><i class="fa-solid fa-hourglass-half mr-1"></i>Submitted on {{ $report->submitted_at?->format('d M Y') }}. Waiting for the Office of the CEO to accept it.</p>
+            @elseif ($report)
+                <p class="text-[13px] text-emerald-700 mb-3"><i class="fa-solid fa-circle-check mr-1"></i>Accepted{{ $report->reviewer ? ' by '.$report->reviewer->name : '' }}{{ $report->reviewed_at ? ' on '.$report->reviewed_at->format('d M Y') : '' }}.</p>
+            @else
+                <p class="text-[13px] text-slate-600"><i class="fa-solid fa-flag-checkered mr-1 text-indigo-600"></i>The activity is complete. Submit the activity report{{ $a->report_due_on ? ' by '.Ui::date($a->report_due_on) : '' }}: what it achieved and what was actually spent on each cost line.</p>
+            @endif
+
+            @if ($report)
+                <dl class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-[13px]">
+                    <div class="sm:col-span-3"><dt class="{{ Ui::MICRO }}">What it achieved</dt><dd class="text-slate-700 whitespace-pre-line">{{ $report->outputs_achieved }}</dd></div>
+                    <div><dt class="{{ Ui::MICRO }}">Planned</dt><dd><x-ui.money :value="$planned" /></dd></div>
+                    <div><dt class="{{ Ui::MICRO }}">Actually spent</dt><dd class="font-semibold"><x-ui.money :value="$spent" /></dd></div>
+                    <div><dt class="{{ Ui::MICRO }}">Difference</dt><dd class="font-numeric {{ $spent > $planned ? 'text-red-600' : 'text-emerald-700' }}">{{ $spent > $planned ? 'over by' : 'under by' }} {{ Money::format(abs($planned - $spent)) }}</dd></div>
+                    @if ($report->document)<div class="sm:col-span-3"><a href="{{ route('documents.show', $report->document) }}" class="text-[13px] font-semibold text-emerald-700 hover:underline"><i class="fa-solid fa-paperclip mr-1"></i>{{ $report->document->original_name }}</a></div>@endif
+                </dl>
+            @endif
+        </x-ui.card>
+    @endif
+
     <x-memo.workflow :activity="$a" />
 
     <x-ui.card title="Team and costs" icon="fa-users" padded>
@@ -42,6 +101,9 @@
             </div>
             <a href="{{ route('memos.team', $a) }}" wire:navigate class="{{ $editable ? Ui::BTN_PRIMARY : Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-users text-xs"></i>{{ $editable ? 'Build the team and costs' : 'View the team and costs' }}</a>
         </div>
+        @if ($budget)
+            <x-memo.budget-position :position="$budget" class="mt-5 pt-5 border-t border-slate-100" />
+        @endif
         @if ($editable && $a->staff_count === 0)
             <p class="text-[12px] text-amber-700 mt-3"><i class="fa-solid fa-circle-info mr-1"></i>Add the officers taking part. The CEO needs at least one officer on the team.</p>
         @endif
@@ -87,7 +149,7 @@
             </div>
             @if ($editable)
                 <form wire:submit="uploadDocument" class="mt-4 space-y-2">
-                    <x-ui.field :label="$hasMemo ? 'Add a supporting document' : 'Attach the signed memo'" for="doc" error="document" :hint="$hasMemo ? 'PDF, Word, Excel or image, up to 10 MB.' : 'Needed before you can submit. PDF, Word or image, up to 10 MB.'">
+                    <x-ui.field :label="$hasMemo ? 'Add a supporting document' : 'Attach a signed copy or supporting document'" for="doc" error="document" hint="Optional: the system generates the memo. For example the invitation letter. PDF, Word, Excel or image, up to 10 MB.">
                         <input id="doc" type="file" wire:model="document" class="block w-full text-[13px] text-slate-600 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700 file:font-semibold">
                         <div wire:loading wire:target="document" class="text-[11px] text-slate-400 mt-1">Uploading…</div>
                     </x-ui.field>
@@ -108,12 +170,20 @@
             </x-ui.field>
             <p class="text-[13px] text-slate-600">You cannot change the memo while it is being reviewed. If something needs correcting, the reviewer will return it to you.</p>
         @endif
+        @if ($blocking->isNotEmpty())
+            <div class="rounded-lg border border-red-200 bg-red-50 p-3 text-[13px] text-red-800" role="alert">
+                <p class="font-semibold mb-1">Complete these first:</p>
+                <ul class="list-disc pl-5 space-y-0.5">@foreach ($blocking as $issue)<li>{{ $issue['message'] }}</li>@endforeach</ul>
+            </div>
+        @else
+            <p class="text-[13px] text-slate-600"><a href="{{ route('memos.document', $a) }}" target="_blank" rel="noopener" class="font-semibold text-emerald-700 hover:underline">Preview the memo and annexes</a> once more before you send it.</p>
+        @endif
         <x-ui.field :label="$returned ? 'What you changed (optional)' : 'Note to the reviewer (optional)'" for="s-note" error="note">
             <textarea id="s-note" wire:model="note" rows="3" class="{{ Ui::CONTROL }}" maxlength="2000"></textarea>
         </x-ui.field>
         <x-slot:footer>
             <button type="button" wire:click="$set('showSubmit', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
-            <button type="button" wire:click="submit" wire:loading.attr="disabled" wire:target="submit" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-paper-plane text-xs"></i><span wire:loading.remove wire:target="submit">{{ $returned ? 'Resubmit for review' : 'Submit for review' }}</span><span wire:loading wire:target="submit">Sending…</span></button>
+            <button type="button" wire:click="submit" wire:loading.attr="disabled" wire:target="submit" class="{{ Ui::BTN_PRIMARY }}" @disabled($blocking->isNotEmpty())><i class="fa-solid fa-paper-plane text-xs"></i><span wire:loading.remove wire:target="submit">{{ $returned ? 'Resubmit for review' : 'Submit for review' }}</span><span wire:loading wire:target="submit">Sending…</span></button>
         </x-slot:footer>
     </x-ui.modal>
 
@@ -132,6 +202,50 @@
         <x-slot:footer>
             <button type="button" wire:click="$set('showDiscard', false)" class="{{ Ui::BTN_NEUTRAL }}">Keep it</button>
             <button type="button" wire:click="discard" wire:loading.attr="disabled" wire:target="discard" class="{{ Ui::BTN_DANGER }}"><i class="fa-solid fa-trash text-xs"></i>Discard draft</button>
+        </x-slot:footer>
+    </x-ui.modal>
+
+    <x-ui.modal show="showReport" :open="$showReport" size="large" icon="fa-file-circle-check" title="Activity report" subtitle="What the activity achieved and what was actually spent. The amounts count against your budget as soon as you submit; the Office of the CEO then accepts the report or returns it for correction.">
+        <x-ui.field label="What the activity achieved" for="r-o" error="outputsAchieved" required :hint="$a->expected_outputs ? 'Expected: '.Str::limit($a->expected_outputs, 200) : null">
+            <textarea id="r-o" wire:model="outputsAchieved" rows="4" maxlength="5000" class="{{ Ui::CONTROL }}"></textarea>
+        </x-ui.field>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <x-ui.field label="Key findings" for="r-f" error="findings"><textarea id="r-f" wire:model="findings" rows="3" maxlength="5000" class="{{ Ui::CONTROL }}"></textarea></x-ui.field>
+            <x-ui.field label="Recommendations" for="r-r" error="recommendations"><textarea id="r-r" wire:model="recommendations" rows="3" maxlength="5000" class="{{ Ui::CONTROL }}"></textarea></x-ui.field>
+        </div>
+
+        <div>
+            <p class="{{ Ui::LABEL }}">Actually spent on each cost line <span class="text-red-500">*</span></p>
+            <div class="border border-slate-200 rounded-xl overflow-x-auto">
+                <table class="w-full">
+                    <thead class="border-b border-slate-100 bg-slate-50/60"><tr><th class="{{ Ui::TH }}">Cost</th><th class="{{ Ui::TH }}">For</th><th class="{{ Ui::TH }} text-right">Planned</th><th class="{{ Ui::TH }} text-right w-48">Actually spent (KES)</th></tr></thead>
+                    <tbody class="divide-y divide-slate-100">
+                        @forelse ($a->costs as $c)
+                            <tr wire:key="act-{{ $c->id }}">
+                                <td class="{{ Ui::TD }}">{{ $c->category?->name }}<p class="text-[11px] text-slate-400">{{ $c->description }}</p></td>
+                                <td class="{{ Ui::TD }}">{{ $c->participant?->displayName() ?? 'Whole activity' }}</td>
+                                <td class="{{ Ui::TD }} text-right"><x-ui.money :value="$c->estimated_amount" /></td>
+                                <td class="{{ Ui::TD }} text-right">
+                                    <input type="text" inputmode="decimal" wire:model="actuals.{{ $c->id }}" class="{{ Ui::CONTROL }} font-numeric text-right" aria-label="Actually spent on {{ $c->category?->name }}">
+                                    @error('actuals.'.$c->id)<p class="text-xs text-red-600 mt-1 text-left">{{ $message }}</p>@enderror
+                                </td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="4" class="{{ Ui::TD }} text-slate-400">This activity has no cost lines.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-1">Enter 0 where nothing was spent. Use the figures from the payments made, such as the imprest surrender.</p>
+        </div>
+
+        <x-ui.field label="Report document" for="r-d" error="reportFile" hint="Optional. PDF or Word: the signed back-to-office report.">
+            <input id="r-d" type="file" wire:model="reportFile" accept=".pdf,.doc,.docx" class="block w-full text-[13px] text-slate-600 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700 file:font-semibold">
+        </x-ui.field>
+
+        <x-slot:footer>
+            <button type="button" wire:click="$set('showReport', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
+            <button type="button" wire:click="submitReport" wire:loading.attr="disabled" wire:target="submitReport,reportFile" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-paper-plane text-xs"></i>Submit report</button>
         </x-slot:footer>
     </x-ui.modal>
 </x-ui.page>

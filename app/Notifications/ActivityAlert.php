@@ -21,7 +21,14 @@ class ActivityAlert extends Notification
         public string $message,
         public ?int $activityId = null,
         public string $icon = 'fa-bell',
+        public ?string $url = null,
     ) {}
+
+    /** About a department budget or a budget adjustment; opens the budget. */
+    public static function budget(string $message, string $url, string $icon = 'fa-wallet'): self
+    {
+        return new self('budget', $message, null, $icon, $url);
+    }
 
     public static function awaitingDecision(Activity $activity, bool $amended = false): self
     {
@@ -52,6 +59,18 @@ class ActivityAlert extends Notification
     public static function progressed(Activity $activity, string $where): self
     {
         return new self('memo_progressed', "{$where}: {$activity->title}", $activity->id, 'fa-share');
+    }
+
+    /** To the Office of the CEO: a Head of Department submitted the activity report. */
+    public static function reportSubmitted(Activity $activity, bool $resubmitted = false): self
+    {
+        return new self('report_submitted', ($resubmitted ? 'Corrected report resubmitted, please review: ' : 'Activity report submitted, please review: ').$activity->title, $activity->id, 'fa-file-circle-check');
+    }
+
+    /** To the Head of Department: their report came back. */
+    public static function reportReturned(Activity $activity): self
+    {
+        return new self('report_returned', "Report returned for correction, please revise and resubmit: {$activity->title}", $activity->id, 'fa-reply');
     }
 
     public static function pendingTooLong(Activity $activity, int $workingDays): self
@@ -88,6 +107,7 @@ class ActivityAlert extends Notification
             'message' => $this->message,
             'activity_id' => $this->activityId,
             'icon' => $this->icon,
+            'url' => $this->url,
         ];
     }
 }

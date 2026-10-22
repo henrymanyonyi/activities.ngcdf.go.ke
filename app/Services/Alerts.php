@@ -46,6 +46,20 @@ class Alerts
         }
     }
 
+    /**
+     * Named users of the Office of the CEO (budget preparers). Anyone else is skipped.
+     *
+     * @param  iterable<User>  $users
+     */
+    public function toUsers(iterable $users, ActivityAlert $alert): void
+    {
+        $recipients = collect($users)->filter(fn (User $u) => $u->is_active && $u->hasAnyRole([User::ROLE_CEO, User::ROLE_CHIEF_OF_STAFF, User::ROLE_ASSISTANT_CHIEF_OF_STAFF]));
+
+        if ($recipients->isNotEmpty()) {
+            Notification::send($recipients, $alert);
+        }
+    }
+
     /** @param  list<string>  $roles */
     private function send(array $roles, ActivityAlert $alert): void
     {

@@ -30,6 +30,7 @@ class ActivityCost extends Model
         'override_reason',
         'travel_mode',
         'finance_reference',
+        'actual_recorded_by',
         'recorded_by',
     ];
 

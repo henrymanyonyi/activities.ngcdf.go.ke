@@ -15,7 +15,7 @@ class AppSettings
     /** key => [label, default, help] */
     public const DEFINITIONS = [
         'late_notice_working_days' => ['Late-notice period (working days)', 7, 'Activities recorded fewer working days than this before the start date are flagged as late notice (OI-04).'],
-        'report_due_working_days' => ['Report due period (working days)', 5, 'Back-to-office report is due this many working days after the end date (OI-07).'],
+        'report_due_working_days' => ['Report due period (working days)', 7, 'The activity report is due to the CEO this many working days after the end date (OI-07; 7 at the business owner\'s request, 21 October 2026).'],
         'field_days_threshold_quarter' => ['Field days per officer per quarter', 30, 'Flag an officer whose cumulative field days would exceed this in a quarter (OI-05).'],
         'field_days_threshold_year' => ['Field days per officer per financial year', 100, 'Flag an officer whose cumulative field days would exceed this in a financial year (OI-05).'],
         'tolerance_date_shift_days' => ['Date change tolerance (days)', 2, 'After approval, moving the dates by more than this returns the activity to the CEO (BR-10).'],

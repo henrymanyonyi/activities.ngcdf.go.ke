@@ -5,7 +5,9 @@ namespace App\Livewire\Memos;
 use App\Models\Activity;
 use App\Models\ActivityType;
 use App\Models\Department;
+use App\Services\BudgetPosition;
 use App\Services\MemoTracker;
+use App\Support\FinancialYear;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
@@ -85,7 +87,7 @@ class Board extends Component
             ->when($this->to, fn (Builder $q, $d) => $q->whereDate('created_at', '<=', $d));
     }
 
-    public function render(MemoTracker $tracker): View
+    public function render(MemoTracker $tracker, BudgetPosition $budget): View
     {
         $user = Auth::user();
         $tabs = $tracker->tabs($user);
@@ -110,6 +112,8 @@ class Board extends Component
             'departments' => $perspective === MemoTracker::PERSPECTIVE_DEPARTMENT ? collect() : Department::query()->orderBy('name')->get(['id', 'name']),
             'types' => ActivityType::query()->orderBy('name')->get(['id', 'name']),
             'department' => $perspective === MemoTracker::PERSPECTIVE_DEPARTMENT ? $user->department : null,
+            // A Head of Department sees their own department's budget for the year before preparing a memo.
+            'budget' => $perspective === MemoTracker::PERSPECTIVE_DEPARTMENT && $user->department_id ? $budget->forDepartment(FinancialYear::current(), $user->department_id) : null,
         ]);
     }
 }

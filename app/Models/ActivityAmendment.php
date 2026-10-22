@@ -16,6 +16,9 @@ class ActivityAmendment extends Model
 
     public const KIND_COST = 'cost';
 
+    /** An officer recalled, released or reassigned part-way (ParticipantRelease). */
+    public const KIND_RELEASE = 'release';
+
     protected $fillable = ['activity_id', 'kind', 'summary', 'reason', 'before', 'after', 'returned_for_decision', 'user_id'];
 
     protected function casts(): array

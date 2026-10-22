@@ -155,13 +155,6 @@ class ActivityEditor
             return ['added' => 0, 'warnings' => [], 'returned' => false];
         }
 
-        foreach ($toAdd as $person) {
-            if ($this->checks->conflicts($person->id, $activity->start_date, $activity->end_date, $activity->id)->isNotEmpty()
-                && blank($conflictReasons[$person->id] ?? null)) {
-                throw new ActivityWorkflowException("{$person->name} is already on another approved activity on these dates. Give a reason to proceed.");
-            }
-        }
-
         $needsAmendment = $activity->status->requiresAmendment();
         if ($needsAmendment && blank($amendmentReason)) {
             throw new ActivityWorkflowException('Give a reason for changing the team of a submitted or approved activity.');
@@ -171,6 +164,15 @@ class ActivityEditor
         $returned = false;
 
         DB::transaction(function () use ($activity, $toAdd, $role, $user, $conflictReasons, $needsAmendment, $amendmentReason, &$warnings, &$returned) {
+            // Checked under a lock, so two people placing the same officer at once are taken in turn.
+            $this->checks->lockStaff($toAdd->keys()->all());
+            $busy = $this->checks->unavailableStaff($activity->start_date, $activity->end_date, $activity->id);
+            foreach ($toAdd as $person) {
+                if (isset($busy[$person->id])) {
+                    $this->assertMayOverride($user, $person->name, $busy[$person->id], $conflictReasons[$person->id] ?? null);
+                }
+            }
+
             foreach ($toAdd as $person) {
                 $participant = new ActivityParticipant([
                     'activity_id' => $activity->id,
@@ -290,11 +292,8 @@ class ActivityEditor
         }
 
         $conflictReason = trim((string) $conflictReason) ?: $participant->conflict_reason;
-        if ($participant->staff_id && blank($conflictReason)
-            && ($clash = $this->checks->conflicts($participant->staff_id, $start, $end, $activity->id))->isNotEmpty()) {
-            // A Head of Department is not told which other activity: that belongs to another department.
-            throw new ActivityWorkflowException(sprintf('%s is already on %s on those days. Give a reason to proceed.', $participant->displayName(),
-                $user->can('activities.view') ? $clash->pluck('reference')->implode(', ') : 'another approved activity'));
+        if ($participant->staff_id && ($busy = $this->checks->unavailableStaff($start, $end, $activity->id)[$participant->staff_id] ?? null)) {
+            $this->assertMayOverride($user, $participant->displayName(), $busy, $conflictReason);
         }
 
         $whole = $start->equalTo($activity->start_date) && $end->equalTo($activity->end_date);
@@ -333,6 +332,10 @@ class ActivityEditor
         $activity = $participant->loadMissing('activity')->activity;
         $this->authorizeDetails($activity, $user);
         $this->assertEditable($activity);
+
+        if (! $user->can('activities.manage')) {
+            throw new AuthorizationException('Only the Office of the CEO can keep an officer on two overlapping activities. Choose someone else, or ask for the officer to be released from the other activity.');
+        }
 
         if (trim($reason) === '') {
             throw new ActivityWorkflowException('Give the reason this person may be on both activities.');
@@ -446,6 +449,7 @@ class ActivityEditor
         $line->update([
             'actual_amount' => blank($amount) ? null : Money::fromCents(Money::toCents($amount)),
             'finance_reference' => $financeReference ?: $line->finance_reference,
+            'actual_recorded_by' => blank($amount) ? null : $user->id,
         ]);
         $this->costing->refresh($line->activity);
     }
@@ -482,6 +486,24 @@ class ActivityEditor
         return [
             'is_late_notice' => $start->gte($recordedOn) && WorkingDays::between($recordedOn, $start) < $this->settings->int('late_notice_working_days'),
         ];
+    }
+
+    /**
+     * An officer already held by another approved activity on these days may
+     * be placed only by the Office of the CEO, with a written reason. A Head
+     * of Department is told the days they are held, not whose activity it is.
+     *
+     * @param  list<array{reference: string, from: Carbon, to: Carbon}>  $busy
+     */
+    private function assertMayOverride(User $user, string $name, array $busy, ?string $reason): void
+    {
+        if (! $user->can('activities.manage')) {
+            throw new ActivityWorkflowException(ParticipantChecks::unavailableReason($name, $busy, false).' Choose someone else, or ask the Office of the CEO to release them from it first.');
+        }
+
+        if (blank($reason)) {
+            throw new ActivityWorkflowException(ParticipantChecks::unavailableReason($name, $busy, true).' Release them from it first, or give a reason to proceed.');
+        }
     }
 
     private function assertEditable(Activity $activity): void

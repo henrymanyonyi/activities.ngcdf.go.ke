@@ -1,6 +1,9 @@
 @use('App\Enums\ActivityStatus')
 @use('App\Models\Activity')
 @use('App\Models\Directive')
+@use('App\Enums\BudgetStatus')
+@use('App\Models\BudgetAdjustment')
+@use('App\Models\DepartmentBudget')
 @use('App\Services\MemoTracker')
 @php
     $user = auth()->user();
@@ -11,6 +14,11 @@
         ->orWhere(fn ($d) => $d->status(ActivityStatus::Draft)->where(fn ($o) => $o->whereNull('responsible_hod_id')->orWhereColumn('responsible_hod_id', '!=', 'created_by'))))->count() : 0;
     $overdueDirectives = $officeView ? Directive::query()->overdue()->count() : 0;
     $memoActions = app(MemoTracker::class)->actionCount($user);
+    // Budgeting: what awaits the CEO's approval, or what the CEO returned to the preparers.
+    $budgetWaiting = $user->can('budgets.approve') ? BudgetStatus::Submitted : BudgetStatus::Returned;
+    $budgetCount = $user->canAny(['budgets.prepare', 'budgets.approve']) ? DepartmentBudget::query()->where('status', $budgetWaiting->value)->count() : 0;
+    $adjustmentCount = $user->canAny(['budgets.prepare', 'budgets.approve']) ? BudgetAdjustment::query()->where('status', $budgetWaiting->value)->count() : 0;
+    $budgetLens = request()->routeIs('department-costs') && request('lens') === 'budget';
 
     $sections = [
         '' => [
@@ -26,8 +34,13 @@
         ],
         'Analysis' => [
             ['route' => 'participation', 'match' => 'participation', 'icon' => 'fa-users-viewfinder', 'label' => 'Staff participation', 'can' => 'activities.view'],
-            ['route' => 'department-costs', 'match' => 'department-costs', 'icon' => 'fa-building-columns', 'label' => 'Department costs', 'can' => 'activities.view'],
+            ['route' => 'department-costs', 'match' => 'department-costs', 'active' => ! $budgetLens && request()->routeIs('department-costs'), 'icon' => 'fa-building-columns', 'label' => 'Department costs', 'can' => 'activities.view'],
             ['route' => 'reports.index', 'match' => 'reports.*', 'icon' => 'fa-file-lines', 'label' => 'Reports', 'can' => 'activities.view'],
+        ],
+        'Budgeting' => [
+            ['route' => 'budgets.index', 'match' => ['budgets.index', 'budgets.show'], 'icon' => 'fa-wallet', 'label' => 'Department budgets', 'can' => ['budgets.prepare', 'budgets.approve'], 'count' => $budgetCount],
+            ['route' => 'budgets.adjustments', 'match' => 'budgets.adjustments', 'icon' => 'fa-sliders', 'label' => 'Budget adjustments', 'can' => ['budgets.prepare', 'budgets.approve'], 'count' => $adjustmentCount],
+            ['route' => 'department-costs', 'params' => ['lens' => 'budget'], 'match' => 'department-costs', 'active' => $budgetLens, 'icon' => 'fa-scale-balanced', 'label' => 'Budget position', 'can' => 'activities.view'],
         ],
         'Office of the CEO' => [
             ['route' => 'links.index', 'match' => 'links.*', 'icon' => 'fa-link', 'label' => 'Submission links', 'can' => 'links.manage', 'hidden' => ! config('activities.submission_links')],
@@ -49,8 +62,8 @@
     @endif
 
     @foreach ($visible as $item)
-        @php $active = request()->routeIs($item['match']); @endphp
-        <a href="{{ route($item['route']) }}" wire:navigate title="{{ $item['label'] }}"
+        @php $active = $item['active'] ?? request()->routeIs(...(array) $item['match']); @endphp
+        <a href="{{ route($item['route'], $item['params'] ?? []) }}" wire:navigate title="{{ $item['label'] }}"
             @if ($active) aria-current="page" @endif
             class="group flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition {{ $active ? 'bg-emerald-800 text-white' : 'text-emerald-100/80 hover:bg-emerald-800/60 hover:text-white' }}">
             <i class="fa-solid {{ $item['icon'] }} w-5 text-center text-sm {{ $active ? 'text-emerald-300' : 'text-emerald-400/80 group-hover:text-emerald-300' }}" aria-hidden="true"></i>

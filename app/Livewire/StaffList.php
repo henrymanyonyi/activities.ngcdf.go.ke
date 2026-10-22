@@ -22,8 +22,9 @@ use Livewire\WithPagination;
 /**
  * FRD MD-01: the staff list, maintained by the Office of the CEO on screen and
  * by Excel import. A Head of Department sees it and adds officers who are
- * missing, so they can build a team; they correct only the records they added
- * (App\Services\StaffRecords).
+ * missing, one by one or by importing a list, so they can build a team; they
+ * correct only the records they added (App\Services\StaffRecords,
+ * App\Services\StaffImporter).
  */
 #[Layout('layouts.admin')]
 #[Title('Staff list')]
@@ -138,15 +139,16 @@ class StaffList extends Component
 
     public function import(StaffImporter $importer): void
     {
-        abort_unless(Auth::user()->can('reference.manage'), 403);
+        abort_unless(Auth::user()->canAny(['reference.manage', 'staff.add']), 403);
         $this->validate(['file' => ['required', 'file', 'mimes:xlsx,xls,csv,txt', 'max:'.config('activities.max_list_kb')]]);
 
-        $result = $importer->import($this->file->getRealPath());
+        $result = $importer->import($this->file->getRealPath(), Auth::user());
         $this->importErrors = $result['errors'];
 
         if ($result['errors'] === []) {
             $this->reset(['showImport', 'file']);
-            $this->toast("Staff list imported: {$result['created']} added, {$result['updated']} updated.");
+            $this->toast("Staff list imported: {$result['created']} added, {$result['updated']} updated."
+                .($result['skipped'] ? " {$result['skipped']} already on the list were left as they are." : ''));
         }
     }
 
