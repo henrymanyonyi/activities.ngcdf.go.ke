@@ -8,6 +8,7 @@ use App\Models\Department;
 use App\Models\Designation;
 use App\Models\Office;
 use App\Models\Staff;
+use App\Rules\DsaGrade;
 use App\Services\StaffImporter;
 use App\Services\StaffRecords;
 use Illuminate\Support\Facades\Auth;
@@ -128,7 +129,7 @@ class StaffList extends Component
             'phone' => ['nullable', 'string', 'max:30'],
             'form_department_id' => ['required', 'exists:departments,id'],
             'designation_id' => ['nullable', 'exists:designations,id'],
-            'job_grade' => ['nullable', 'string', 'max:20'],
+            'job_grade' => ['nullable', 'string', 'max:20', new DsaGrade(EmploymentType::tryFrom($this->employment_type) ?? EmploymentType::Permanent)],
             'office_id' => ['nullable', 'exists:offices,id'],
             'is_active' => ['boolean'],
         ], ['staff_number.required' => 'The PF number is required for permanent staff.'], ['staff_number' => 'PF number', 'form_department_id' => 'department', 'contract_ends_on' => 'contract end date']);

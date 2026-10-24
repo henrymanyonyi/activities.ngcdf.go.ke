@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Enums\EmploymentType;
+use App\Models\DsaRate;
 use App\Models\Staff;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -30,8 +32,14 @@ class StaffRecords
 
         $attributes = array_merge($attributes, [
             'staff_number' => filled($attributes['staff_number'] ?? null) ? strtoupper(trim($attributes['staff_number'])) : null,
-            'job_grade' => filled($attributes['job_grade'] ?? null) ? strtoupper(trim($attributes['job_grade'])) : null,
+            'job_grade' => filled($attributes['job_grade'] ?? null) ? (DsaRate::normaliseGrade($attributes['job_grade']) ?? strtoupper(trim($attributes['job_grade']))) : null,
         ]);
+
+        // A casual or attachee without a job grade is costed at the INTERN DSA rate.
+        $type = EmploymentType::tryFrom((string) ($attributes['employment_type'] ?? '')) ?? $staff?->employment_type ?? EmploymentType::Permanent;
+        if ($attributes['job_grade'] === null && ! $type->requiresStaffNumber()) {
+            $attributes['job_grade'] = DsaRate::INTERN;
+        }
 
         if (array_key_exists('is_active', $attributes)) {
             $attributes['exited_on'] = $attributes['is_active'] ? null : ($staff?->exited_on ?? today());

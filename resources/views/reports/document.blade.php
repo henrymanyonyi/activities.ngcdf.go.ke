@@ -1,4 +1,5 @@
 {{-- PDF and print layout for a standard report. One RESTRICTED marking with the user and time, repeated at the top of every page (FRD CF-07). --}}
+@use('App\Support\DocumentFont')
 @php
     $columns = $report->columns();
     $totals = $report->totals($rows);
@@ -10,8 +11,10 @@
     <meta charset="utf-8">
     <title>{{ $report->title() }} · RESTRICTED</title>
     <style>
+        {{-- Embedded in the PDF; the print view uses the font installed on the viewer's computer. --}}
+        @unless ($print ?? false){!! DocumentFont::faces() !!}@endunless
         @page { margin: 70px 28px 40px 28px; }
-        body { font-family: DejaVu Sans, Helvetica, Arial, sans-serif; font-size: 9px; color: #1e293b; }
+        body { font-family: {!! DocumentFont::STACK !!}; font-size: 9px; color: #1e293b; }
         header.mark { position: fixed; left: 0; right: 0; top: -52px; text-align: center; font-weight: bold; color: #b91c1c; letter-spacing: 2px; font-size: 9px; }
         header.mark .stamp { display: block; color: #64748b; letter-spacing: 0; font-weight: normal; margin-top: 3px; }
         h1 { font-size: 15px; margin: 0 0 2px; color: #065f46; }

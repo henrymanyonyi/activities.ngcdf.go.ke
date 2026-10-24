@@ -12,9 +12,14 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 /**
- * FRD CB-01 / BR-02: planned DSA per staff participant = rate for their job
- * grade and the destination category × nights (or days, per OI-01), at the
- * rate in force on the start date.
+ * FRD CB-01 / BR-02: planned DSA per staff participant = the standard rate for
+ * their job grade × nights (or days, per OI-01), at the rate in force on the
+ * start date. The destination does not change the rate (standard rates,
+ * 22 October 2026); a location in a county only shows that officers travel.
+ * Casuals and attachees without a job grade are costed at the INTERN rate.
+ *
+ * Completed, closed, declined and cancelled activities are never recalculated,
+ * so their recorded amounts stay as they were.
  *
  * Each staff participant gets at most one computed DSA line. An amount the
  * Chief of Staff has overridden is kept (with its logged reason); only the
@@ -26,12 +31,12 @@ class DsaCalculator
 
     public function __construct(private AppSettings $settings, private ActivityCosting $costing) {}
 
-    /** The destination category of the activity: the first location whose county has one. */
-    public function destinationCategory(Activity $activity): ?string
+    /** DSA applies when officers travel: the activity has a location in a county. */
+    public function appliesTo(Activity $activity): bool
     {
-        $activity->loadMissing('locations.county');
+        $activity->loadMissing('locations');
 
-        return $activity->locations->map(fn ($l) => $l->county?->dsa_destination_category)->filter()->first();
+        return $activity->locations->contains(fn ($l) => $l->county_id !== null);
     }
 
     public function units(Activity $activity, ?ActivityParticipant $participant = null): int
@@ -53,14 +58,18 @@ class DsaCalculator
             return ['The DSA cost category is missing from Settings.'];
         }
 
-        $destination = $this->destinationCategory($activity);
-        $warnings = [];
-
-        if ($destination === null) {
-            $warnings[] = 'No DSA destination category is set for the activity location, so DSA was not calculated.';
+        if ($activity->status->isDelivered() || $activity->status->isReadOnly()) {
+            return ['DSA is not recalculated once an activity is completed, closed, declined or cancelled; its recorded amounts are kept.'];
         }
 
-        DB::transaction(function () use ($activity, $category, $destination, &$warnings) {
+        $travels = $this->appliesTo($activity);
+        $warnings = [];
+
+        if (! $travels) {
+            $warnings[] = 'No location in a county is set for the activity, so DSA was not calculated.';
+        }
+
+        DB::transaction(function () use ($activity, $category, $travels, &$warnings) {
             $activity->load('participants.staff');
 
             foreach ($activity->participants->where('is_external', false) as $participant) {
@@ -71,11 +80,12 @@ class DsaCalculator
                     ->where('is_computed', true)
                     ->first();
 
-                $rate = $destination ? DsaRate::lookup($participant->job_grade ?? $participant->staff?->job_grade, $destination, $activity->start_date) : null;
+                $grade = DsaRate::gradeFor($participant->job_grade ?? $participant->staff?->job_grade, $participant->staff?->employment_type);
+                $rate = $travels ? DsaRate::lookup($grade, $activity->start_date) : null;
 
                 if (! $rate) {
-                    if ($destination) {
-                        $warnings[] = sprintf('No DSA rate for %s (job grade %s, %s).', $participant->displayName(), $participant->job_grade ?: 'not set', $destination);
+                    if ($travels) {
+                        $warnings[] = sprintf('No DSA rate for %s (job grade %s).', $participant->displayName(), $grade ?: 'not set');
                     }
 
                     continue;

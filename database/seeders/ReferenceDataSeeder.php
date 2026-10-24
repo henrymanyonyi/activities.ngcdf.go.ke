@@ -5,7 +5,6 @@ namespace Database\Seeders;
 use App\Enums\CostScope;
 use App\Models\ActivityCategory;
 use App\Models\CostCategory;
-use App\Models\County;
 use App\Models\Department;
 use App\Models\Designation;
 use App\Models\Office;
@@ -79,9 +78,6 @@ class ReferenceDataSeeder extends Seeder
         ['Other approved costs', 'other', CostScope::Activity],
     ];
 
-    /** Provisional DSA destination categories (OI-01): these five are Cities, every other county Other towns. */
-    public const CITY_COUNTIES = ['Nairobi City', 'Mombasa', 'Kisumu', 'Nakuru', 'Uasin Gishu'];
-
     public function run(): void
     {
         foreach (self::COST_TYPES as $i => [$name, $code, $scope]) {
@@ -136,13 +132,6 @@ class ReferenceDataSeeder extends Seeder
                     $model->types()->firstOrCreate(['name' => $type]);
                 }
             }
-        });
-
-        // Needs the counties from GeographySeeder. Only fills counties that have no category yet.
-        $this->once('dsa_destinations', function () {
-            County::query()->whereNull('dsa_destination_category')->each(function (County $county) {
-                $county->update(['dsa_destination_category' => in_array($county->name, self::CITY_COUNTIES, true) ? 'Cities' : 'Other towns']);
-            });
         });
     }
 }

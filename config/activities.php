@@ -15,6 +15,10 @@ return [
     'lockout_attempts' => (int) env('ACTIVITIES_LOCKOUT_ATTEMPTS', 5),
     'lockout_minutes' => (int) env('ACTIVITIES_LOCKOUT_MINUTES', 30),
 
+    // Gill Sans MT font files for generated documents (App\Support\DocumentFont).
+    // Licensed with Microsoft Office, so copied onto each server, never committed.
+    'document_fonts' => env('ACTIVITIES_DOCUMENT_FONTS', storage_path('app/fonts')),
+
     // Upload limits (kilobytes).
     'max_document_kb' => 10240,
     'max_list_kb' => 2048,

@@ -4,6 +4,7 @@
     own page. No RESTRICTED banner at the top (removed at the business
     owner's request, 21 October 2026); "Page n of N" is stamped by MemoDocument::pdf() once the pages exist.
 --}}
+@use('App\Support\DocumentFont')
 @use('App\Support\Money')
 @php
     $a = $activity;
@@ -17,8 +18,9 @@
     <meta charset="utf-8">
     <title>{{ $a->reference }} · Activity memo · RESTRICTED</title>
     <style>
+        {!! DocumentFont::faces() !!}
         @page { margin: 48px 48px 60px 48px; }
-        body { font-family: DejaVu Sans, Helvetica, Arial, sans-serif; font-size: 10px; color: #1e293b; line-height: 1.45; }
+        body { font-family: {!! DocumentFont::STACK !!}; font-size: 10px; color: #1e293b; line-height: 1.45; }
         footer.foot { position: fixed; left: 0; right: 0; bottom: -40px; font-size: 8px; color: #64748b; border-top: 1px solid #cbd5e1; padding-top: 4px; }
         .brand { text-align: center; margin-bottom: 6px; }
         .brand img { height: 58px; }
@@ -150,7 +152,7 @@
                 <tr class="total"><td colspan="6">Total</td><td class="num">{{ $kes($total) }}</td></tr>
             </tbody>
         </table>
-        <p class="muted">DSA is calculated from each officer's job grade (scale), the destination and their own nights, at the rate in force on the start date. "(adjusted)" marks a DSA amount changed by the Office of the CEO with a recorded reason.</p>
+        <p class="muted">DSA is calculated from each officer's scale (job grade) and their own nights, at the rate in force on the start date. "(adjusted)" marks a DSA amount changed by the Office of the CEO with a recorded reason.</p>
     </div>
 
     {{-- ── Annex C: participant itinerary ────────────────────────── --}}

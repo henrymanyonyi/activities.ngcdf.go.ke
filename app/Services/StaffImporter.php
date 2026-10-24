@@ -6,6 +6,7 @@ use App\Enums\EmploymentType;
 use App\Imports\StaffListSheet;
 use App\Models\Department;
 use App\Models\Designation;
+use App\Models\DsaRate;
 use App\Models\Office;
 use App\Models\Staff;
 use App\Models\User;
@@ -26,6 +27,9 @@ use Throwable;
  * are matched by exact name among officers without one, and a name that
  * matches more than one is rejected. Department and Duty Station must already
  * be on the reference lists, so a misspelling cannot add a department.
+ * Job Grade is the scale from the HR register (1 to 10; a "Job Scale" column
+ * is read too), or INTERN, which only casuals and attachees may have; a casual
+ * or attachee without a grade gets INTERN.
  * Every row is checked before anything is saved; with $dryRun nothing is saved.
  *
  * A Head of Department may import too, under the same rules as adding one
@@ -60,6 +64,7 @@ class StaffImporter
 
         $departments = Department::query()->get(['id', 'name'])->mapWithKeys(fn ($d) => [mb_strtolower($d->name) => $d->id]);
         $offices = Office::query()->get(['id', 'name'])->mapWithKeys(fn ($o) => [mb_strtolower($o->name) => $o->id]);
+        $grades = DsaRate::grades();
 
         $errors = [];
         $valid = [];
@@ -84,7 +89,7 @@ class StaffImporter
                 $rowErrors[] = 'Name is required.';
             }
             $nameKey = mb_strtolower($name);
-            $existing = null;
+            $existing = $pf !== '' ? Staff::withTrashed()->where('staff_number', $pf)->first() : null;
             if ($pf === '' && $name !== '') {
                 $matches = Staff::withTrashed()->whereNull('staff_number')->whereRaw('LOWER(name) = ?', [$nameKey])->get();
                 if ($matches->count() > 1) {
@@ -101,6 +106,19 @@ class StaffImporter
             }
             if ($pf === '' && $name !== '' && isset($seenNames[$nameKey])) {
                 $rowErrors[] = "{$name} has no PF Number and also appears on row {$seenNames[$nameKey]}.";
+            }
+
+            // DSA classification: a numbered grade or INTERN. A casual or attachee without one is
+            // costed at INTERN; one HR has reclassified keeps their grade when the cell is blank.
+            $effectiveType = $type ?? $existing?->employment_type ?? EmploymentType::Permanent;
+            $gradeText = trim((string) ($row['job_grade'] ?? $row['job_scale'] ?? ''));
+            $grade = $gradeText === '' ? null : DsaRate::normaliseGrade($gradeText, $grades);
+            if ($gradeText !== '' && $grade === null) {
+                $rowErrors[] = "Job Grade \"{$gradeText}\" is not a scale from 1 to 10, or INTERN for casuals and attachees.";
+            } elseif ($grade === DsaRate::INTERN && $effectiveType->requiresStaffNumber()) {
+                $rowErrors[] = 'Job Grade INTERN is only for casuals and attachees.';
+            } elseif ($grade === null && ! $effectiveType->requiresStaffNumber() && blank($existing?->job_grade)) {
+                $grade = DsaRate::INTERN;
             }
 
             $email = trim((string) ($row['email'] ?? ''));
@@ -137,7 +155,6 @@ class StaffImporter
 
             if ($pf !== '') {
                 $seen[$pf] = $line;
-                $existing = Staff::withTrashed()->where('staff_number', $pf)->first();
             } else {
                 $seenNames[$nameKey] = $line;
             }
@@ -150,7 +167,7 @@ class StaffImporter
                     'name' => mb_substr($name, 0, 255),
                     'employment_type' => $type,
                     'designation' => (string) ($row['designation'] ?? ''),
-                    'job_grade' => mb_substr(strtoupper(trim((string) ($row['job_grade'] ?? ''))), 0, 20) ?: null,
+                    'job_grade' => $grade,
                     'department_id' => $departments->get(mb_strtolower($department)),
                     'office_id' => $offices->get(mb_strtolower($station)),
                     'email' => $email ?: null,

@@ -1,17 +1,17 @@
 PF Number,Name,Designation,Job Grade,Department,Duty Station,Email,Phone,Active
-PF1001,Grace Wanjiku,Deputy Director,NGCDF 3,Monitoring & Evaluation,Headquarters,gwanjiku@ngcdf.go.ke,0700000001,Yes
-PF1002,Peter Otieno,Senior M&E Officer,NGCDF 5,Monitoring & Evaluation,Headquarters,potieno@ngcdf.go.ke,0700000002,Yes
-PF1003,Amina Hassan,M&E Officer,NGCDF 6,Monitoring & Evaluation,Headquarters,ahassan@ngcdf.go.ke,0700000003,Yes
-PF1004,John Kiprono,Principal Accountant,NGCDF 4,Financial Services - Accounts,Headquarters,jkiprono@ngcdf.go.ke,0700000004,Yes
-PF1005,Mary Achieng,Accountant,NGCDF 6,Financial Services - Accounts,Headquarters,machieng@ngcdf.go.ke,0700000005,Yes
-PF1006,David Mwangi,Senior Internal Auditor,NGCDF 5,Internal Audit,Headquarters,dmwangi@ngcdf.go.ke,0700000006,Yes
-PF1007,Faith Njeri,Internal Auditor,NGCDF 6,Internal Audit,Headquarters,fnjeri@ngcdf.go.ke,0700000007,Yes
-PF1008,Samuel Kamau,Regional Coordinator,NGCDF 4,Programmes,Western Region,skamau@ngcdf.go.ke,0700000008,Yes
-PF1009,Lucy Wambui,Regional Coordinator,NGCDF 4,Programmes,Nyanza Region,lwambui@ngcdf.go.ke,0700000009,Yes
-PF1010,Brian Ouma,Communications Officer,NGCDF 6,Corporate Communications,Headquarters,bouma@ngcdf.go.ke,0700000010,Yes
-PF1011,Esther Chebet,Legal Officer,NGCDF 5,Legal Services,Headquarters,echebet@ngcdf.go.ke,0700000011,Yes
-PF1012,Joseph Mutua,Driver,NGCDF 8,Administration,Headquarters,jmutua@ngcdf.go.ke,0700000012,Yes
-PF1013,Ann Nyambura,ICT Officer,NGCDF 6,ICT,Headquarters,anyambura@ngcdf.go.ke,0700000013,Yes
-PF1014,Kevin Barasa,Procurement Officer,NGCDF 6,Supply Chain,Headquarters,kbarasa@ngcdf.go.ke,0700000014,Yes
-PF1015,Rose Akinyi,Board Secretary,NGCDF 3,Office of the CEO,Headquarters,rakinyi@ngcdf.go.ke,0700000015,Yes
-PF1016,Tom Were,Records Officer,NGCDF 7,Administration,Headquarters,twere@ngcdf.go.ke,0700000016,No
+PF1001,Grace Wanjiku,Deputy Director,3,Monitoring & Evaluation,Headquarters,gwanjiku@ngcdf.go.ke,0700000001,Yes
+PF1002,Peter Otieno,Senior M&E Officer,5,Monitoring & Evaluation,Headquarters,potieno@ngcdf.go.ke,0700000002,Yes
+PF1003,Amina Hassan,M&E Officer,6,Monitoring & Evaluation,Headquarters,ahassan@ngcdf.go.ke,0700000003,Yes
+PF1004,John Kiprono,Principal Accountant,4,Financial Services - Accounts,Headquarters,jkiprono@ngcdf.go.ke,0700000004,Yes
+PF1005,Mary Achieng,Accountant,6,Financial Services - Accounts,Headquarters,machieng@ngcdf.go.ke,0700000005,Yes
+PF1006,David Mwangi,Senior Internal Auditor,5,Internal Audit,Headquarters,dmwangi@ngcdf.go.ke,0700000006,Yes
+PF1007,Faith Njeri,Internal Auditor,6,Internal Audit,Headquarters,fnjeri@ngcdf.go.ke,0700000007,Yes
+PF1008,Samuel Kamau,Regional Coordinator,4,Programmes,Western Region,skamau@ngcdf.go.ke,0700000008,Yes
+PF1009,Lucy Wambui,Regional Coordinator,4,Programmes,Nyanza Region,lwambui@ngcdf.go.ke,0700000009,Yes
+PF1010,Brian Ouma,Communications Officer,6,Corporate Communications,Headquarters,bouma@ngcdf.go.ke,0700000010,Yes
+PF1011,Esther Chebet,Legal Officer,5,Legal Services,Headquarters,echebet@ngcdf.go.ke,0700000011,Yes
+PF1012,Joseph Mutua,Driver,8,Administration,Headquarters,jmutua@ngcdf.go.ke,0700000012,Yes
+PF1013,Ann Nyambura,ICT Officer,6,ICT,Headquarters,anyambura@ngcdf.go.ke,0700000013,Yes
+PF1014,Kevin Barasa,Procurement Officer,6,Supply Chain,Headquarters,kbarasa@ngcdf.go.ke,0700000014,Yes
+PF1015,Rose Akinyi,Board Secretary,3,Office of the CEO,Headquarters,rakinyi@ngcdf.go.ke,0700000015,Yes
+PF1016,Tom Were,Records Officer,7,Administration,Headquarters,twere@ngcdf.go.ke,0700000016,No

@@ -7,13 +7,11 @@ use App\Livewire\Concerns\RunsActions;
 use App\Models\ActivityCategory;
 use App\Models\ActivityType;
 use App\Models\CostCategory;
-use App\Models\County;
 use App\Models\Department;
 use App\Models\Designation;
 use App\Models\DsaRate;
 use App\Models\Office;
 use App\Models\Region;
-use App\Models\Staff;
 use App\Services\AppSettings;
 use App\Services\AuditLogger;
 use App\Support\Money;
@@ -65,8 +63,6 @@ class Reference extends Component
     // DSA rates
     public string $rateGrade = '';
 
-    public string $rateDestination = '';
-
     public string $rateAmount = '';
 
     public string $rateFrom = '';
@@ -74,13 +70,9 @@ class Reference extends Component
     /** @var array<string, string> */
     public array $settings = [];
 
-    /** @var array<int, string> county id => destination category */
-    public array $destinations = [];
-
     public function mount(AppSettings $appSettings): void
     {
         $this->settings = collect($appSettings->all())->map(fn ($v) => (string) $v)->all();
-        $this->destinations = County::query()->pluck('dsa_destination_category', 'id')->map(fn ($v) => (string) $v)->all();
         $this->rateFrom = today()->toDateString();
     }
 
@@ -190,40 +182,26 @@ class Reference extends Component
         $category->update(['is_active' => ! $category->is_active]);
     }
 
-    public function saveDestinations(): void
-    {
-        $this->guard();
-        $this->validate(['destinations.*' => ['nullable', 'string', 'max:40']]);
-
-        foreach ($this->destinations as $id => $category) {
-            County::query()->whereKey($id)->first()?->update(['dsa_destination_category' => trim((string) $category) ?: null]);
-        }
-
-        $this->toast('Destination categories saved. Recalculate DSA on open activities to apply them.');
-    }
-
     public function addRate(): void
     {
         $this->guard();
         $this->validate([
             'rateGrade' => ['required', 'string', 'max:20'],
-            'rateDestination' => ['required', 'string', 'max:40'],
             'rateAmount' => ['required', 'regex:/^\d{1,3}(,?\d{3})*(\.\d{1,2})?$/'],
             'rateFrom' => ['required', 'date'],
-        ], ['rateAmount.regex' => 'Enter an amount such as 8,400.00.'], ['rateGrade' => 'job grade', 'rateDestination' => 'destination category', 'rateAmount' => 'rate', 'rateFrom' => 'effective from']);
+        ], ['rateAmount.regex' => 'Enter an amount such as 8,400.00.'], ['rateGrade' => 'job grade', 'rateAmount' => 'rate', 'rateFrom' => 'effective from']);
 
         DB::transaction(function () {
-            $grade = strtoupper(trim($this->rateGrade));
+            $grade = DsaRate::normaliseGrade($this->rateGrade) ?? strtoupper(trim($this->rateGrade));
             $from = Carbon::parse($this->rateFrom);
 
-            // End-date the rate currently open for this grade and destination (MD-05: history kept).
-            DsaRate::query()->whereRaw('UPPER(job_grade) = ?', [$grade])->whereRaw('LOWER(destination_category) = ?', [strtolower(trim($this->rateDestination))])
+            // End-date the rate currently open for this grade (MD-05: history kept). One rate per grade, whatever the destination.
+            DsaRate::query()->standard()->whereRaw('UPPER(job_grade) = ?', [$grade])
                 ->whereNull('effective_to')->whereDate('effective_from', '<', $from)
                 ->get()->each(fn (DsaRate $r) => $r->update(['effective_to' => $from->copy()->subDay()]));
 
             DsaRate::create([
                 'job_grade' => $grade,
-                'destination_category' => trim($this->rateDestination),
                 'amount' => Money::fromCents(Money::toCents($this->rateAmount)),
                 'effective_from' => $from,
                 'recorded_by' => Auth::id(),
@@ -231,7 +209,7 @@ class Reference extends Component
         });
 
         $this->reset(['rateGrade', 'rateAmount']);
-        $this->toast('Rate added. Any earlier open rate for the same grade and destination now ends the day before.');
+        $this->toast('Rate added. Any earlier open rate for the same grade now ends the day before.');
     }
 
     public function saveSettings(AppSettings $appSettings): void
@@ -271,19 +249,26 @@ class Reference extends Component
                 'categories' => ['icon' => 'fa-shapes', 'label' => 'Categories'],
                 'types' => ['icon' => 'fa-tags', 'label' => 'Activity types'],
                 'costs' => ['icon' => 'fa-coins', 'label' => 'Cost types'],
-                'destinations' => ['icon' => 'fa-map', 'label' => 'DSA destinations'],
                 'rates' => ['icon' => 'fa-money-bill-wave', 'label' => 'DSA rates'],
                 'thresholds' => ['icon' => 'fa-sliders', 'label' => 'Thresholds'],
             ],
         ];
+
+        // An old link to a removed tab (such as DSA destinations) opens the first one.
+        if (! isset($data['tabs'][$this->tab])) {
+            $this->tab = 'departments';
+        }
 
         $data += match ($this->tab) {
             'departments', 'designations', 'offices' => ['items' => $this->modelFor($this->tab)::query()->orderBy('is_active', 'desc')->orderBy('name')->get(), 'lookupLabel' => self::LOOKUPS[$this->tab][1]],
             'categories' => ['items' => ActivityCategory::query()->withCount('types')->orderBy('name')->get()],
             'types' => ['items' => ActivityType::query()->with('category')->get()->sortBy(fn ($t) => $t->category?->name.$t->name), 'categories' => ActivityCategory::query()->orderBy('name')->get()],
             'costs' => ['items' => CostCategory::query()->ordered()->get()],
-            'destinations' => ['items' => County::query()->orderBy('name')->get(), 'known' => County::query()->whereNotNull('dsa_destination_category')->distinct()->pluck('dsa_destination_category')],
-            'rates' => ['items' => DsaRate::query()->orderBy('job_grade')->orderBy('destination_category')->orderByDesc('effective_from')->get(), 'known' => County::query()->whereNotNull('dsa_destination_category')->distinct()->pluck('dsa_destination_category'), 'grades' => Staff::query()->whereNotNull('job_grade')->distinct()->orderBy('job_grade')->pluck('job_grade')],
+            'rates' => [
+                'items' => DsaRate::query()->standard()->get()->sortBy([fn ($a, $b) => strnatcmp($a->job_grade, $b->job_grade), fn ($a, $b) => $b->effective_from <=> $a->effective_from])->values(),
+                'retired' => DsaRate::query()->whereNotNull('destination_category')->orderBy('job_grade')->orderBy('destination_category')->get(),
+                'grades' => DsaRate::grades(),
+            ],
             default => [],
         };
 

@@ -113,19 +113,18 @@ it('filters the register and shows the count', function () {
 
 it('lets the Chief of Staff add a DSA rate that end-dates the previous one (MD-05)', function () {
     $cos = chiefOfStaff();
-    DsaRate::create(['job_grade' => 'NGCDF 5', 'destination_category' => 'Cities', 'amount' => '10000.00', 'effective_from' => '2024-07-01']);
+    DsaRate::create(['job_grade' => '5', 'amount' => '10000.00', 'effective_from' => '2024-07-01']);
 
     Livewire::actingAs($cos)->test(Reference::class)
         ->call('setTab', 'rates')
         ->set('rateGrade', 'ngcdf 5')
-        ->set('rateDestination', 'Cities')
         ->set('rateAmount', '12,000')
         ->set('rateFrom', '2026-07-01')
         ->call('addRate')
         ->assertHasNoErrors();
 
     expect(DsaRate::orderBy('id')->first()->effective_to->toDateString())->toBe('2026-06-30')
-        ->and(DsaRate::latest('id')->first()->amount)->toBe('12000.00');
+        ->and(DsaRate::latest('id')->first())->amount->toBe('12000.00')->job_grade->toBe('5')->destination_category->toBeNull();
 });
 
 it('merges a duplicate department and moves its staff', function () {
@@ -148,13 +147,13 @@ it('imports the HR staff list and updates by PF number (MD-01)', function () {
     $cos = chiefOfStaff();
     Staff::factory()->create(['staff_number' => 'PF001', 'name' => 'Old Name']);
 
-    $csv = "PF Number,Name,Designation,Job Grade,Department,Duty Station,Email,Phone,Active\nPF001,New Name,Officer,NGCDF 6,ICT,Headquarters,,,Yes\nPF002,Second Person,Clerk,NGCDF 8,Supply Chain,Headquarters,,,Yes\n";
+    $csv = "PF Number,Name,Designation,Job Grade,Department,Duty Station,Email,Phone,Active\nPF001,New Name,Officer,6,ICT,Headquarters,,,Yes\nPF002,Second Person,Clerk,8,Supply Chain,Headquarters,,,Yes\n";
     $file = UploadedFile::fake()->createWithContent('staff.csv', $csv);
 
     Livewire::actingAs($cos)->test(StaffList::class)->set('file', $file)->call('import')->assertHasNoErrors()->assertSet('importErrors', []);
 
     expect(Staff::where('staff_number', 'PF001')->value('name'))->toBe('New Name')
-        ->and(Staff::where('staff_number', 'PF002')->value('job_grade'))->toBe('NGCDF 8');
+        ->and(Staff::where('staff_number', 'PF002')->value('job_grade'))->toBe('8');
 });
 
 it('keeps to one active account per role and shows the one-time password once (CF-01)', function () {
@@ -182,7 +181,7 @@ it('takes a submission through a magic link as a Draft for review', function () 
     $cos = chiefOfStaff();
     [$link, $token] = app(SubmissionLinkService::class)->create(['label' => 'Q2 plan', 'recipient_name' => 'HOD PPME', 'expires_at' => now()->addDays(7), 'max_submissions' => 1], $cos);
 
-    $csv = "Staff Number,Name,Department,Designation,Job Grade,Office,Region,Role,Days,External,Organisation,External Category,Email,Phone\nPF900,Mary Atieno,Projects Planning & M&E,Officer,NGCDF 5,Headquarters,Nyanza,Team lead,3,No,,,,\n,Hon. B,,,,,,Member,2,Yes,National Assembly,MP,,\n";
+    $csv = "Staff Number,Name,Department,Designation,Job Grade,Office,Region,Role,Days,External,Organisation,External Category,Email,Phone\nPF900,Mary Atieno,Projects Planning & M&E,Officer,5,Headquarters,Nyanza,Team lead,3,No,,,,\n,Hon. B,,,,,,Member,2,Yes,National Assembly,MP,,\n";
     $bad = "Staff Number,Name,Role\nPF1,,Member\n";
 
     $component = Livewire::withCookie(config('privacy.cookie'), visitorPrivacyConsent())->test(Submit::class, ['token' => $token])

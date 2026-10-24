@@ -19,14 +19,19 @@ return new class extends Migration
             $table->foreignId('designation_id')->nullable()->constrained()->nullOnDelete();
             // MD-01: job grade drives the DSA rate.
             $table->string('job_grade', 20)->nullable();
+            // Permanent, casual or attachee (App\Enums\EmploymentType). Only permanent staff must have a PF number.
+            $table->string('employment_type', 20)->default('permanent');
             $table->foreignId('office_id')->nullable()->constrained()->nullOnDelete();
             $table->boolean('is_active')->default(true);
             // Employment window: participation comparisons only count the period someone was employed.
             $table->date('joined_on')->nullable();
             $table->date('exited_on')->nullable();
+            $table->date('contract_ends_on')->nullable();
             // Future link to Smart NG-CDF's HqStaff record (join key: staff_number).
             $table->unsignedBigInteger('smart_hq_staff_id')->nullable()->index();
             $table->string('source', 20)->default('manual');
+            // Who added the officer by hand, so a Head of Department can correct the records they added (and only those).
+            $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
             $table->softDeletes();
 

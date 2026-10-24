@@ -25,8 +25,8 @@ use Livewire\Livewire;
 
 beforeEach(function () {
     Storage::fake('local');
-    DsaRate::create(['job_grade' => 'NGCDF 5', 'destination_category' => 'Other towns', 'amount' => '8400.00', 'effective_from' => '2020-07-01']);
-    DsaRate::create(['job_grade' => 'NGCDF 3', 'destination_category' => 'Other towns', 'amount' => '14000.00', 'effective_from' => '2020-07-01']);
+    DsaRate::create(['job_grade' => '5', 'amount' => '8400.00', 'effective_from' => '2020-07-01']);
+    DsaRate::create(['job_grade' => '3', 'amount' => '14000.00', 'effective_from' => '2020-07-01']);
     $this->ict = Department::query()->where('name', 'ICT')->firstOrFail();
     $this->hod = headOfDepartment($this->ict);
     $this->editor = app(ActivityEditor::class);
@@ -36,8 +36,8 @@ beforeEach(function () {
     $this->memo = departmentMemo($this->hod, ['days' => 4, 'risks' => 'Delays if the county is not ready.', 'memo_sections' => [['heading' => 'Programme', 'body' => 'Day 1 courtesy call; days 2 to 4 site visits.']]]);
     $county = County::query()->where('name', 'Kakamega')->firstOrFail();
     $this->editor->addLocation($this->memo, ['county_id' => $county->id], $this->hod);
-    $senior = Staff::factory()->create(['job_grade' => 'NGCDF 3', 'department_id' => $this->ict->id]);
-    $others = Staff::factory()->count(2)->create(['job_grade' => 'NGCDF 5', 'department_id' => $this->ict->id]);
+    $senior = Staff::factory()->create(['job_grade' => '3', 'department_id' => $this->ict->id]);
+    $others = Staff::factory()->count(2)->create(['job_grade' => '5', 'department_id' => $this->ict->id]);
     $this->editor->addStaff($this->memo, [$senior->id, ...$others->pluck('id')->all()], ParticipantRole::Member, $this->hod);
     $this->editor->savePlannedCost($this->memo, ['cost_category_id' => CostCategory::query()->where('code', 'fuel')->value('id'), 'description' => 'Board vehicle', 'estimated_amount' => '30000'], $this->hod);
     $this->editor->savePlannedCost($this->memo, ['cost_category_id' => CostCategory::query()->where('code', 'travel')->value('id'), 'activity_participant_id' => $this->memo->participants()->where('staff_id', $senior->id)->value('id'), 'description' => 'Air ticket', 'estimated_amount' => '35000'], $this->hod);
@@ -58,8 +58,8 @@ it('builds the memo from what was captured, with every annex total agreeing with
         ->and(collect($data['sections'])->pluck('number')->all())->toBe(['1.0', '2.0', '3.0', '4.0'])
         ->and($data['isDraft'])->toBeTrue();
 
-    // Three NGCDF 5 officers on the same DSA are one row of three, like the paper budget.
-    $dsa = collect($data['detailed'])->where('item', 'DSA')->where('scale', 'NGCDF 5')->sole();
+    // Three 5 officers on the same DSA are one row of three, like the paper budget.
+    $dsa = collect($data['detailed'])->where('item', 'DSA')->where('scale', '5')->sole();
     expect($dsa['pax'])->toBe(3)->and($dsa['days'])->toBe('3')->and($dsa['rate'])->toBe(8400_00)->and($dsa['amount'])->toBe(8400_00 * 3 * 3)
         ->and(collect($data['byDepartment'])->firstWhere('label', 'ICT')['people'])->toBe(4)
         ->and(collect($data['byDepartment'])->firstWhere('label', 'Shared costs (whole activity)')['amount'])->toBe(30000_00)

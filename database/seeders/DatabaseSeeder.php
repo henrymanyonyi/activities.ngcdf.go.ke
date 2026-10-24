@@ -13,8 +13,8 @@ use Illuminate\Database\Seeder;
  *
  * Configuration the Chief of Staff edits in Settings, seeded once and then left alone:
  *   ReferenceDataSeeder        departments, designations, duty stations, activity
- *                              categories and types, cost types, county DSA destinations
- *   SettingsSeeder             thresholds and tolerances; provisional DSA rates
+ *                              categories and types, cost types
+ *   SettingsSeeder             thresholds and tolerances; the approved standard DSA rates (synced every run)
  *
  * Local machine only:
  *   UserSeeder                 the three accounts, password "password"

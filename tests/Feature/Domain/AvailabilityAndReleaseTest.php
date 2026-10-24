@@ -24,7 +24,7 @@ use Livewire\Livewire;
 
 beforeEach(function () {
     Storage::fake('local');
-    DsaRate::create(['job_grade' => 'NGCDF 5', 'destination_category' => 'Other towns', 'amount' => '8400.00', 'effective_from' => '2020-07-01']);
+    DsaRate::create(['job_grade' => '5', 'amount' => '8400.00', 'effective_from' => '2020-07-01']);
     $this->cos = chiefOfStaff();
     $this->ceo = ceo();
     $this->editor = app(ActivityEditor::class);

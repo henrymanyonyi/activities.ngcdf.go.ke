@@ -155,7 +155,7 @@
                             </div>
                             @forelse ($a->locations as $loc)
                                 <div class="flex items-center justify-between gap-3 px-3 py-2 border border-slate-100 rounded-lg mb-1.5" wire:key="loc-{{ $loc->id }}">
-                                    <span class="text-sm text-slate-700"><i class="fa-solid fa-location-dot text-emerald-600 mr-2"></i>{{ $loc->label() }}@if ($loc->county?->dsa_destination_category)<span class="text-[11px] text-slate-400"> · DSA: {{ $loc->county->dsa_destination_category }}</span>@endif</span>
+                                    <span class="text-sm text-slate-700"><i class="fa-solid fa-location-dot text-emerald-600 mr-2"></i>{{ $loc->label() }}</span>
                                     @if ($editable)<button type="button" wire:click="removeLocation({{ $loc->id }})" wire:loading.attr="disabled" class="{{ Ui::BTN_ICON_DANGER }}" aria-label="Remove location"><i class="fa-solid fa-xmark text-xs"></i></button>@endif
                                 </div>
                             @empty

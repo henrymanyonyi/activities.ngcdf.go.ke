@@ -94,7 +94,7 @@ return new class extends Migration
             $table->id();
             $table->string('code', 10)->unique();
             $table->string('name')->unique();
-            // MD-05 / OI-01: DSA destination category the county falls in.
+            // Retired 22 Oct 2026 (one DSA rate per grade, wherever the activity is); kept for history, never read.
             $table->string('dsa_destination_category', 40)->nullable();
             $table->timestamps();
         });
@@ -110,15 +110,17 @@ return new class extends Migration
             $table->index(['county_id', 'name']);
         });
 
-        // MD-05: DSA rates by job grade and destination category, with effective dates.
+        // MD-05: DSA rates by job grade, with effective dates. One standard rate per grade whatever the
+        // destination (22 Oct 2026): standard rates have no destination_category; rows that have one are
+        // the retired Cities / Other towns rates, kept for history and never read (DsaRate::lookup).
         Schema::create('dsa_rates', function (Blueprint $table) {
             $table->id();
             $table->string('job_grade', 20);
-            $table->string('destination_category', 40);
+            $table->string('destination_category', 40)->nullable();
             $table->decimal('amount', 15, 2);
             $table->date('effective_from');
             $table->date('effective_to')->nullable();
-            // Placeholder rates seeded at installation until Finance's circular replaces them (OI-01).
+            // The retired placeholder rates seeded before the standard rates were approved (OI-01).
             $table->boolean('is_provisional')->default(false);
             $table->foreignId('recorded_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
@@ -126,17 +128,71 @@ return new class extends Migration
             $table->index(['job_grade', 'destination_category', 'effective_from']);
         });
 
-        // MD-08: budget lines per department per financial year.
+        // Department budgets per financial year, changed only through App\Services\Budgeting:
+        // prepared, submitted to the CEO, approved or returned with a reason.
+        Schema::create('department_budgets', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('department_id')->constrained()->restrictOnDelete();
+            $table->string('financial_year', 9);
+            $table->string('status', 20)->default('draft');
+            $table->text('notes')->nullable();
+            $table->foreignId('prepared_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignId('submitted_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('submitted_at')->nullable();
+            $table->foreignId('approved_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('approved_at')->nullable();
+            $table->foreignId('returned_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('returned_at')->nullable();
+            $table->text('return_reason')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['department_id', 'financial_year']);
+            $table->index(['financial_year', 'status']);
+        });
+
+        // MD-08: budget lines (votes) of a department budget.
         Schema::create('budget_lines', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('department_budget_id')->nullable()->constrained()->restrictOnDelete();
             $table->foreignId('department_id')->constrained()->restrictOnDelete();
             $table->string('financial_year', 9);
             $table->string('code', 40)->nullable();
             $table->string('name');
             $table->decimal('amount', 15, 2);
             $table->timestamps();
+            $table->softDeletes();
 
             $table->index(['department_id', 'financial_year']);
+        });
+
+        // An approved budget changes only by adjustments, with the same approval.
+        Schema::create('budget_adjustments', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('department_budget_id')->constrained()->restrictOnDelete();
+            $table->string('kind', 20);
+            // Increase or reduce this line; in a reallocation, the line that receives the money.
+            $table->foreignId('budget_line_id')->nullable()->constrained()->restrictOnDelete();
+            // In a reallocation, the line the money comes from.
+            $table->foreignId('from_budget_line_id')->nullable()->constrained('budget_lines')->restrictOnDelete();
+            // A supplementary allocation under a vote the budget does not have yet; the line is created on approval.
+            $table->string('new_line_code', 40)->nullable();
+            $table->string('new_line_name')->nullable();
+            $table->decimal('amount', 15, 2);
+            $table->text('reason');
+            $table->string('status', 20)->default('draft');
+            $table->foreignId('prepared_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignId('submitted_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('submitted_at')->nullable();
+            $table->foreignId('approved_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('approved_at')->nullable();
+            $table->foreignId('returned_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('returned_at')->nullable();
+            $table->text('return_reason')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['department_budget_id', 'status']);
         });
 
         // Configurable thresholds and tolerances (OI-04, OI-05, OI-07, BR-10), editable in Settings.
@@ -160,7 +216,9 @@ return new class extends Migration
         });
 
         Schema::dropIfExists('app_settings');
+        Schema::dropIfExists('budget_adjustments');
         Schema::dropIfExists('budget_lines');
+        Schema::dropIfExists('department_budgets');
         Schema::dropIfExists('dsa_rates');
         Schema::dropIfExists('constituencies');
         Schema::dropIfExists('counties');

@@ -18,8 +18,12 @@
         </include>
     </source>
     <php>
+        <!-- The full suite needs more than PHP's default 128M: memory builds up over 260+ tests, and writing a workbook reserves a 16 MB buffer. -->
+        <ini name="memory_limit" value="512M"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
+        <!-- Documents render with the fallback font in tests, whatever fonts this machine has; DocumentFontTest sets its own. -->
+        <env name="ACTIVITIES_DOCUMENT_FONTS" value="storage/framework/testing/no-document-fonts"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>

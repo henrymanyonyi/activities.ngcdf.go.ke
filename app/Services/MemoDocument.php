@@ -7,7 +7,9 @@ use App\Models\Activity;
 use App\Models\ActivityCost;
 use App\Models\ActivityParticipant;
 use App\Models\ActivityStatusHistory;
+use App\Models\DsaRate;
 use App\Models\User;
+use App\Support\DocumentFont;
 use App\Support\Money;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Barryvdh\DomPDF\PDF as DomPdf;
@@ -73,12 +75,13 @@ class MemoDocument
         }
 
         if ($staff->isNotEmpty()) {
-            if ($this->dsa->destinationCategory($activity) === null) {
-                $add('No location has a county with a DSA destination, so no DSA is included. Add the county if officers travel.', false);
+            if (! $this->dsa->appliesTo($activity)) {
+                $add('No location has a county, so no DSA is included. Add the county if officers travel.', false);
             } else {
                 $dsaPeople = $activity->costs->where('is_computed', true)->pluck('activity_participant_id')->all();
                 foreach ($staff->reject(fn (ActivityParticipant $p) => in_array($p->id, $dsaPeople, true)) as $p) {
-                    $add("No DSA rate was found for {$p->displayName()} (job grade ".($p->job_grade ?: 'not set').'), so no DSA is included for them.', false);
+                    $grade = DsaRate::gradeFor($p->job_grade ?? $p->staff?->job_grade, $p->staff?->employment_type);
+                    $add("No DSA rate was found for {$p->displayName()} (job grade ".($grade ?: 'not set').'), so no DSA is included for them.', false);
                 }
             }
         }
@@ -144,13 +147,16 @@ class MemoDocument
 
     public function pdf(Activity $activity, User $user): DomPdf
     {
-        $pdf = Pdf::loadView('memos.document', $this->data($activity) + ['user' => $user])->setPaper('a4');
+        // Subsetting embeds only the characters used (App\Support\DocumentFont), keeping the file small.
+        $pdf = Pdf::loadView('memos.document', $this->data($activity) + ['user' => $user])->setPaper('a4')->setOption('isFontSubsettingEnabled', true);
 
         // "Page n of N" needs the page count, which only exists once the document is laid out.
         $pdf->render();
         $dompdf = $pdf->getDomPDF();
         $canvas = $dompdf->getCanvas();
-        $canvas->page_text($canvas->get_width() - 118, $canvas->get_height() - 34, 'Page {PAGE_NUM} of {PAGE_COUNT}', $dompdf->getFontMetrics()->getFont('DejaVu Sans'), 7, [0.39, 0.45, 0.55]);
+        $metrics = $dompdf->getFontMetrics();
+        $font = $metrics->getFont(DocumentFont::NAME) ?? $metrics->getFont('DejaVu Sans');
+        $canvas->page_text($canvas->get_width() - 118, $canvas->get_height() - 34, 'Page {PAGE_NUM} of {PAGE_COUNT}', $font, 7, [0.39, 0.45, 0.55]);
 
         return $pdf;
     }
@@ -322,7 +328,7 @@ class MemoDocument
                         $person->is_external => 'External: '.($person->external_category?->label() ?? 'Other'),
                         default => $person->designation?->name ?? 'Officer',
                     },
-                    'scale' => $person && ! $person->is_external ? (string) ($person->job_grade ?: '') : '',
+                    'scale' => $person && ! $person->is_external ? (string) (DsaRate::normaliseGrade($person->job_grade) ?? $person->job_grade ?? '') : '',
                     'per_person' => $person !== null,
                     'days' => $line->quantity !== null ? rtrim(rtrim((string) $line->quantity, '0'), '.') : null,
                     'rate' => $line->unit_rate !== null ? Money::toCents($line->unit_rate) : ($person ? $amount : null),

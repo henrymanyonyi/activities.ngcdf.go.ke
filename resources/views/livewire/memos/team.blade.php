@@ -118,6 +118,25 @@
             <select wire:model="role" class="{{ $sel }} sm:w-44" aria-label="Role">@foreach ($roles as $r)<option value="{{ $r->value }}">{{ $r->label() }}</option>@endforeach</select>
         </div>
         @error('selectedStaff')<p class="text-xs text-red-600" role="alert">{{ $message }}</p>@enderror
+        @php
+            $selectable = $candidates->reject(fn ($st) => isset($unavailable[$st->id]))->pluck('id');
+            $shownTicked = $selectable->intersect($selectedIds)->count();
+            $allShown = $selectable->isNotEmpty() && $shownTicked === $selectable->count();
+            $leftOut = $candidates->count() - $selectable->count();
+        @endphp
+        @if ($selectable->isNotEmpty())
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200">
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" wire:click="toggleShown" @checked($allShown)
+                        x-data x-effect="$el.indeterminate = {{ $shownTicked > 0 && ! $allShown ? 'true' : 'false' }}"
+                        class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                    <span class="text-[13px] font-semibold text-slate-700">{{ $allShown ? 'Clear all shown' : 'Select all shown' }}</span>
+                </label>
+                <span class="text-[12px] text-slate-500 font-numeric">{{ count($selectedIds) }} selected</span>
+                @if ($leftOut > 0)<span class="text-[12px] text-slate-400">· {{ $leftOut }} not available {{ $leftOut === 1 ? 'is' : 'are' }} left out</span>@endif
+                @if ($candidates->count() >= 100)<span class="text-[12px] text-amber-700">· Only the first 100 are shown; search or pick a department to narrow the list.</span>@endif
+            </div>
+        @endif
         <div class="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-[45vh] overflow-y-auto">
             @forelse ($candidates as $st)
                 @php
@@ -157,7 +176,7 @@
             <x-ui.field label="Name" for="ns-n" error="staffName" required><input id="ns-n" type="text" wire:model="staffName" maxlength="255" class="{{ Ui::CONTROL }}"></x-ui.field>
             <x-ui.field label="Department" for="ns-d" error="staffDepartmentId" required><select id="ns-d" wire:model="staffDepartmentId" class="{{ $sel }}"><option value="">Choose…</option>@foreach ($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select></x-ui.field>
             <x-ui.field label="Designation" for="ns-des" error="staffDesignationId"><select id="ns-des" wire:model="staffDesignationId" class="{{ $sel }}"><option value="">Choose…</option>@foreach ($designations as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select></x-ui.field>
-            <x-ui.field label="Job grade" for="ns-g" error="staffJobGrade" hint="Sets the officer's DSA rate, e.g. NGCDF 5."><input id="ns-g" type="text" wire:model="staffJobGrade" maxlength="20" class="{{ Ui::CONTROL }}"></x-ui.field>
+            <x-ui.field label="Job grade" for="ns-g" error="staffJobGrade" hint="The scale from the HR register (1 to 10); it sets the officer's DSA rate."><input id="ns-g" type="text" wire:model="staffJobGrade" maxlength="20" class="{{ Ui::CONTROL }}"></x-ui.field>
             <x-ui.field label="Duty station" for="ns-o" error="staffOfficeId"><select id="ns-o" wire:model="staffOfficeId" class="{{ $sel }}"><option value="">Choose…</option>@foreach ($offices as $o)<option value="{{ $o->id }}">{{ $o->name }}</option>@endforeach</select></x-ui.field>
         </div>
         <x-slot:footer>
