@@ -70,16 +70,69 @@ class ActivityLifecycle
         if (! $activity->status->isWithDepartment()) {
             throw new ActivityWorkflowException('This memo has already been submitted. It is now '.strtolower($activity->status->label()).'.');
         }
+        if ($activity->isWithPreparer()) {
+            throw new ActivityWorkflowException("{$activity->submitted_by_name} is still preparing this memo. It comes to you for review when they submit it.");
+        }
 
         $this->assertReadyForReview($activity);
 
         $resubmitted = $activity->status === ActivityStatus::ReturnedToHod;
         $office = ($resubmitted ? $activity->review_office : null) ?? $office ?? ReviewOffice::AssistantChiefOfStaff;
         $note = trim((string) $note);
-        $reason = ($resubmitted ? 'Corrected and resubmitted to the ' : 'Submitted for review by the ').$office->label().($note !== '' ? ": {$note}" : '');
+        $reason = match (true) {
+            $resubmitted => 'Corrected and resubmitted to the '.$office->label(),
+            $activity->status === ActivityStatus::WithHod => "Reviewed by the Head of Department and forwarded, on behalf of {$activity->submitted_by_name}, for review by the ".$office->label(),
+            default => 'Submitted for review by the '.$office->label(),
+        }.($note !== '' ? ": {$note}" : '');
 
         $this->move($activity, ActivityStatus::UnderReview, $reason, $user, extra: ['review_office' => $office, 'status_reason' => null]);
         $this->alerts->toOffice($office, ActivityAlert::submittedForReview($activity, $resubmitted));
+    }
+
+    /**
+     * An officer submits the memo they prepared through a Head of Department's delegated link to that
+     * Head for review (App\Services\DelegatedMemos, which checks the link). Nothing blocking may be missing.
+     */
+    public function submitToHod(Activity $activity, string $preparerName): void
+    {
+        if (! in_array($activity->status, [ActivityStatus::Draft, ActivityStatus::ReturnedToPreparer], true) || ! $activity->isDelegated()) {
+            throw new ActivityWorkflowException('This memo has already been submitted to the Head of Department.');
+        }
+        $this->assertReadyForReview($activity);
+
+        $again = $activity->status === ActivityStatus::ReturnedToPreparer;
+        $this->move($activity, ActivityStatus::WithHod, ($again ? 'Corrected and resubmitted to the Head of Department by ' : 'Prepared and submitted to the Head of Department by ').$preparerName, null, $preparerName, ['status_reason' => null]);
+        $this->alerts->toDepartment($activity, ActivityAlert::preparedForHod($activity, $again));
+    }
+
+    /** The Head of Department sends the memo an officer prepared back to them, saying what to change. */
+    public function returnToPreparer(Activity $activity, string $reason, User $user): void
+    {
+        $this->assertHeadReviewing($activity, $user);
+        $this->requireReason($reason, 'Say what the officer must change.');
+
+        $this->move($activity, ActivityStatus::ReturnedToPreparer, trim($reason), $user, extra: ['status_reason' => trim($reason)]);
+    }
+
+    /** The Head of Department declines the memo an officer prepared. It is kept, read only, with the reason. */
+    public function declineByHod(Activity $activity, string $reason, User $user): void
+    {
+        $this->assertHeadReviewing($activity, $user);
+        $this->requireReason($reason, 'Give the reason for declining the memo.');
+
+        $this->move($activity, ActivityStatus::Declined, 'Declined by the Head of Department: '.trim($reason), $user, extra: ['status_reason' => trim($reason)]);
+    }
+
+    private function assertHeadReviewing(Activity $activity, User $user): void
+    {
+        $this->authorize($user, 'memos.originate');
+        $this->assertDepartmentMemo($activity, $user);
+        if ($user->can('activities.view') && ! $user->isHeadOfDepartment()) {
+            throw new AuthorizationException('Only the Head of Department reviews a memo an officer prepared for them.');
+        }
+        if ($activity->status !== ActivityStatus::WithHod) {
+            throw new ActivityWorkflowException('Only a memo with you for review can be returned to the officer or declined.');
+        }
     }
 
     /** The reviewer sends the memo back to the Head of Department, saying what to correct. */

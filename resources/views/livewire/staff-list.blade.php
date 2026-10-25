@@ -6,9 +6,20 @@
         @if ($counts['no_grade'])<span class="inline-flex items-center px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[11px] font-semibold font-numeric">{{ $counts['no_grade'] }} without job grade</span>@endif
     </x-slot:pills>
     <x-slot:actions>
-        <button type="button" wire:click="$set('showImport', true)" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-file-import text-xs"></i>{{ $manages ? 'Import HR list' : 'Import staff list' }}</button>
-        <button type="button" wire:click="edit" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-plus text-xs"></i>Add officer</button>
+        @if ($canAdd)
+            <button type="button" wire:click="$set('showImport', true)" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-file-import text-xs"></i>{{ $manages ? 'Import HR list' : 'Import staff list' }}</button>
+            <button type="button" wire:click="edit" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-plus text-xs"></i>Add officer</button>
+        @endif
     </x-slot:actions>
+
+    @if ($oneTimePassword)
+        <div class="px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm" role="alert">
+            <p class="font-semibold"><i class="fa-solid fa-key mr-1"></i>One-time password for {{ $oneTimeFor }}</p>
+            <p class="font-numeric text-base mt-1 select-all">{{ $oneTimePassword }}</p>
+            <p class="text-[12px] mt-1">Shown once. Share it privately. They change it, and set up two-factor authentication if required, at first sign-in.</p>
+            <button type="button" wire:click="$set('oneTimePassword', null)" class="mt-2 {{ Ui::BTN_TINT }}">I have shared it</button>
+        </div>
+    @endif
     <x-slot:filters>
         <div class="relative flex items-center flex-1 min-w-[12rem]">
             <i class="fa-solid fa-magnifying-glass absolute left-3 text-gray-400 text-xs pointer-events-none"></i>
@@ -37,7 +48,10 @@
                                 <td class="{{ Ui::TD }}">{{ $s->department?->name ?? '—' }}</td>
                                 <td class="{{ Ui::TD }}">{{ $s->office?->name ?? '—' }}</td>
                                 @if ($manages)<td class="{{ Ui::TD }} text-right font-numeric">@can('activities.view')<a href="{{ route('activities.index', ['staff_id' => $s->id]) }}" wire:navigate class="text-emerald-700 hover:underline">{{ $s->participations_count }}</a>@else{{ $s->participations_count }}@endcan</td>@endif
-                                <td class="{{ Ui::TD }} text-right">@if ($records->mayEdit(auth()->user(), $s))<button type="button" wire:click="edit({{ $s->id }})" class="{{ Ui::BTN_ICON }}" aria-label="Edit {{ $s->name }}"><i class="fa-solid fa-pen text-xs"></i></button>@endif</td>
+                                <td class="{{ Ui::TD }} text-right whitespace-nowrap">
+                                    @if ($canReassign)<button type="button" wire:click="openPosition({{ $s->id }})" class="{{ Ui::BTN_ICON }}" aria-label="Change {{ $s->name }}'s position or access" title="Promotion, transfer or access"><i class="fa-solid fa-user-tie text-xs"></i></button>@endif
+                                    @if ($records->mayEdit(auth()->user(), $s))<button type="button" wire:click="edit({{ $s->id }})" class="{{ Ui::BTN_ICON }}" aria-label="Edit {{ $s->name }}"><i class="fa-solid fa-pen text-xs"></i></button>@endif
+                                </td>
                             </tr>
                         @endforeach
                     </tbody>
@@ -86,4 +100,60 @@
             <button type="button" wire:click="import" wire:loading.attr="disabled" wire:target="checkImport,import,file" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-upload text-xs"></i><span wire:loading.remove wire:target="import">Import</span><span wire:loading wire:target="import">Importing…</span></button>
         </x-slot:footer>
     </x-ui.modal>
+
+    {{-- Promotion, transfer or change of system access (App\Services\StaffChanges) --}}
+    @if ($positionStaff)
+        <x-ui.modal show="showPosition" :open="$showPosition" icon="fa-user-tie" :title="'Change '.$positionStaff->name.'\'s position or access'" subtitle="The department and designation are the officer's HR position; the system access is what they can do in FAPM. Each change is recorded with its effective date and reason.">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2.5 text-[12px]">
+                <div><p class="{{ Ui::MICRO }}">PF number</p><p class="font-numeric text-slate-700">{{ $positionStaff->staff_number ?: 'None' }}</p></div>
+                <div><p class="{{ Ui::MICRO }}">Department now</p><p class="text-slate-700">{{ $positionStaff->department?->name ?? 'None' }}</p></div>
+                <div><p class="{{ Ui::MICRO }}">Designation now</p><p class="text-slate-700">{{ $positionStaff->designation?->name ?? 'None' }}</p></div>
+                <div><p class="{{ Ui::MICRO }}">System access now</p><p class="text-slate-700">@if ($positionAccount?->is_active){{ $positionAccount->roleLabel() }}@if ($positionAccount->department) · {{ $positionAccount->department->name }}@endif @elseif ($positionAccount)Account deactivated @else No account @endif</p></div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <x-ui.field label="Department" for="pc-d" error="posDepartment" required>
+                    <select id="pc-d" wire:model.live="posDepartment" class="{{ $sel }}"><option value="">Choose…</option>@foreach ($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select>
+                </x-ui.field>
+                <x-ui.field label="Designation" for="pc-g" error="posDesignation">
+                    <select id="pc-g" wire:model="posDesignation" class="{{ $sel }}"><option value="">None</option>@foreach ($designations as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select>
+                </x-ui.field>
+            </div>
+            <x-ui.field label="System access" for="pc-a" error="posAccess" required hint="A designation never gives access by itself. A new account uses the email and mobile number on the staff list.">
+                <select id="pc-a" wire:model.live="posAccess" class="{{ $sel }}">@foreach ($accessOptions as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach</select>
+            </x-ui.field>
+            @if ($currentHead)
+                <label class="flex items-start gap-2 px-3 py-2 rounded-lg bg-orange-50 border border-orange-200 text-orange-800 text-[13px]">
+                    <input type="checkbox" wire:model="posReplaceHead" class="mt-0.5 rounded border-orange-300 text-orange-600 focus:ring-orange-500">
+                    <span>Replace the current Head, <strong>{{ $currentHead->name }}</strong>. Their account is deactivated and they are signed out; the change is recorded against them too.</span>
+                </label>
+            @endif
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <x-ui.field label="Effective date" for="pc-e" error="posEffective" required><input id="pc-e" type="date" wire:model="posEffective" class="{{ Ui::CONTROL }}"></x-ui.field>
+                <x-ui.field label="Administrative reference" for="pc-r" error="posReference" class="sm:col-span-2"><input id="pc-r" type="text" wire:model="posReference" maxlength="100" class="{{ Ui::CONTROL }}" placeholder="e.g. HR/PROM/12/2026"></x-ui.field>
+            </div>
+            <x-ui.field label="Reason" for="pc-why" error="posReason" required><textarea id="pc-why" wire:model="posReason" rows="2" maxlength="2000" class="{{ Ui::CONTROL }}" placeholder="e.g. Promoted to Head of ICT by the Board, letter of 20 October 2026"></textarea></x-ui.field>
+
+            @if ($positionStaff->positionChanges->isNotEmpty())
+                <div>
+                    <p class="{{ Ui::MICRO }} mb-1">History</p>
+                    <ol class="divide-y divide-slate-100 border border-slate-100 rounded-lg max-h-40 overflow-y-auto">
+                        @foreach ($positionStaff->positionChanges as $c)
+                            <li class="px-3 py-2 text-[12px] text-slate-600">
+                                <span class="font-semibold text-slate-700">From {{ $c->effective_on->format('d M Y') }}:</span>
+                                {{ $c->toDepartment?->name ?? 'No department' }}@if ($c->toDesignation) · {{ $c->toDesignation->name }}@endif · {{ \App\Models\StaffChange::roleLabel($c->to_role) }}
+                                <span class="text-slate-400">(was {{ $c->fromDepartment?->name ?? 'none' }}@if ($c->fromDesignation), {{ $c->fromDesignation->name }}@endif, {{ \App\Models\StaffChange::roleLabel($c->from_role) }})</span>
+                                <span class="block text-slate-500">{{ $c->reason }}@if ($c->reference) · {{ $c->reference }}@endif · recorded by {{ $c->changer?->name ?? 'unknown' }} on {{ $c->created_at->format('d M Y H:i') }}</span>
+                            </li>
+                        @endforeach
+                    </ol>
+                </div>
+            @endif
+
+            <x-slot:footer>
+                <button type="button" wire:click="$set('showPosition', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
+                <button type="button" wire:click="savePosition" class="{{ Ui::BTN_PRIMARY }}" wire:loading.attr="disabled" wire:target="savePosition"><i class="fa-solid fa-floppy-disk text-xs"></i>Record the change</button>
+            </x-slot:footer>
+        </x-ui.modal>
+    @endif
 </x-ui.page>

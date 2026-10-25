@@ -145,7 +145,7 @@ class MemoDocument
         ];
     }
 
-    public function pdf(Activity $activity, User $user): DomPdf
+    public function pdf(Activity $activity, ?User $user = null): DomPdf
     {
         // Subsetting embeds only the characters used (App\Support\DocumentFont), keeping the file small.
         $pdf = Pdf::loadView('memos.document', $this->data($activity) + ['user' => $user])->setPaper('a4')->setOption('isFontSubsettingEnabled', true);

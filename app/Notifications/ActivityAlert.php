@@ -6,6 +6,7 @@ use App\Enums\DecisionType;
 use App\Enums\ReviewOffice;
 use App\Models\ActionInstruction;
 use App\Models\Activity;
+use App\Models\Department;
 use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
@@ -117,6 +118,15 @@ class ActivityAlert extends Notification
                 : "Memo {$activity->reference} has been submitted for your review.", 'Please review it, then forward it or return it for correction.');
     }
 
+    /** To the Head of Department: an officer submitted the memo they asked them to prepare. */
+    public static function preparedForHod(Activity $activity, bool $again = false): self
+    {
+        return (new self('prepared_for_hod', ($again ? 'Corrected by the officer, please review: ' : 'Prepared by an officer, please review: ').$activity->title, $activity->id, 'fa-user-check'))
+            ->needsAction($activity->reference, "Memo {$activity->reference} to review", $again
+                ? "Memo {$activity->reference} has been corrected and resubmitted to you by the officer preparing it."
+                : "Memo {$activity->reference}, prepared by an officer at your request, has been submitted to you.", 'Please review it, then forward it to the Chief of Staff, return it to the officer or decline it.');
+    }
+
     public static function returnedForCorrection(Activity $activity): self
     {
         return (new self('returned_for_correction', "Returned for correction, please revise and resubmit: {$activity->title}", $activity->id, 'fa-reply'))
@@ -165,6 +175,15 @@ class ActivityAlert extends Notification
     public static function instructionCompleted(ActionInstruction $instruction): self
     {
         return new self('instruction_completed', "{$instruction->kind->office()} has completed \"{$instruction->kind->label()}\" (ref. {$instruction->completion_reference}): {$instruction->activity->title}", $instruction->activity_id, $instruction->kind->icon());
+    }
+
+    /** To an officer whose FAPM access was changed (App\Services\StaffChanges). */
+    public static function accessChanged(?string $role, ?Department $department): self
+    {
+        $what = $role === null ? 'no longer has a role' : 'is now '.(User::ROLES[$role] ?? $role).($role === User::ROLE_HOD && $department ? ', '.$department->name : '');
+
+        return (new self('access_changed', "Your FAPM access has changed: your account {$what}.", null, 'fa-user-shield', route('home')))
+            ->needsAction(null, 'Your FAPM access has changed', 'Your FAPM access was changed on '.now()->format('d M Y').'.', 'Please sign in again to see what you can now do.');
     }
 
     public static function pendingTooLong(Activity $activity, int $workingDays): self

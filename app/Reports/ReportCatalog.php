@@ -16,6 +16,7 @@ final class ReportCatalog
         Definitions\OfficerFieldDays::class,
         Definitions\DepartmentFieldExpenditure::class,
         Definitions\BudgetPositionReport::class,
+        Definitions\BudgetAdjustmentsRegister::class,
         Definitions\ReportCompliance::class,
         Definitions\OverdueReportsAndDirectives::class,
         Definitions\Coverage::class,

@@ -19,16 +19,34 @@
             @endif
             <a href="{{ route('memos.edit', $a) }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-pen text-xs"></i>Edit memo</a>
             <a href="{{ route('memos.team', $a) }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-users text-xs"></i>Team and costs</a>
-            <button type="button" wire:click="openSubmit" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-paper-plane text-xs"></i>{{ $returned ? 'Resubmit for review' : 'Submit for review' }}</button>
+            @if ($withHod)
+                <button type="button" wire:click="openHodAction('showDecline')" class="{{ Ui::BTN_NEUTRAL }} hover:!text-red-600"><i class="fa-solid fa-circle-xmark text-xs"></i>Decline</button>
+                <button type="button" wire:click="openHodAction('showReturnToOfficer')" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-reply text-xs"></i>Return to the officer</button>
+                <button type="button" wire:click="openHodAction('showForward')" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-share text-xs"></i>Forward to the Chief of Staff</button>
+            @elseif ($s !== ActivityStatus::WithHod)
+                <button type="button" wire:click="openSubmit" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-paper-plane text-xs"></i>{{ $returned ? 'Resubmit for review' : 'Submit for review' }}</button>
+            @endif
         @endif
     </x-slot:actions>
 
-    @if ($editable && ! $returned)
+    @if ($a->isDelegated())
+        <div class="px-4 py-3 rounded-lg text-sm bg-violet-50 border border-violet-200 text-violet-800">
+            <i class="fa-solid fa-user-check mr-2"></i>Prepared by <strong>{{ $a->submitted_by_name }}</strong>@if ($a->preparedBy?->designation_id) ({{ $a->preparedBy->designation?->name }})@endif at the request of {{ $a->responsibleHodLabel() ?? 'the Head of Department' }}.
+            @if ($a->isWithPreparer())
+                {{ $s === ActivityStatus::ReturnedToPreparer ? 'Returned to them for changes.' : 'They are still preparing it.' }} It comes to you for review when they submit it; you cannot change it meanwhile.
+            @elseif ($s === ActivityStatus::WithHod)
+                Review it (you can also edit it), then forward it to the Chief of Staff, return it to the officer with comments, or decline it.
+            @endif
+        </div>
+    @endif
+
+    @if ($a->isWithPreparer() || $s === ActivityStatus::WithHod)
+    @elseif ($editable && ! $returned)
         <div class="px-4 py-3 rounded-lg text-sm bg-sky-50 border border-sky-200 text-sky-800"><i class="fa-solid fa-circle-info mr-2"></i>This memo is a draft. Only your department can see it until you press <strong>Submit for review</strong>.</div>
     @elseif ($returned)
         <div class="px-4 py-3 rounded-lg text-sm bg-orange-50 border border-orange-200 text-orange-800"><i class="fa-solid fa-reply mr-2"></i>Returned to you for correction. Make the changes asked for below, then press <strong>Resubmit for review</strong>.</div>
     @elseif ($s->isApprovedOrLater() || $s === ActivityStatus::Declined || $s === ActivityStatus::Cancelled)
-        <div class="px-4 py-3 rounded-lg text-sm bg-slate-100 border border-slate-200 text-slate-600"><i class="fa-solid fa-lock mr-2"></i>The CEO has decided on this memo. The decision and its history are below.</div>
+        <div class="px-4 py-3 rounded-lg text-sm bg-slate-100 border border-slate-200 text-slate-600"><i class="fa-solid fa-lock mr-2"></i>{{ $a->wasDeclinedByHod() ? 'You declined this memo'.($a->status_reason ? ': '.$a->status_reason : '.').' It is kept for reference.' : 'The CEO has decided on this memo. The decision and its history are below.' }}</div>
     @else
         <div class="px-4 py-3 rounded-lg text-sm bg-slate-100 border border-slate-200 text-slate-600"><i class="fa-solid fa-lock mr-2"></i>This memo is with the {{ $a->currentHolder() }}. You can follow it here; it can be changed again only if it is returned to you.</div>
     @endif
@@ -246,6 +264,29 @@
         <x-slot:footer>
             <button type="button" wire:click="$set('showReport', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
             <button type="button" wire:click="submitReport" wire:loading.attr="disabled" wire:target="submitReport,reportFile" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-paper-plane text-xs"></i>Submit report</button>
+        </x-slot:footer>
+    </x-ui.modal>
+
+    {{-- A memo an officer prepared, with the Head for review --}}
+    <x-ui.modal show="showForward" :open="$showForward" size="slim" icon="fa-share" title="Forward to the Chief of Staff?" subtitle="On the officer's behalf. It is recorded that you reviewed and forwarded it, and the usual review and approval follow.">
+        <x-ui.field label="Note to the Chief of Staff (optional)" for="hf-n" error="note"><textarea id="hf-n" wire:model="note" rows="3" maxlength="2000" class="{{ Ui::CONTROL }}"></textarea></x-ui.field>
+        <x-slot:footer>
+            <button type="button" wire:click="$set('showForward', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
+            <button type="button" wire:click="forwardToChiefOfStaff" class="{{ Ui::BTN_PRIMARY }}" wire:loading.attr="disabled" wire:target="forwardToChiefOfStaff"><i class="fa-solid fa-share text-xs"></i>Forward</button>
+        </x-slot:footer>
+    </x-ui.modal>
+    <x-ui.modal show="showReturnToOfficer" :open="$showReturnToOfficer" size="slim" icon="fa-reply" title="Return to the officer" subtitle="They get a new link by email and SMS, see your comments on the memo page, and submit it to you again.">
+        <x-ui.field label="What they must change" for="hr-r" error="hodReason" required><textarea id="hr-r" wire:model="hodReason" rows="4" maxlength="2000" class="{{ Ui::CONTROL }}"></textarea></x-ui.field>
+        <x-slot:footer>
+            <button type="button" wire:click="$set('showReturnToOfficer', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
+            <button type="button" wire:click="returnToOfficer" class="{{ Ui::BTN_PRIMARY }}" wire:loading.attr="disabled" wire:target="returnToOfficer"><i class="fa-solid fa-reply text-xs"></i>Return to the officer</button>
+        </x-slot:footer>
+    </x-ui.modal>
+    <x-ui.modal show="showDecline" :open="$showDecline" size="slim" icon="fa-circle-xmark" tone="red" title="Decline this memo?" subtitle="It is kept, read only, with your reason. It does not go to the Office of the CEO. The officer is told it was declined.">
+        <x-ui.field label="Reason" for="hd-r" error="hodReason" required><textarea id="hd-r" wire:model="hodReason" rows="3" maxlength="2000" class="{{ Ui::CONTROL }}"></textarea></x-ui.field>
+        <x-slot:footer>
+            <button type="button" wire:click="$set('showDecline', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
+            <button type="button" wire:click="declineMemo" class="{{ Ui::BTN_DANGER }}" wire:loading.attr="disabled" wire:target="declineMemo">Decline</button>
         </x-slot:footer>
     </x-ui.modal>
 </x-ui.page>

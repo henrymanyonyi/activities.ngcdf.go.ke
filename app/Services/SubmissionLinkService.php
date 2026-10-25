@@ -69,14 +69,17 @@ class SubmissionLinkService
         $link->update(['revoked_at' => null]);
     }
 
-    /** Resolve a token to its link, or null if unknown. Expiry/revocation is checked by the caller. */
-    public function find(string $token): ?SubmissionLink
+    /**
+     * Resolve a token to its link of that kind, or null if unknown: an intake link never opens a delegated
+     * memo request and the other way round. Expiry/revocation is checked by the caller.
+     */
+    public function find(string $token, string $kind = SubmissionLink::KIND_INTAKE): ?SubmissionLink
     {
         if (strlen($token) !== self::TOKEN_LENGTH || ! ctype_alnum($token)) {
             return null;
         }
 
-        return SubmissionLink::query()->where('token_hash', SubmissionLink::hashToken($token))->first();
+        return SubmissionLink::query()->where('kind', $kind)->where('token_hash', SubmissionLink::hashToken($token))->first();
     }
 
     public function recordOpen(SubmissionLink $link): void
@@ -113,6 +116,7 @@ class SubmissionLinkService
         return collect($attributes)->only([
             'label', 'recipient_name', 'recipient_email', 'recipient_phone', 'department_id',
             'activity_category_id', 'instructions', 'expires_at', 'max_submissions',
+            'kind', 'staff_id', 'activity_id',
         ])->map(fn ($value) => $value === '' ? null : $value)->all();
     }
 

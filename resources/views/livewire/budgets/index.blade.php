@@ -7,12 +7,15 @@
     $filters = ['' => ['All departments', null], BudgetStatus::Submitted->value => [BudgetStatus::Submitted->label(), $statusCounts[BudgetStatus::Submitted->value]], BudgetStatus::Returned->value => [BudgetStatus::Returned->label(), $statusCounts[BudgetStatus::Returned->value]], BudgetStatus::Draft->value => ['Drafts', $statusCounts[BudgetStatus::Draft->value]], BudgetStatus::Approved->value => ['Approved', $statusCounts[BudgetStatus::Approved->value]], 'none' => ['No budget yet', $withoutBudget]];
 @endphp
 
-<x-ui.page icon="fa-wallet" title="Department budgets" subtitle="Each department's budget for the year. Prepared as a draft by the Office of the CEO; counts only once the CEO approves it. Changes during the year are adjustments." statsKey="budgetStats">
+<x-ui.page icon="fa-wallet" :title="$ownDepartment ? 'Workplan and budget' : 'Department budgets'" :subtitle="$ownDepartment ? 'Your department\'s workplan and budget estimates for the year. Prepare it, submit it to the CEO, and follow the review here. It becomes your approved budget only when the CEO approves it.' : 'Each department\'s workplan and budget for the year. Prepared as a draft by the department\'s Head or the Office of the CEO; counts only once the CEO approves it. Changes during the year are adjustments.'" statsKey="budgetStats">
     <x-slot:actions>
         <div class="w-40 shrink-0"><select wire:model.live="fy" class="{{ $sel }}" aria-label="Financial year">@foreach ($years as $y)<option value="{{ $y }}">FY {{ $y }}</option>@endforeach</select></div>
-        <a href="{{ route('budgets.adjustments') }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-sliders text-xs"></i>Adjustments</a>
-        @if ($canPrepare)
-            <button type="button" wire:click="openPrepare" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-plus text-xs"></i>Prepare a budget</button>
+        <a href="{{ route('budgets.template') }}" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-file-excel text-xs text-emerald-700"></i>Workplan template</a>
+        @unless ($ownDepartment)
+            <a href="{{ route('budgets.adjustments') }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-sliders text-xs"></i>Adjustments</a>
+        @endunless
+        @if ($canPrepare && ! ($ownDepartment && ($rows->first()['budget'] ?? null)))
+            <button type="button" wire:click="openPrepare" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-plus text-xs"></i>{{ $ownDepartment ? 'Prepare the workplan' : 'Prepare a budget' }}</button>
         @endif
     </x-slot:actions>
 
@@ -88,9 +91,9 @@
     </section>
     <p class="text-[12px] text-slate-400">Spent and committed are from activities in the year whether or not the department has an approved budget. A draft or a budget awaiting approval counts for nothing until the CEO approves it.</p>
 
-    <x-ui.modal show="showPrepare" :open="$showPrepare" size="slim" icon="fa-wallet" title="Prepare a department budget" subtitle="It starts as a draft. Add its lines, then submit it to the CEO for approval.">
+    <x-ui.modal show="showPrepare" :open="$showPrepare" size="slim" icon="fa-wallet" :title="$ownDepartment ? 'Prepare your workplan and budget' : 'Prepare a department budget'" subtitle="It starts as a draft. Add its activities and their costs, typed in or from the workplan template, then submit it to the CEO for approval.">
         <x-ui.field label="Department" for="p-d" error="prepareDepartment" required>
-            <select id="p-d" wire:model="prepareDepartment" class="{{ $sel }}"><option value="">Choose…</option>@foreach ($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select>
+            <select id="p-d" wire:model="prepareDepartment" class="{{ $sel }}" @disabled($ownDepartment)><option value="">Choose…</option>@foreach ($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select>
         </x-ui.field>
         <x-ui.field label="Financial year" for="p-y" error="prepareYear" required>
             <select id="p-y" wire:model="prepareYear" class="{{ $sel }}">@foreach ($years as $y)<option value="{{ $y }}">FY {{ $y }}</option>@endforeach</select>

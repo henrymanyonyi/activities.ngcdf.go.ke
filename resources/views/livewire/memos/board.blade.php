@@ -16,6 +16,7 @@
 <x-ui.page icon="fa-envelope-open-text" title="Activity memos" :subtitle="$subtitle" scroll="inner" statsKey="memoStats">
     <x-slot:actions>
         @if ($isDepartment)
+            @if ($canRequest)<button type="button" wire:click="openRequest" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-user-pen text-xs"></i>Ask an officer to prepare a memo</button>@endif
             <a href="{{ route('memos.create') }}" wire:navigate class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-plus text-xs"></i>Create new activity memo</a>
         @elseif (auth()->user()->can('activities.manage'))
             <a href="{{ route('activities.create') }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-user-pen text-xs"></i>Prepare a memo for a Head of Department</a>
@@ -72,6 +73,32 @@
         </x-slot:stats>
     @endif
 
+    @if ($requests->isNotEmpty())
+        <x-ui.card title="Memo requests" icon="fa-link" :count="$requests->count()">
+            <div class="overflow-x-auto max-h-64">
+                <table class="w-full">
+                    <thead class="border-b border-slate-100"><tr><th class="{{ Ui::TH }}">Officer</th><th class="{{ Ui::TH }}">Status</th><th class="{{ Ui::TH }}">Memo</th><th class="{{ Ui::TH }}">Sent · expires</th><th class="{{ Ui::TH }}"><span class="sr-only">Actions</span></th></tr></thead>
+                    <tbody class="divide-y divide-slate-100">
+                        @foreach ($requests as $l)
+                            <tr wire:key="req-{{ $l->id }}">
+                                <td class="{{ Ui::TD }}"><p class="font-semibold text-slate-700">{{ $l->recipient_name }}</p>@if ($l->instructions)<p class="text-[11px] text-slate-400 line-clamp-1">{{ $l->instructions }}</p>@endif</td>
+                                <td class="{{ Ui::TD }}"><x-ui.badge :classes="$l->statusBadgeClasses()">{{ $l->statusLabel() }}</x-ui.badge></td>
+                                <td class="{{ Ui::TD }}">@if ($l->memo)<a href="{{ route('memos.show', $l->memo) }}" wire:navigate class="font-numeric text-emerald-700 hover:underline">{{ $l->memo->reference }}</a> <span class="text-[11px] text-slate-400">{{ $l->memo->status->label() }}</span>@else<span class="text-slate-400">Not started</span>@endif</td>
+                                <td class="{{ Ui::TD }} font-numeric whitespace-nowrap text-[12px]">{{ $l->created_at->format('d M') }} · {{ $l->expires_at->format('d M Y') }}</td>
+                                <td class="{{ Ui::TD }} text-right whitespace-nowrap">
+                                    @if ($l->isUsable())
+                                        <span x-data="{ copied: false }"><button type="button" x-on:click="navigator.clipboard.writeText(@js($l->url())); copied = true; setTimeout(() => copied = false, 2000)" class="{{ Ui::BTN_TINT }}"><i class="fa-solid fa-copy text-[9px]"></i><span x-text="copied ? 'Copied' : 'Copy link'"></span></button></span>
+                                        <button type="button" wire:click="askRevoke({{ $l->id }})" class="{{ Ui::BTN_TINT }}">Revoke</button>
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </x-ui.card>
+    @endif
+
     <div class="flex-1 min-h-0 flex flex-col {{ Ui::CARD }}">
         <div class="{{ Ui::CAPTION }}">
             <h2 class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{{ $tabs[$current]['label'] }}</h2>
@@ -96,7 +123,8 @@
                                 <div class="flex items-center gap-2 flex-wrap">
                                     <span class="text-[12px] font-numeric font-semibold text-emerald-700">{{ $a->reference }}</span>
                                     <x-ui.status :status="$a->status" />
-                                    @if ($a->isPreparedOnBehalf())<x-ui.badge classes="bg-purple-50 text-purple-700" icon="fa-user-pen">Prepared on behalf</x-ui.badge>@endif
+                                    @if ($a->isDelegated())<x-ui.badge classes="bg-violet-50 text-violet-700" icon="fa-user-check">Prepared by {{ $a->submitted_by_name }}</x-ui.badge>
+                                    @elseif ($a->isPreparedOnBehalf())<x-ui.badge classes="bg-purple-50 text-purple-700" icon="fa-user-pen">Prepared on behalf</x-ui.badge>@endif
                                     @if ($late)<x-ui.badge classes="bg-red-50 text-red-700" icon="fa-clock">Pending since {{ Ui::date($since) }}</x-ui.badge>@endif
                                 </div>
                                 <p class="text-[15px] font-semibold text-slate-800 mt-1">{{ $a->title }}</p>
@@ -125,4 +153,46 @@
             @endif
         @endif
     </div>
+
+    {{-- Ask an officer to prepare a memo (App\Services\DelegatedMemos) --}}
+    <x-ui.modal show="showRequest" :open="$showRequest" icon="fa-user-pen" title="Ask an officer to prepare a memo" subtitle="They get a secure link by email and SMS, at the contacts on the staff list. It opens only after a code sent to them, for this one memo. When they submit it, it comes to you to forward, return or decline.">
+        @if ($issuedUrl)
+            <div class="px-3 py-3 rounded-lg bg-emerald-50 border border-emerald-200 text-[13px] text-emerald-900" x-data="{ copied: false }">
+                <p class="font-semibold"><i class="fa-solid fa-paper-plane mr-1"></i>Sent. You can also give them this link:</p>
+                <div class="flex gap-2 mt-2"><input type="text" readonly value="{{ $issuedUrl }}" class="{{ Ui::CONTROL }} font-numeric text-[12px]" aria-label="Link"><button type="button" x-on:click="navigator.clipboard.writeText(@js($issuedUrl)); copied = true" class="{{ Ui::BTN_TINT }}"><span x-text="copied ? 'Copied' : 'Copy'"></span></button></div>
+                <p class="text-[11px] mt-1">It works only for them: it asks for a code sent to their email or mobile.</p>
+            </div>
+        @else
+            <x-ui.field label="Officer" for="rq-s" error="requestStaffId" required hint="Search the staff list by name or PF number. Officers of your department come first.">
+                @if ($requestPicked)
+                    <div class="flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                        <p class="text-[13px]"><span class="font-semibold text-slate-800">{{ $requestPicked->name }}</span> <span class="text-slate-500">· {{ $requestPicked->department?->name ?? 'No department' }}</span><span class="block text-[11px] text-slate-500">{{ $requestPicked->email ?: 'No email' }} · {{ $requestPicked->phone ?: 'No mobile' }}</span></p>
+                        <button type="button" wire:click="$set('requestStaffId', null)" class="{{ Ui::BTN_TINT }}">Change</button>
+                    </div>
+                @else
+                    <input id="rq-s" type="search" wire:model.live.debounce.300ms="requestSearch" class="{{ Ui::CONTROL }}" placeholder="Search name or PF number…" autocomplete="off">
+                    @if ($requestMatches->isNotEmpty())
+                        <ul class="mt-1 max-h-48 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
+                            @foreach ($requestMatches as $s)
+                                <li wire:key="rqm-{{ $s->id }}"><button type="button" wire:click="pickRequestStaff({{ $s->id }})" class="w-full text-left px-3 py-2 hover:bg-emerald-50 text-[13px]"><span class="font-semibold text-slate-700">{{ $s->name }}</span> <span class="text-slate-400">· {{ $s->department?->name ?? 'No department' }}</span></button></li>
+                            @endforeach
+                        </ul>
+                    @endif
+                @endif
+            </x-ui.field>
+            <x-ui.field label="What the memo is for (optional)" for="rq-p" error="requestPurpose" hint="Shown to the officer on the memo page, not in the email or SMS."><textarea id="rq-p" wire:model="requestPurpose" rows="3" maxlength="2000" class="{{ Ui::CONTROL }}" placeholder="e.g. Prepare the memo for the Kisumu network support visits in November"></textarea></x-ui.field>
+            <x-ui.field label="The link works for (days)" for="rq-d" error="requestDays" required><input id="rq-d" type="number" min="1" max="{{ \App\Services\DelegatedMemos::MAX_DAYS }}" wire:model="requestDays" class="{{ Ui::CONTROL }} font-numeric w-32"></x-ui.field>
+        @endif
+        <x-slot:footer>
+            <button type="button" wire:click="$set('showRequest', false)" class="{{ Ui::BTN_NEUTRAL }}">{{ $issuedUrl ? 'Done' : 'Cancel' }}</button>
+            @unless ($issuedUrl)<button type="button" wire:click="sendRequest" class="{{ Ui::BTN_PRIMARY }}" wire:loading.attr="disabled" wire:target="sendRequest"><i class="fa-solid fa-paper-plane text-xs"></i>Send the link</button>@endunless
+        </x-slot:footer>
+    </x-ui.modal>
+
+    <x-ui.modal show="showRevoke" :open="$showRevoke" size="alert" icon="fa-link-slash" tone="red" title="Withdraw this link?" subtitle="It stops working at once. Anything the officer saved stays; you can send a new link.">
+        <x-slot:footer>
+            <button type="button" wire:click="$set('showRevoke', false)" class="{{ Ui::BTN_NEUTRAL }}">Keep it</button>
+            <button type="button" wire:click="revokeRequest" class="{{ Ui::BTN_DANGER }}" wire:loading.attr="disabled" wire:target="revokeRequest">Withdraw</button>
+        </x-slot:footer>
+    </x-ui.modal>
 </x-ui.page>

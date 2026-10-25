@@ -15,6 +15,7 @@ use App\Models\Staff;
 use App\Models\User;
 use App\Support\Money;
 use App\Support\WorkingDays;
+use Closure;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -34,6 +35,31 @@ class ActivityEditor
         private ParticipantChecks $checks,
         private AppSettings $settings,
     ) {}
+
+    /** The memo an officer is changing through a Head of Department's delegated link, inside asPreparer(). */
+    private ?int $preparing = null;
+
+    /**
+     * Runs the callback as the officer preparing this one memo through the Head of Department's delegated
+     * link (App\Services\DelegatedMemos): the usual rules for that Head's department apply to this memo
+     * only, and every change is audited under the officer's name. Nothing else is opened to them.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $callback
+     * @return T
+     */
+    public function asPreparer(Activity $activity, string $preparerName, Closure $callback): mixed
+    {
+        $previous = $this->preparing;
+        $this->preparing = $activity->id;
+
+        try {
+            return AuditLogger::actingAs($preparerName, $callback);
+        } finally {
+            $this->preparing = $previous;
+        }
+    }
 
     /**
      * PL-01 / PL-02 / CD-05 / CD-06.
@@ -528,6 +554,15 @@ class ActivityEditor
 
         if (! $activity->isVisibleTo($user)) {
             throw new AuthorizationException('This memo belongs to another department.');
+        }
+
+        // While the officer the Head asked to prepare it has it, only they change it (through asPreparer()).
+        if ($activity->isWithPreparer()) {
+            if ($this->preparing !== $activity->id) {
+                throw new ActivityWorkflowException("{$activity->submitted_by_name} is preparing this memo. It comes to you for review when they submit it.");
+            }
+
+            return;
         }
 
         if (! $activity->status->isWithDepartment()) {

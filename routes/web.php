@@ -2,9 +2,11 @@
 
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\MemoDocumentController;
+use App\Http\Controllers\MemoRequestPreviewController;
 use App\Http\Controllers\ParticipantTemplateController;
 use App\Http\Controllers\PrivacyStatementController;
 use App\Http\Controllers\ReportExportController;
+use App\Http\Controllers\WorkplanFileController;
 use App\Livewire;
 use Illuminate\Support\Facades\Route;
 
@@ -81,18 +83,31 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified',
     Route::get('/memos/{activity}/document', MemoDocumentController::class)->middleware('permission:activities.view|memos.originate')->name('memos.document');
     Route::get('/documents/{document}', DocumentController::class)->middleware('permission:activities.view|memos.originate')->name('documents.show');
 
-    // Budgeting: the Office of the CEO prepares, only the CEO approves (App\Services\Budgeting checks again).
-    Route::middleware('permission:budgets.prepare|budgets.approve')->group(function () {
+    // Budgeting: the Office of the CEO, or a Head of Department for their own department's workplan,
+    // prepares; only the CEO approves (App\Services\Budgeting checks again, by department).
+    Route::middleware('permission:budgets.prepare|budgets.approve|workplans.prepare')->group(function () {
         Route::get('/budgets', Livewire\Budgets\Index::class)->name('budgets.index');
-        Route::get('/budgets/adjustments', Livewire\Budgets\Adjustments::class)->name('budgets.adjustments');
+        Route::get('/budgets/workplan-template', [WorkplanFileController::class, 'template'])->name('budgets.template');
+        Route::get('/budgets/adjustments', Livewire\Budgets\Adjustments::class)->middleware('permission:budgets.prepare|budgets.approve')->name('budgets.adjustments');
         Route::get('/budgets/{budget}', Livewire\Budgets\Show::class)->name('budgets.show');
+        Route::get('/budgets/{budget}/workplan', [WorkplanFileController::class, 'show'])->name('budgets.workplan');
     });
 
     Route::get('/links', Livewire\Links::class)->middleware('permission:links.manage')->name('links.index');
-    Route::get('/staff', Livewire\StaffList::class)->middleware('permission:reference.manage|staff.add')->name('staff.index');
+    Route::get('/staff', Livewire\StaffList::class)->middleware('permission:reference.manage|staff.add|staff.reassign')->name('staff.index');
     Route::get('/settings', Livewire\Settings\Reference::class)->middleware('permission:reference.manage')->name('settings.reference');
     Route::get('/users', Livewire\Users::class)->middleware('permission:users.manage')->name('users.index');
     Route::get('/audit', fn () => redirect()->route('reports.show', 'access-audit'))->middleware('permission:audit.view')->name('audit.index');
+});
+
+/*
+| A Head of Department's memo request: one officer prepares one memo through the
+| link, after a code sent to them (App\Services\DelegatedMemos). Not behind the
+| intake switch: it is part of the activity memo workflow.
+*/
+Route::middleware('throttle:30,1')->group(function () {
+    Route::get('/memo-request/{token}', Livewire\MemoRequest::class)->name('memo-request.show');
+    Route::get('/memo-request/{token}/preview', MemoRequestPreviewController::class)->name('memo-request.preview');
 });
 
 /*

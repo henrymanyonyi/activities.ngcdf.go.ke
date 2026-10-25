@@ -41,6 +41,8 @@ class RolesAndPermissionsSeeder extends Seeder
         'budgets.approve' => 'Approve department budgets and adjustments, or return them for correction',
         'instructions.send' => 'Instruct Finance (imprest) and Procurement (tickets) to act on an approved memo',
         'instructions.action' => 'Acknowledge and complete the CEO\'s instructions addressed to their own department',
+        'workplans.prepare' => 'Prepare their own department\'s workplan and budget estimates and submit them to the CEO',
+        'staff.reassign' => 'Change an officer\'s department, designation or system access (promotion, transfer), with a reason',
     ];
 
     /** @var array<string, list<string>> */
@@ -53,29 +55,30 @@ class RolesAndPermissionsSeeder extends Seeder
             'activities.postpone', 'activities.cancel', 'activities.execute', 'activities.close',
             'reference.manage', 'links.manage', 'reports.export', 'users.manage', 'audit.view',
             'memos.originate', 'memos.review', 'staff.add', 'budgets.prepare', 'budgets.approve',
-            'instructions.send', 'instructions.action',
+            'instructions.send', 'instructions.action', 'staff.reassign', 'workplans.prepare',
         ],
         User::ROLE_CHIEF_OF_STAFF => [
             'activities.view', 'activities.manage', 'activities.submit', 'decisions.record', 'directives.manage',
             'activities.postpone', 'activities.cancel', 'activities.execute', 'activities.close',
             'reference.manage', 'links.manage', 'reports.export', 'users.manage', 'audit.view',
-            'memos.review', 'budgets.prepare',
+            'memos.review', 'budgets.prepare', 'staff.reassign',
         ],
         User::ROLE_ASSISTANT_CHIEF_OF_STAFF => [
             'activities.view', 'activities.manage', 'activities.submit', 'activities.postpone', 'activities.execute',
-            'memos.review', 'budgets.prepare',
+            'memos.review', 'budgets.prepare', 'staff.reassign',
         ],
         // Settings, configuration and logs; no activities.view, so no activity, dashboard or report
         // other than the access and audit log (CEO's approval, 11 October 2026).
         User::ROLE_ADMIN => [
-            'reference.manage', 'users.manage', 'audit.view', 'reports.export',
+            'reference.manage', 'users.manage', 'audit.view', 'reports.export', 'staff.reassign',
         ],
         // Their own department's memos only: prepare, submit, correct and follow them to the
         // CEO's decision. No activities.view, so no register, dashboard, calendar or report.
         // instructions.action: the Heads of Finance and Procurement receive the CEO's instructions on
         // approved memos (instruction sheet only, never the memo; App\Models\ActionInstruction::scopeFor).
+        // workplans.prepare: their own department's workplan and budget estimates only (App\Services\Budgeting).
         User::ROLE_HOD => [
-            'memos.originate', 'staff.add', 'instructions.action',
+            'memos.originate', 'staff.add', 'instructions.action', 'workplans.prepare',
         ],
     ];
 

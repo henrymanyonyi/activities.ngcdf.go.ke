@@ -67,6 +67,7 @@ class Activity extends Model
         'imprest_reference',
         'imprest_status',
         'submission_link_id',
+        'prepared_by_staff_id',
         'submitted_by_name',
         'submitted_by_email',
         'submitted_by_phone',
@@ -271,6 +272,31 @@ class Activity extends Model
      * Prepared in the system by the responsible Head of Department, so the
      * memo the system generates stands as the memo (no signed upload needed).
      */
+    /** @return BelongsTo<Staff, $this> */
+    public function preparedBy(): BelongsTo
+    {
+        return $this->belongsTo(Staff::class, 'prepared_by_staff_id')->withTrashed();
+    }
+
+    /** Prepared by an officer through a Head of Department's delegated link (App\Services\DelegatedMemos). */
+    public function isDelegated(): bool
+    {
+        return $this->prepared_by_staff_id !== null;
+    }
+
+    /** The officer who prepares it has it: being written, or returned to them. The Head does not edit it meanwhile. */
+    public function isWithPreparer(): bool
+    {
+        return $this->isDelegated() && in_array($this->status, [ActivityStatus::Draft, ActivityStatus::ReturnedToPreparer], true);
+    }
+
+    /** Declined by the Head of Department before it ever reached the Office of the CEO. */
+    public function wasDeclinedByHod(): bool
+    {
+        return $this->status === ActivityStatus::Declined && $this->statusHistory()
+            ->where('from_status', ActivityStatus::WithHod->value)->where('to_status', ActivityStatus::Declined->value)->exists();
+    }
+
     public function isDepartmentOriginated(): bool
     {
         return $this->responsible_hod_id !== null && (int) $this->responsible_hod_id === (int) $this->created_by;
@@ -305,12 +331,14 @@ class Activity extends Model
         $department = $this->organisingDepartment?->name;
 
         return match ($this->status) {
-            ActivityStatus::Draft => $this->isDepartmentDraft() ? 'Head of Department'.($department ? ", {$department}" : '') : 'Office of the CEO',
+            ActivityStatus::Draft => $this->isWithPreparer() ? ($this->submitted_by_name ?: 'The officer preparing it') : ($this->isDepartmentDraft() ? 'Head of Department'.($department ? ", {$department}" : '') : 'Office of the CEO'),
+            ActivityStatus::ReturnedToPreparer => $this->submitted_by_name ?: 'The officer preparing it',
+            ActivityStatus::WithHod => 'Head of Department'.($department ? ", {$department}" : ''),
             ActivityStatus::ReturnedToHod => 'Head of Department'.($department ? ", {$department}" : ''),
             ActivityStatus::UnderReview => $this->review_office?->label() ?? 'Office of the CEO',
             ActivityStatus::AwaitingDecision => 'Chief Executive Officer',
             ActivityStatus::Returned => 'Chief of Staff and Assistant Chief of Staff',
-            ActivityStatus::Declined => 'Nobody: the CEO declined it',
+            ActivityStatus::Declined => $this->wasDeclinedByHod() ? 'Nobody: the Head of Department declined it' : 'Nobody: the CEO declined it',
             default => 'Nobody: the CEO has decided',
         };
     }
@@ -319,12 +347,18 @@ class Activity extends Model
     public function nextAction(): string
     {
         return match ($this->status) {
-            ActivityStatus::Draft => $this->isDepartmentDraft() ? 'Complete the memo and submit it for review.' : 'Complete the memo and forward it to the CEO.',
+            ActivityStatus::Draft => match (true) {
+                $this->isWithPreparer() => 'The officer completes the memo and submits it to the Head of Department.',
+                $this->isDepartmentDraft() => 'Complete the memo and submit it for review.',
+                default => 'Complete the memo and forward it to the CEO.',
+            },
+            ActivityStatus::WithHod => 'The Head of Department forwards it to the Chief of Staff, returns it to the officer or declines it.',
+            ActivityStatus::ReturnedToPreparer => 'The officer makes the changes asked for and submits it again.',
             ActivityStatus::UnderReview => 'Review the memo, then forward it or return it for correction.',
             ActivityStatus::ReturnedToHod => 'Make the corrections asked for and resubmit.',
             ActivityStatus::AwaitingDecision => 'The CEO approves and authorises, declines, or returns it.',
             ActivityStatus::Returned => 'Answer the CEO\'s comments, then forward it again or return it to the Head of Department.',
-            ActivityStatus::Declined => 'None. The CEO declined this memo.',
+            ActivityStatus::Declined => $this->wasDeclinedByHod() ? 'None. The Head of Department declined this memo.' : 'None. The CEO declined this memo.',
             ActivityStatus::Cancelled => 'None. The activity was cancelled.',
             default => 'None. Approved and authorised'.($this->approved_at ? ' on '.$this->approved_at->format('d M Y') : '').'.',
         };

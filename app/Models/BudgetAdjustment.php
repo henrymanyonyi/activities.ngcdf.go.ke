@@ -33,12 +33,17 @@ class BudgetAdjustment extends Model
         self::KIND_REALLOCATION => 'Reallocation between lines',
     ];
 
-    protected $fillable = ['department_budget_id', 'kind', 'budget_line_id', 'from_budget_line_id', 'new_line_code', 'new_line_name', 'amount', 'reason', 'prepared_by'];
+    protected $fillable = ['department_budget_id', 'kind', 'budget_line_id', 'from_budget_line_id', 'new_line_code', 'new_line_name', 'amount', 'reason', 'effective_on', 'prepared_by'];
 
     protected function casts(): array
     {
         return [
             'amount' => 'decimal:2',
+            'effective_on' => 'date',
+            'line_before' => 'decimal:2',
+            'line_after' => 'decimal:2',
+            'from_line_before' => 'decimal:2',
+            'from_line_after' => 'decimal:2',
             'status' => BudgetStatus::class,
             'submitted_at' => 'datetime',
             'approved_at' => 'datetime',

@@ -71,8 +71,10 @@ return new class extends Migration
             // Whether external participants count in cost per head.
             $table->boolean('count_externals_in_per_head')->default(true);
 
-            // Magic-link provenance.
+            // Magic-link provenance. A memo prepared through a Head of Department's delegated
+            // link also records the officer who prepared it (created_by is that Head).
             $table->foreignId('submission_link_id')->nullable()->constrained()->nullOnDelete();
+            $table->foreignId('prepared_by_staff_id')->nullable()->constrained('staff')->nullOnDelete();
             $table->string('submitted_by_name')->nullable();
             $table->string('submitted_by_email')->nullable();
             $table->string('submitted_by_phone', 30)->nullable();
@@ -322,10 +324,46 @@ return new class extends Migration
             $table->index(['staff_id', 'last_day']);
             $table->index(['activity_id', 'id']);
         });
+
+        Schema::table('submission_links', function (Blueprint $table) {
+            $table->foreignId('activity_id')->nullable()->after('kind')->constrained()->nullOnDelete();
+        });
+
+        // The CEO's instruction to Finance (process the imprest) or Procurement (procure the tickets)
+        // on an approved activity, acted on by that department's Head (App\Services\ActionInstructions).
+        // One instruction of each kind per activity.
+        Schema::create('action_instructions', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('activity_id')->constrained()->restrictOnDelete();
+            // App\Enums\InstructionKind: imprest (Finance) or tickets (Procurement).
+            $table->string('kind', 20);
+            // The department instructed, as configured when it was sent.
+            $table->foreignId('department_id')->constrained()->restrictOnDelete();
+            $table->text('note')->nullable();
+            // App\Enums\InstructionStatus: sent, acknowledged, completed.
+            $table->string('status', 20)->default('sent');
+            $table->foreignId('sent_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('sent_at')->nullable();
+            $table->foreignId('acknowledged_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('acknowledged_at')->nullable();
+            $table->foreignId('completed_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('completed_at')->nullable();
+            // The imprest number, or the LPO / ticket numbers.
+            $table->string('completion_reference', 100)->nullable();
+            $table->text('completion_note')->nullable();
+            $table->timestamps();
+
+            $table->unique(['activity_id', 'kind']);
+            $table->index(['department_id', 'status']);
+        });
     }
 
     public function down(): void
     {
+        Schema::dropIfExists('action_instructions');
+        Schema::table('submission_links', function (Blueprint $table) {
+            $table->dropConstrainedForeignId('activity_id');
+        });
         Schema::dropIfExists('participant_releases');
         Schema::dropIfExists('activity_review_notes');
         Schema::dropIfExists('activity_amendments');

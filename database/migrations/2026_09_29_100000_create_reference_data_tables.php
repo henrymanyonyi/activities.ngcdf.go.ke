@@ -135,7 +135,14 @@ return new class extends Migration
             $table->foreignId('department_id')->constrained()->restrictOnDelete();
             $table->string('financial_year', 9);
             $table->string('status', 20)->default('draft');
+            // The department's workplan: what it sets out to achieve in the year. Its activities are the lines.
+            $table->text('objectives')->nullable();
             $table->text('notes')->nullable();
+            // The workplan document or spreadsheet the department uploaded, encrypted (App\Services\DocumentStore).
+            $table->string('workplan_file_name')->nullable();
+            $table->string('workplan_file_path')->nullable();
+            $table->string('workplan_file_mime', 120)->nullable();
+            $table->unsignedBigInteger('workplan_file_size')->nullable();
             $table->foreignId('prepared_by')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignId('submitted_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('submitted_at')->nullable();
@@ -158,12 +165,42 @@ return new class extends Migration
             $table->foreignId('department_id')->constrained()->restrictOnDelete();
             $table->string('financial_year', 9);
             $table->string('code', 40)->nullable();
+            // The workplan activity or vote.
             $table->string('name');
+            $table->text('objective')->nullable();
+            $table->text('deliverables')->nullable();
+            $table->decimal('quantity', 12, 2)->nullable();
+            $table->decimal('unit_cost', 15, 2)->nullable();
+            // The quarters of the financial year it runs in, e.g. "Q1,Q3".
+            $table->string('quarters', 20)->nullable();
+            $table->string('responsible_officer')->nullable();
+            // What the department asked for when it last submitted; `amount` is the allocation
+            // (the CEO may change it before approving, and it is fixed once approved).
+            $table->decimal('proposed_amount', 15, 2)->nullable();
             $table->decimal('amount', 15, 2);
             $table->timestamps();
             $table->softDeletes();
 
             $table->index(['department_id', 'financial_year']);
+        });
+
+        // The review history of a department's workplan and budget: each submission and resubmission
+        // (with the lines as submitted), the CEO's comments and changes to amounts before approval,
+        // returns and the approval (with the lines as approved). Written once, never edited.
+        Schema::create('budget_reviews', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('department_budget_id')->constrained()->restrictOnDelete();
+            $table->foreignId('budget_line_id')->nullable()->constrained()->nullOnDelete();
+            // submitted, resubmitted, comment, amount_changed, returned, approved
+            $table->string('event', 30);
+            $table->text('comment')->nullable();
+            $table->decimal('amount_before', 15, 2)->nullable();
+            $table->decimal('amount_after', 15, 2)->nullable();
+            $table->json('snapshot')->nullable();
+            $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
+            $table->timestamp('created_at')->nullable();
+
+            $table->index(['department_budget_id', 'id']);
         });
 
         // An approved budget changes only by adjustments, with the same approval.
@@ -180,6 +217,12 @@ return new class extends Migration
             $table->string('new_line_name')->nullable();
             $table->decimal('amount', 15, 2);
             $table->text('reason');
+            // From when the change applies, and the line allocations it changed, recorded when it is approved.
+            $table->date('effective_on')->nullable();
+            $table->decimal('line_before', 15, 2)->nullable();
+            $table->decimal('line_after', 15, 2)->nullable();
+            $table->decimal('from_line_before', 15, 2)->nullable();
+            $table->decimal('from_line_after', 15, 2)->nullable();
             $table->string('status', 20)->default('draft');
             $table->foreignId('prepared_by')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignId('submitted_by')->nullable()->constrained('users')->nullOnDelete();
@@ -217,6 +260,7 @@ return new class extends Migration
 
         Schema::dropIfExists('app_settings');
         Schema::dropIfExists('budget_adjustments');
+        Schema::dropIfExists('budget_reviews');
         Schema::dropIfExists('budget_lines');
         Schema::dropIfExists('department_budgets');
         Schema::dropIfExists('dsa_rates');

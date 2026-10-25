@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Staff extends Model
@@ -79,6 +80,22 @@ class Staff extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /** @return HasMany<StaffChange, $this> */
+    public function positionChanges(): HasMany
+    {
+        return $this->hasMany(StaffChange::class)->latest('effective_on')->latest('id');
+    }
+
+    /**
+     * The FAPM account made from this officer, if any.
+     *
+     * @return HasOne<User, $this>
+     */
+    public function account(): HasOne
+    {
+        return $this->hasOne(User::class);
     }
 
     /** @return HasMany<ActivityParticipant, $this> */

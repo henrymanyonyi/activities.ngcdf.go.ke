@@ -12,11 +12,17 @@
             @foreach (preg_split("/\n\n+/", $text) as $paragraph)
                 <p style="margin:0 0 12px;">{{ $paragraph }}</p>
             @endforeach
-            <p style="margin:20px 0;"><a href="{{ $link }}" style="display:inline-block;background:#059669;color:#ffffff;text-decoration:none;font-weight:600;padding:10px 18px;border-radius:6px;">Sign in to FAPM</a></p>
+            @if ($link !== '')
+            <p style="margin:20px 0;"><a href="{{ $link }}" style="display:inline-block;background:#059669;color:#ffffff;text-decoration:none;font-weight:600;padding:10px 18px;border-radius:6px;">{{ $forAccount ? 'Sign in to FAPM' : 'Open the memo request' }}</a></p>
             <p style="margin:0;font-size:12px;color:#64748b;">If the button does not work, open {{ $link }}</p>
+            @endif
         </td></tr>
         <tr><td style="padding:14px 24px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;line-height:1.5;">
-            For confidentiality this message gives only the reference. The details are in FAPM, after you sign in. Do not forward it. You receive it because you are an authorised FAPM user; it was sent automatically, so please do not reply.
+            @if ($forAccount)
+                For confidentiality this message gives only the reference. The details are in FAPM, after you sign in. Do not forward it. You receive it because you are an authorised FAPM user; it was sent automatically, so please do not reply.
+            @else
+                The link is for you alone: it asks for a code sent to your email or mobile number before it opens, so do not forward it. You receive this because your Head of Department asked you to prepare an activity memo in FAPM. It was sent automatically, so please do not reply.
+            @endif
         </td></tr>
     </table>
 </body>

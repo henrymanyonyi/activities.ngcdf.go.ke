@@ -89,8 +89,9 @@ it('lets a Head of Department add a missing officer and correct only the officer
         ->toThrow(AuthorizationException::class);
 });
 
-it('keeps the staff list closed to roles without permission', function () {
-    $this->actingAs(assistant())->get(route('staff.index'))->assertForbidden();
+it('opens the staff list to the Assistant only to record position changes, not to add or import officers', function () {
+    $this->actingAs(assistant())->get(route('staff.index'))->assertOk()->assertDontSee('Add officer')->assertDontSee('Import HR list');
+    Livewire::actingAs(assistant())->test(StaffList::class)->call('checkImport')->assertForbidden();
 });
 
 it('builds the team and costs on the Head of Department\'s draft, with DSA at the officer\'s standard rate', function () {

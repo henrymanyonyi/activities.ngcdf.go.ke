@@ -34,15 +34,25 @@ class DeliverOutboundMessage implements ShouldQueue
             if ($message->channel === 'sms') {
                 $reference = $sms->send($message->recipient, $message->body);
             } else {
-                Mail::to($message->recipient)->send(new AlertMessage((string) $message->subject, $message->body, (string) $message->url));
+                Mail::to($message->recipient)->send(new AlertMessage((string) $message->subject, $message->body, (string) $message->url, $message->user_id !== null));
             }
         } catch (Throwable $e) {
             $this->failed($e);
 
             throw $e;
+        } finally {
+            $this->forgetCode($message);
         }
 
         $message->update(['status' => OutboundMessage::SENT, 'provider_reference' => $reference, 'sent_at' => now(), 'error' => null]);
+    }
+
+    /** A one-time code is never kept in the log, so nobody reading it can open the memo request. */
+    private function forgetCode(OutboundMessage $message): void
+    {
+        if ($message->kind === 'memo_request_code') {
+            $message->forceFill(['body' => preg_replace('/\b\d{6}\b/', '******', $message->body)])->save();
+        }
     }
 
     public function failed(Throwable $e): void

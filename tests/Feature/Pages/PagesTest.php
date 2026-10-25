@@ -70,7 +70,8 @@ it('enforces the permission matrix on pages (4.1)', function () {
         $this->actingAs($user)->get(route('staff.index'))->assertOk();
         $this->actingAs($user)->get(route('users.index'))->assertOk();
     }
-    $this->actingAs($assistant)->get(route('staff.index'))->assertForbidden();
+    // The Assistant opens the staff list only to record promotions and transfers (staff.reassign).
+    $this->actingAs($assistant)->get(route('staff.index'))->assertOk()->assertDontSee('Add officer');
     $this->actingAs($assistant)->get(route('users.index'))->assertForbidden();
 
     // Audit trail: CEO and Chief of Staff, not the Assistant.

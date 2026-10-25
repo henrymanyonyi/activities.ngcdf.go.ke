@@ -11,9 +11,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
- * A department's budget for one financial year: its budget lines, prepared
- * as a draft and counted only once the CEO approves it; changed during the
- * year only by approved adjustments. One per department and year (a
+ * A department's workplan and budget for one financial year: its objectives,
+ * its lines (the workplan's activities or votes, with their estimated costs)
+ * and an optional uploaded workplan document, prepared as a draft (by the
+ * Office of the CEO or the department's own Head) and counted only once the
+ * CEO approves it; changed during the year only by approved adjustments.
+ * Every submission, comment, change of amount, return and approval is kept in
+ * `reviews`. One per department and year (a
  * discarded draft is soft-deleted). Status changes only through
  * App\Services\Budgeting.
  */
@@ -21,7 +25,9 @@ class DepartmentBudget extends Model
 {
     use Auditable, SoftDeletes;
 
-    protected $fillable = ['department_id', 'financial_year', 'notes', 'prepared_by'];
+    protected $fillable = ['department_id', 'financial_year', 'objectives', 'notes', 'prepared_by'];
+
+    protected $hidden = ['workplan_file_path'];
 
     protected function casts(): array
     {
@@ -49,6 +55,17 @@ class DepartmentBudget extends Model
     public function adjustments(): HasMany
     {
         return $this->hasMany(BudgetAdjustment::class)->latest('id');
+    }
+
+    /** @return HasMany<BudgetReview, $this> */
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(BudgetReview::class)->latest('id');
+    }
+
+    public function hasWorkplanFile(): bool
+    {
+        return $this->workplan_file_path !== null;
     }
 
     /** @return BelongsTo<User, $this> */

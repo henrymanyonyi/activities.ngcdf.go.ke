@@ -69,6 +69,38 @@ class OutboundAlerts
         }
     }
 
+    /**
+     * To an officer without an account, at the email and mobile number on the staff list: the delegated
+     * memo request and what the Head of Department did with the memo. The same rules: reference only,
+     * logged, and always sent (it is the only way they hear), so the Settings switches do not apply.
+     * The link is their way in, so it goes in the message; nothing else about the memo does.
+     *
+     * @param  array{subject: string, line: string, todo: string}  $text
+     */
+    public function toContact(string $name, ?string $email, ?string $mobile, string $kind, array $text, ?string $url, ?int $activityId = null): void
+    {
+        $channels = array_filter([
+            'mail' => filled($email) ? mb_strtolower(trim((string) $email)) : null,
+            'sms' => MobileNumber::normalise($mobile),
+        ]);
+
+        foreach ($channels as $channel => $address) {
+            $message = OutboundMessage::create([
+                'user_id' => null,
+                'activity_id' => $activityId,
+                'kind' => $kind,
+                'channel' => $channel,
+                'recipient' => $address,
+                'subject' => $channel === 'mail' ? 'FAPM: '.$text['subject'] : null,
+                'body' => $channel === 'mail' ? "Dear {$name},\n\n{$text['line']}\n\n{$text['todo']}" : "NG-CDF FAPM: {$text['line']}".($url ? " Open: {$url}" : ''),
+                'url' => $url,
+                'status' => OutboundMessage::QUEUED,
+            ]);
+
+            DB::afterCommit(fn () => $this->deliver($message->id));
+        }
+    }
+
     /** One or two SMS parts: who it is from, what happened and where to act. */
     public function smsBody(ActivityAlert $alert, string $url): string
     {

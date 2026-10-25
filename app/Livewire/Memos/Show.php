@@ -14,6 +14,7 @@ use App\Services\AccessLogger;
 use App\Services\ActivityEditor;
 use App\Services\ActivityLifecycle;
 use App\Services\BudgetPosition;
+use App\Services\DelegatedMemos;
 use App\Services\DocumentStore;
 use App\Services\MemoDocument;
 use App\Support\Money;
@@ -42,6 +43,15 @@ class Show extends Component
     public bool $showSubmit = false;
 
     public bool $showDiscard = false;
+
+    // A memo an officer prepared, with the Head for review: forward, return or decline
+    public bool $showForward = false;
+
+    public bool $showReturnToOfficer = false;
+
+    public bool $showDecline = false;
+
+    public string $hodReason = '';
 
     public string $office = 'assistant_chief_of_staff';
 
@@ -101,6 +111,41 @@ class Show extends Component
             $this->showSubmit = false;
             $this->activity->refresh();
             $this->toast($resubmitting ? 'Resubmitted. The reviewer has been told.' : 'Submitted for review. The '.$this->activity->review_office?->label().' has been told.');
+        }
+    }
+
+    public function openHodAction(string $action): void
+    {
+        abort_unless(in_array($action, ['showForward', 'showReturnToOfficer', 'showDecline'], true), 404);
+        $this->resetErrorBag();
+        $this->reset(['hodReason', 'note']);
+        $this->{$action} = true;
+    }
+
+    public function forwardToChiefOfStaff(DelegatedMemos $memos): void
+    {
+        $this->validate(['note' => ['nullable', 'string', 'max:2000']], [], ['note' => 'note to the Chief of Staff']);
+        if ($this->attempt(fn () => $memos->forwardToChiefOfStaff($this->activity, Auth::user(), $this->note), 'Forwarded to the Chief of Staff for review. The officer has been told.')) {
+            $this->showForward = false;
+            $this->activity->refresh();
+        }
+    }
+
+    public function returnToOfficer(DelegatedMemos $memos): void
+    {
+        $this->validate(['hodReason' => ['required', 'string', 'max:2000']], [], ['hodReason' => 'what the officer must change']);
+        if ($this->attempt(fn () => $memos->returnToPreparer($this->activity, $this->hodReason, Auth::user()), 'Returned to the officer, with a new link to correct it.')) {
+            $this->showReturnToOfficer = false;
+            $this->activity->refresh();
+        }
+    }
+
+    public function declineMemo(DelegatedMemos $memos): void
+    {
+        $this->validate(['hodReason' => ['required', 'string', 'max:2000']], [], ['hodReason' => 'reason']);
+        if ($this->attempt(fn () => $memos->decline($this->activity, $this->hodReason, Auth::user()), 'Memo declined. The officer has been told.')) {
+            $this->showDecline = false;
+            $this->activity->refresh();
         }
     }
 
@@ -215,13 +260,14 @@ class Show extends Component
     {
         $activity = $this->activity->load([
             'category', 'type', 'organisingDepartment', 'budgetLine', 'locations.region', 'locations.county', 'locations.constituency',
-            'documents', 'statusHistory.user', 'reviewNotes.user', 'creator', 'responsibleHod', 'approver', 'participants',
+            'documents', 'statusHistory.user', 'reviewNotes.user', 'creator', 'responsibleHod', 'approver', 'participants', 'preparedBy',
             'report.submitter', 'report.reviewer', 'report.document', 'costs.category', 'costs.participant.staff',
         ]);
 
         return view('livewire.memos.show', [
             'a' => $activity,
-            'editable' => $activity->status->isWithDepartment(),
+            'editable' => $activity->status->isWithDepartment() && ! $activity->isWithPreparer(),
+            'withHod' => $activity->status === ActivityStatus::WithHod && Auth::user()->isHeadOfDepartment(),
             'canDiscard' => $activity->isDepartmentDraft(),
             'issues' => $activity->status->isWithDepartment() ? $memoDocument->issues($activity) : [],
             'budget' => $activity->organising_department_id ? $budget->forActivity($activity) : null,

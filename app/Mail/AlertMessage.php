@@ -13,7 +13,8 @@ class AlertMessage extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public function __construct(public string $heading, public string $text, public string $link) {}
+    /** $forAccount: false for an officer without an account (a delegated memo link), who opens the link instead of signing in. */
+    public function __construct(public string $heading, public string $text, public string $link, public bool $forAccount = true) {}
 
     public function envelope(): Envelope
     {

@@ -22,7 +22,11 @@
     $openInstructions = $receivesInstructions ? ActionInstruction::query()->for($user)->where('status', '!=', InstructionStatus::Completed->value)->count() : 0;
     // Budgeting: what awaits the CEO's approval, or what the CEO returned to the preparers.
     $budgetWaiting = $user->can('budgets.approve') ? BudgetStatus::Submitted : BudgetStatus::Returned;
-    $budgetCount = $user->canAny(['budgets.prepare', 'budgets.approve']) ? DepartmentBudget::query()->where('status', $budgetWaiting->value)->count() : 0;
+    $budgetCount = match (true) {
+        $user->canAny(['budgets.prepare', 'budgets.approve']) => DepartmentBudget::query()->where('status', $budgetWaiting->value)->count(),
+        $user->can('workplans.prepare') && isset($user->department_id) => DepartmentBudget::query()->where('department_id', $user->department_id)->where('status', BudgetStatus::Returned->value)->count(),
+        default => 0,
+    };
     $adjustmentCount = $user->canAny(['budgets.prepare', 'budgets.approve']) ? BudgetAdjustment::query()->where('status', $budgetWaiting->value)->count() : 0;
     $budgetLens = request()->routeIs('department-costs') && request('lens') === 'budget';
 
@@ -45,13 +49,13 @@
             ['route' => 'reports.index', 'match' => 'reports.*', 'icon' => 'fa-file-lines', 'label' => 'Reports', 'can' => 'activities.view'],
         ],
         'Budgeting' => [
-            ['route' => 'budgets.index', 'match' => ['budgets.index', 'budgets.show'], 'icon' => 'fa-wallet', 'label' => 'Department budgets', 'can' => ['budgets.prepare', 'budgets.approve'], 'count' => $budgetCount],
+            ['route' => 'budgets.index', 'match' => ['budgets.index', 'budgets.show'], 'icon' => 'fa-wallet', 'label' => $user->canAny(['budgets.prepare', 'budgets.approve']) ? 'Department budgets' : 'Workplan and budget', 'can' => ['budgets.prepare', 'budgets.approve', 'workplans.prepare'], 'count' => $budgetCount],
             ['route' => 'budgets.adjustments', 'match' => 'budgets.adjustments', 'icon' => 'fa-sliders', 'label' => 'Budget adjustments', 'can' => ['budgets.prepare', 'budgets.approve'], 'count' => $adjustmentCount],
             ['route' => 'department-costs', 'params' => ['lens' => 'budget'], 'match' => 'department-costs', 'active' => $budgetLens, 'icon' => 'fa-scale-balanced', 'label' => 'Budget position', 'can' => 'activities.view'],
         ],
         'Office of the CEO' => [
             ['route' => 'links.index', 'match' => 'links.*', 'icon' => 'fa-link', 'label' => 'Submission links', 'can' => 'links.manage', 'hidden' => ! config('activities.submission_links')],
-            ['route' => 'staff.index', 'match' => 'staff.*', 'icon' => 'fa-id-badge', 'label' => 'Staff list', 'can' => 'reference.manage'],
+            ['route' => 'staff.index', 'match' => 'staff.*', 'icon' => 'fa-id-badge', 'label' => 'Staff list', 'can' => ['reference.manage', 'staff.reassign']],
             ['route' => 'settings.reference', 'match' => 'settings.*', 'icon' => 'fa-sliders', 'label' => 'Reference data', 'can' => 'reference.manage'],
             ['route' => 'users.index', 'match' => 'users.*', 'icon' => 'fa-users-gear', 'label' => 'User accounts', 'can' => 'users.manage'],
             ['route' => 'audit.index', 'match' => 'audit.*', 'icon' => 'fa-clock-rotate-left', 'label' => 'Audit and access log', 'can' => 'audit.view'],

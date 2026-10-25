@@ -38,10 +38,40 @@ return new class extends Migration
             $table->index(['is_active', 'department_id']);
             $table->index('name');
         });
+
+        Schema::table('users', function (Blueprint $table) {
+            $table->foreign('staff_id')->references('id')->on('staff')->nullOnDelete();
+        });
+
+        // A promotion, transfer or change of system access (App\Services\StaffChanges).
+        // Written once and never edited: who held which position and access, and from when.
+        Schema::create('staff_changes', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('staff_id')->constrained('staff')->restrictOnDelete();
+            $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
+            $table->foreignId('from_department_id')->nullable()->constrained('departments')->nullOnDelete();
+            $table->foreignId('to_department_id')->nullable()->constrained('departments')->nullOnDelete();
+            $table->foreignId('from_designation_id')->nullable()->constrained('designations')->nullOnDelete();
+            $table->foreignId('to_designation_id')->nullable()->constrained('designations')->nullOnDelete();
+            // System access before and after: a role name, or null for none.
+            $table->string('from_role', 40)->nullable();
+            $table->string('to_role', 40)->nullable();
+            $table->date('effective_on');
+            $table->text('reason');
+            $table->string('reference', 100)->nullable();
+            $table->foreignId('changed_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('created_at')->nullable();
+
+            $table->index(['staff_id', 'effective_on']);
+        });
     }
 
     public function down(): void
     {
+        Schema::dropIfExists('staff_changes');
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropForeign(['staff_id']);
+        });
         Schema::dropIfExists('staff');
     }
 };

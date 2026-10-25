@@ -15,9 +15,13 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->string('email')->unique();
+            // Mobile number for the action-needed SMS (App\Services\OutboundAlerts); else the linked officer's.
+            $table->string('phone', 20)->nullable();
             // Heads of Department only: the department whose memos they see. The
             // foreign key is added with the departments table (reference data).
             $table->foreignId('department_id')->nullable();
+            // The officer on the staff list the account was made from; the foreign key is added with the staff table.
+            $table->foreignId('staff_id')->nullable()->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             // Fortify two-factor authentication (CF-03).

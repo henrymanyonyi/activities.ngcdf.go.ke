@@ -61,7 +61,7 @@ class Links extends Component
         $this->expires_at = today()->addDays(14)->toDateString();
 
         if ($id) {
-            $link = SubmissionLink::query()->findOrFail($id);
+            $link = SubmissionLink::query()->intake()->findOrFail($id);
             foreach (['label', 'recipient_name', 'recipient_email', 'recipient_phone', 'instructions'] as $f) {
                 $this->{$f} = (string) $link->{$f};
             }
@@ -93,7 +93,7 @@ class Links extends Component
         $data['expires_at'] = Carbon::parse($data['expires_at'])->endOfDay();
 
         if ($this->editingId) {
-            $links->update(SubmissionLink::query()->findOrFail($this->editingId), $data);
+            $links->update(SubmissionLink::query()->intake()->findOrFail($this->editingId), $data);
             $this->toast('Link updated.');
         } else {
             [$link] = $links->create($data, Auth::user());
@@ -106,7 +106,7 @@ class Links extends Component
     public function regenerate(int $id, SubmissionLinkService $links): void
     {
         abort_unless(Auth::user()->can('links.manage'), 403);
-        $link = SubmissionLink::query()->findOrFail($id);
+        $link = SubmissionLink::query()->intake()->findOrFail($id);
         $links->regenerate($link);
         $this->freshUrl = $link->fresh()->url();
         $this->toast('New link issued. The previous one no longer works.');
@@ -115,7 +115,7 @@ class Links extends Component
     public function toggleRevoked(int $id, SubmissionLinkService $links): void
     {
         abort_unless(Auth::user()->can('links.manage'), 403);
-        $link = SubmissionLink::query()->findOrFail($id);
+        $link = SubmissionLink::query()->intake()->findOrFail($id);
         $link->isRevoked() ? $links->reactivate($link) : $links->revoke($link);
         $this->toast($link->fresh()->isRevoked() ? 'Link revoked.' : 'Link reactivated.');
     }
@@ -123,7 +123,7 @@ class Links extends Component
     public function render(): View
     {
         return view('livewire.links', [
-            'links' => SubmissionLink::query()->with(['department', 'creator'])->withCount('activities')->latest()->get(),
+            'links' => SubmissionLink::query()->intake()->with(['department', 'creator'])->withCount('activities')->latest()->get(),
             'departments' => Department::query()->active()->ordered()->get(['id', 'name']),
             'categories' => ActivityCategory::query()->active()->ordered()->get(['id', 'name']),
         ]);

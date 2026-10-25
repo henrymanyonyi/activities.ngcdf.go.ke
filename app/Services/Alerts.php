@@ -59,13 +59,14 @@ class Alerts
     }
 
     /**
-     * Named users of the Office of the CEO (budget preparers). Anyone else is skipped.
+     * Named users: budget preparers in the Office of the CEO, or the Head of the department whose
+     * workplan and budget it is (callers pass only that department's Head). Anyone else is skipped.
      *
      * @param  iterable<User>  $users
      */
     public function toUsers(iterable $users, ActivityAlert $alert): void
     {
-        $recipients = collect($users)->filter(fn (User $u) => $u->is_active && $u->hasAnyRole([User::ROLE_CEO, User::ROLE_CHIEF_OF_STAFF, User::ROLE_ASSISTANT_CHIEF_OF_STAFF]));
+        $recipients = collect($users)->filter(fn (User $u) => $u->is_active && $u->hasAnyRole([User::ROLE_CEO, User::ROLE_CHIEF_OF_STAFF, User::ROLE_ASSISTANT_CHIEF_OF_STAFF, User::ROLE_HOD]));
 
         $this->deliver($recipients, $alert);
     }

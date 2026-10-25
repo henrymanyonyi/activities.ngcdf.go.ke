@@ -10,20 +10,42 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
- * FRD MD-08: a line (vote) of a department's budget for a financial year.
- * `amount` is the allocation as the CEO approved the budget; approved
- * adjustments change it during the year (App\Services\Budgeting::lineAmounts).
- * Changed only through App\Services\Budgeting.
+ * FRD MD-08: a line of a department's budget for a financial year: a vote, or
+ * an activity of the department's workplan with its objective, deliverables,
+ * quantity, unit cost, quarters and responsible officer.
+ * `proposed_amount` is what the department asked for when it last submitted;
+ * `amount` is the allocation, which the CEO may change before approving and
+ * which is fixed once the budget is approved. Approved adjustments change the
+ * allocation during the year (App\Services\Budgeting::lineAmounts) without
+ * touching `amount`. Changed only through App\Services\Budgeting.
  */
 class BudgetLine extends Model
 {
     use Auditable, SoftDeletes;
 
-    protected $fillable = ['department_budget_id', 'department_id', 'financial_year', 'code', 'name', 'amount'];
+    /** @var array<string, string> the quarters of the July to June financial year */
+    public const QUARTERS = ['Q1' => 'Q1 (Jul to Sep)', 'Q2' => 'Q2 (Oct to Dec)', 'Q3' => 'Q3 (Jan to Mar)', 'Q4' => 'Q4 (Apr to Jun)'];
+
+    protected $fillable = [
+        'department_budget_id', 'department_id', 'financial_year', 'code', 'name',
+        'objective', 'deliverables', 'quantity', 'unit_cost', 'quarters', 'responsible_officer',
+        'proposed_amount', 'amount',
+    ];
 
     protected function casts(): array
     {
-        return ['amount' => 'decimal:2'];
+        return [
+            'amount' => 'decimal:2',
+            'proposed_amount' => 'decimal:2',
+            'unit_cost' => 'decimal:2',
+            'quantity' => 'decimal:2',
+        ];
+    }
+
+    /** @return list<string> e.g. ['Q1', 'Q3'] */
+    public function quarterList(): array
+    {
+        return array_values(array_filter(explode(',', (string) $this->quarters)));
     }
 
     /** @return BelongsTo<DepartmentBudget, $this> */

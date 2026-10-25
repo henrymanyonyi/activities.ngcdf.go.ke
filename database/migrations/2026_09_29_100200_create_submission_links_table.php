@@ -5,9 +5,15 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Magic links a memo originator uses to submit an activity without an account.
- * The token is looked up by its SHA-256 hash; an encrypted copy is kept only so
- * CEO/Admin can copy the link again (App\Services\SubmissionLinkService).
+ * Magic links. Two kinds: `intake`, a link the Office of the CEO gives a memo
+ * originator to submit activities without an account (behind
+ * ACTIVITIES_SUBMISSION_LINKS); and `delegated`, a link a Head of Department
+ * gives one officer on the staff list to prepare one memo for the Head's
+ * review (App\Services\DelegatedMemos), opened only after a one-time code
+ * sent to that officer's email or mobile. The token is looked up by its
+ * SHA-256 hash; an encrypted copy is kept only so the link can be copied
+ * again (App\Services\SubmissionLinkService). The memo a delegated link
+ * prepares (`activity_id`) is added with the activities table.
  */
 return new class extends Migration
 {
@@ -31,9 +37,20 @@ return new class extends Migration
             $table->dateTime('last_opened_at')->nullable();
             $table->unsignedInteger('open_count')->default(0);
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->string('kind', 20)->default('intake');
+            // Delegated: the officer asked to prepare the memo.
+            $table->foreignId('staff_id')->nullable()->constrained('staff')->nullOnDelete();
+            // Delegated: the one-time code that proves the officer holds the email or mobile on the staff list.
+            $table->string('otp_hash', 64)->nullable();
+            $table->dateTime('otp_expires_at')->nullable();
+            $table->unsignedTinyInteger('otp_attempts')->default(0);
+            $table->dateTime('verified_at')->nullable();
+            // Delegated: the memo was submitted to the Head of Department, so the link no longer opens it for editing.
+            $table->dateTime('completed_at')->nullable();
             $table->timestamps();
 
             $table->index(['revoked_at', 'expires_at']);
+            $table->index(['kind', 'created_by']);
         });
     }
 

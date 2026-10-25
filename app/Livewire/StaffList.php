@@ -8,7 +8,9 @@ use App\Models\Department;
 use App\Models\Designation;
 use App\Models\Office;
 use App\Models\Staff;
+use App\Models\User;
 use App\Rules\DsaGrade;
+use App\Services\StaffChanges;
 use App\Services\StaffImporter;
 use App\Services\StaffRecords;
 use App\Support\MobileNumber;
@@ -28,7 +30,9 @@ use Livewire\WithPagination;
  * by Excel import. A Head of Department sees it and adds officers who are
  * missing, one by one or by importing a list, so they can build a team; they
  * correct only the records they added (App\Services\StaffRecords,
- * App\Services\StaffImporter).
+ * App\Services\StaffImporter). The System Administrator, the CEO, the Chief
+ * of Staff and the Assistant also record promotions, transfers and changes of
+ * system access here (App\Services\StaffChanges), with their history.
  */
 #[Layout('layouts.admin')]
 #[Title('Staff list')]
@@ -82,6 +86,30 @@ class StaffList extends Component
 
     /** What a checked file would do, before it is imported. */
     public ?string $importCheck = null;
+
+    // Promotion, transfer or change of access
+    public bool $showPosition = false;
+
+    public ?int $positionStaffId = null;
+
+    public string $posDepartment = '';
+
+    public string $posDesignation = '';
+
+    public string $posAccess = StaffChanges::KEEP;
+
+    public bool $posReplaceHead = false;
+
+    public string $posEffective = '';
+
+    public string $posReason = '';
+
+    public string $posReference = '';
+
+    /** Shown once after an account is made, never stored in plain text. */
+    public ?string $oneTimePassword = null;
+
+    public ?string $oneTimeFor = null;
 
     public function updated(string $property): void
     {
@@ -158,6 +186,54 @@ class StaffList extends Component
         }
     }
 
+    public function openPosition(int $id): void
+    {
+        abort_unless(Auth::user()->can('staff.reassign'), 403);
+        $staff = Staff::query()->findOrFail($id);
+        $this->resetErrorBag();
+        $this->positionStaffId = $staff->id;
+        $this->posDepartment = (string) $staff->department_id;
+        $this->posDesignation = (string) $staff->designation_id;
+        $this->posAccess = StaffChanges::KEEP;
+        $this->posReplaceHead = false;
+        $this->posEffective = today()->toDateString();
+        $this->posReason = '';
+        $this->posReference = '';
+        $this->showPosition = true;
+    }
+
+    public function savePosition(StaffChanges $changes): void
+    {
+        abort_unless(Auth::user()->can('staff.reassign'), 403);
+        $this->validate([
+            'posDepartment' => ['required', 'exists:departments,id'],
+            'posDesignation' => ['nullable', 'exists:designations,id'],
+            'posAccess' => ['required', Rule::in(array_keys($changes->accessOptions(Auth::user())))],
+            'posEffective' => ['required', 'date'],
+            'posReason' => ['required', 'string', 'max:2000'],
+            'posReference' => ['nullable', 'string', 'max:100'],
+        ], [], ['posDepartment' => 'department', 'posDesignation' => 'designation', 'posAccess' => 'system access', 'posEffective' => 'effective date', 'posReason' => 'reason', 'posReference' => 'reference']);
+
+        $staff = Staff::query()->findOrFail($this->positionStaffId);
+        $result = $this->attempt(fn () => $changes->apply($staff, [
+            'department_id' => $this->posDepartment,
+            'designation_id' => $this->posDesignation,
+            'access' => $this->posAccess,
+            'replace_head' => $this->posReplaceHead,
+            'effective_on' => $this->posEffective,
+            'reason' => $this->posReason,
+            'reference' => $this->posReference,
+        ], Auth::user()));
+
+        if (is_array($result)) {
+            $this->showPosition = false;
+            if ($result['password']) {
+                [$this->oneTimePassword, $this->oneTimeFor] = [$result['password'], $result['account']->email];
+            }
+            $this->toast("{$staff->name}: change recorded".($result['account'] && $result['change']->to_role !== $result['change']->from_role ? '; their access applies at their next sign-in.' : '.'));
+        }
+    }
+
     /** Runs every check and reports what the import would do, without saving anything. */
     public function checkImport(StaffImporter $importer): void
     {
@@ -188,6 +264,26 @@ class StaffList extends Component
         }
     }
 
+    /** @return array<string, mixed> */
+    private function positionData(): array
+    {
+        if (! $this->showPosition || ! $this->positionStaffId) {
+            return ['positionStaff' => null, 'positionAccount' => null, 'accessOptions' => [], 'currentHead' => null];
+        }
+
+        $changes = app(StaffChanges::class);
+        $staff = Staff::query()->with(['department', 'designation', 'positionChanges.fromDepartment', 'positionChanges.toDepartment', 'positionChanges.fromDesignation', 'positionChanges.toDesignation', 'positionChanges.changer'])->find($this->positionStaffId);
+        $account = $staff ? $changes->accountOf($staff) : null;
+        $headWanted = $this->posAccess === User::ROLE_HOD && $this->posDepartment !== '';
+
+        return [
+            'positionStaff' => $staff,
+            'positionAccount' => $account?->loadMissing('department'),
+            'accessOptions' => $changes->accessOptions(Auth::user()),
+            'currentHead' => $headWanted ? User::query()->role(User::ROLE_HOD)->where('is_active', true)->where('department_id', $this->posDepartment)->when($account, fn ($q) => $q->whereKeyNot($account->id))->first() : null,
+        ];
+    }
+
     public function render(): View
     {
         $staff = Staff::query()
@@ -210,6 +306,9 @@ class StaffList extends Component
             'employmentTypes' => EmploymentType::cases(),
             'records' => app(StaffRecords::class),
             'manages' => Auth::user()->can('reference.manage'),
+            'canAdd' => Auth::user()->canAny(['reference.manage', 'staff.add']),
+            'canReassign' => Auth::user()->can('staff.reassign'),
+            ...$this->positionData(),
             'counts' => [
                 'active' => Staff::query()->where('is_active', true)->count(),
                 'no_grade' => Staff::query()->where('is_active', true)->whereNull('job_grade')->count(),

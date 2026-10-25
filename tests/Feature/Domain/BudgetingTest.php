@@ -69,14 +69,16 @@ it('lets the CEO approve a draft the CEO prepared, but not anyone else\'s draft 
         ->and(fn () => $this->budgeting->create($this->dept->id, $this->fy->label(), null, $this->acos))->toThrow(ActivityWorkflowException::class, 'already has a budget');
 });
 
-it('keeps budgets to the CEO, the Chief of Staff and the Assistant', function () {
+it('keeps budgets to the Office of the CEO, and a Head of Department to their own department\'s workplan', function () {
     $hod = headOfDepartment($this->dept);
     $admin = User::factory()->admin()->create();
+    $other = Department::query()->where('name', '!=', $this->dept->name)->firstOrFail();
 
-    expect(fn () => $this->budgeting->create($this->dept->id, $this->fy->label(), null, $hod))->toThrow(AuthorizationException::class)
+    expect(fn () => $this->budgeting->create($other->id, $this->fy->label(), null, $hod))->toThrow(AuthorizationException::class, 'only your own department')
         ->and(fn () => $this->budgeting->create($this->dept->id, $this->fy->label(), null, $admin))->toThrow(AuthorizationException::class);
 
-    $this->actingAs($hod)->get(route('budgets.index'))->assertForbidden();
+    $this->actingAs($hod)->get(route('budgets.index'))->assertOk()->assertSee('Workplan and budget')->assertDontSee($other->name)->assertDontSee(route('budgets.adjustments'));
+    $this->actingAs($hod)->get(route('budgets.adjustments'))->assertForbidden();
     $this->actingAs($admin)->get(route('budgets.index'))->assertForbidden();
     $this->actingAs($admin)->get(route('settings.reference', ['tab' => 'budgets']))->assertOk()->assertDontSee('Add budget line');
     $this->actingAs($this->acos)->get(route('budgets.index'))->assertOk()->assertSee('Department budgets')->assertSee('Budget adjustments');
@@ -96,7 +98,7 @@ it('adjusts an approved budget during the year only once the CEO approves, never
 
     $materials = $budget->lines()->where('name', 'Materials')->sole();
     expect(allocationOf($this))->toBe(650_000_00)
-        ->and($this->budgeting->lineAmounts($budget)[$materials->id])->toBe(['original' => 0, 'adjustments' => 50_000_00, 'current' => 50_000_00]);
+        ->and($this->budgeting->lineAmounts($budget)[$materials->id])->toBe(['proposed' => null, 'original' => 0, 'increases' => 50_000_00, 'decreases' => 0, 'adjustments' => 50_000_00, 'current' => 50_000_00]);
 
     // A reallocation moves money without changing the total; a reduction cannot take more than the line has.
     $move = $this->budgeting->saveAdjustment($budget, ['kind' => BudgetAdjustment::KIND_REALLOCATION, 'from_budget_line_id' => $fuel->id, 'budget_line_id' => $travel->id, 'amount' => '40000', 'reason' => 'More county visits'], $this->ceo);
@@ -116,7 +118,7 @@ it('adjusts an approved budget during the year only once the CEO approves, never
     $this->budgeting->approve($cut->fresh(), $this->ceo);
 
     expect(allocationOf($this))->toBe(630_000_00)
-        ->and($this->budgeting->totals($budget->fresh()))->toBe(['original' => 600_000_00, 'adjustments' => 30_000_00, 'current' => 630_000_00, 'pending' => 0]);
+        ->and($this->budgeting->totals($budget->fresh()))->toBe(['proposed' => 600_000_00, 'original' => 600_000_00, 'increases' => 90_000_00, 'decreases' => 60_000_00, 'adjustments' => 30_000_00, 'current' => 630_000_00, 'pending' => 0]);
 });
 
 it('lets a memo be charged only to a line of an approved budget', function () {
@@ -145,10 +147,10 @@ it('takes a budget from draft to approval on the screens', function () {
         ->call('ask', 'submit', 'budget')->call('confirm');
 
     Livewire::actingAs($this->ceo)->test(Show::class, ['budget' => $budget])
-        ->assertSee('Return for correction')
+        ->assertSee('Return for adjustment')
         ->call('openReturn', 'budget')->call('sendBack')->assertHasErrors('returnReason')
         ->call('ask', 'approve', 'budget')->call('confirm')
-        ->assertSee('Allocation now')->assertSee('Propose adjustment');
+        ->assertSee('Allocation now')->assertSee('Adjust allocation')->assertDontSee('Propose adjustment');
 
     expect($budget->fresh()->status)->toBe(BudgetStatus::Approved)->and(allocationOf($this))->toBe(250_000_00);
 });
