@@ -74,10 +74,9 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified',
     });
     // The CEO's instructions to Finance (imprest) and Procurement (tickets) on approved memos.
     // The Head sees an instruction sheet, never the memo (App\Services\ActionInstructions).
-    Route::middleware('permission:instructions.action')->group(function () {
-        Route::get('/instructions', Livewire\Instructions\Index::class)->name('instructions.index');
-        Route::get('/instructions/{instruction}', Livewire\Instructions\Show::class)->name('instructions.show');
-    });
+    Route::get('/instructions', Livewire\Instructions\Index::class)->middleware('permission:instructions.action')->name('instructions.index');
+    // The Office of the CEO reads every department's sheet; the instructed Head also acts on it.
+    Route::get('/instructions/{instruction}', Livewire\Instructions\Show::class)->middleware('permission:instructions.action|activities.view')->name('instructions.show');
 
     // The generated memo and annexes (PDF): the Office of the CEO, or the department's own Head.
     Route::get('/memos/{activity}/document', MemoDocumentController::class)->middleware('permission:activities.view|memos.originate')->name('memos.document');

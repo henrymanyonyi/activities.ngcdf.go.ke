@@ -9,11 +9,19 @@
 <x-ui.page :icon="$i->kind->icon()" :title="$written ? 'Instruction from the CEO' : $i->kind->label()" :subtitle="$a->reference.' · '.$a->title">
     <x-slot:pills><x-ui.badge :classes="$i->status->badgeClasses()">{{ $i->status->label() }}</x-ui.badge></x-slot:pills>
     <x-slot:actions>
-        <a href="{{ route('instructions.index') }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-arrow-left text-xs"></i>Instructions</a>
-        @if ($i->status === InstructionStatus::Sent)
+        @if ($acts)
+            <a href="{{ route('instructions.index') }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-arrow-left text-xs"></i>Instructions</a>
+        @else
+            <a href="{{ route('activities.show', $a) }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-arrow-left text-xs"></i>Activity</a>
+        @endif
+        @if ($a->status->isApprovedOrLater())
+            <a href="{{ route('memos.document', $a) }}" target="_blank" rel="noopener" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-file-pdf text-xs text-red-600"></i>Approved memo</a>
+        @endif
+        @if (! $acts)
+        @elseif ($i->status === InstructionStatus::Sent)
             <button type="button" wire:click="acknowledge" wire:loading.attr="disabled" wire:target="acknowledge" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-handshake text-xs"></i>Acknowledge</button>
         @endif
-        @if ($i->status->isOpen())
+        @if ($acts && $i->status->isOpen())
             <button type="button" wire:click="$set('showComplete', true)" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-circle-check text-xs"></i>Mark as done</button>
         @endif
     </x-slot:actions>

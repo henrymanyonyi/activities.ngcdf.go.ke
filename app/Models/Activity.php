@@ -537,6 +537,24 @@ class Activity extends Model
         $query->whereRaw('1 = 0');
     }
 
+    /**
+     * Read only, and only once approved: the Head of a department the CEO has instructed to act on this
+     * activity (Finance, Procurement or any other) may read the approved memo (26 October 2026). Never
+     * its budget position, and never any action; isVisibleTo() still decides who may change it.
+     */
+    public function isReadableByInstructedHead(User $user): bool
+    {
+        return $this->status->isApprovedOrLater()
+            && $user->can('instructions.action') && isset($user->department_id)
+            && $this->instructions()->where('department_id', $user->department_id)->exists();
+    }
+
+    /** May read this memo: anyone it is visible to, or an instructed Head once it is approved. */
+    public function isReadableBy(User $user): bool
+    {
+        return $this->isVisibleTo($user) || $this->isReadableByInstructedHead($user);
+    }
+
     public function isVisibleTo(User $user): bool
     {
         return $user->can('activities.view')

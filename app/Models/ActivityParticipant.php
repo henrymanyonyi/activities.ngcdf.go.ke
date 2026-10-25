@@ -26,6 +26,8 @@ class ActivityParticipant extends Model
         'external_name',
         'external_organisation',
         'external_category',
+        'group_label',
+        'headcount',
         'department_id',
         'designation_id',
         'office_id',
@@ -44,6 +46,7 @@ class ActivityParticipant extends Model
     {
         return [
             'is_external' => 'boolean',
+            'headcount' => 'integer',
             'external_category' => ExternalCategory::class,
             'role' => ParticipantRole::class,
             'status' => ParticipationStatus::class,
@@ -96,7 +99,23 @@ class ActivityParticipant extends Model
 
     public function displayName(): string
     {
-        return $this->is_external ? (string) $this->external_name : (string) $this->staff?->name;
+        return match (true) {
+            $this->is_external => (string) $this->external_name,
+            $this->isGroup() => $this->headcount.' × '.$this->group_label,
+            default => (string) $this->staff?->name,
+        };
+    }
+
+    /** Officers added by number without names (e.g. 10 FAMs): no staff record, no availability or field-day checks. */
+    public function isGroup(): bool
+    {
+        return $this->group_label !== null;
+    }
+
+    /** How many people this line is: the group's number, otherwise one. */
+    public function people(): int
+    {
+        return max(1, (int) ($this->headcount ?? 1));
     }
 
     /** First day this person is on the activity (their own date, else the activity's). */

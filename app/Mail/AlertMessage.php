@@ -4,6 +4,7 @@ namespace App\Mail;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
@@ -13,12 +14,20 @@ class AlertMessage extends Mailable
 {
     use Queueable, SerializesModels;
 
-    /** $forAccount: false for an officer without an account (a delegated memo link), who opens the link instead of signing in. */
-    public function __construct(public string $heading, public string $text, public string $link, public bool $forAccount = true) {}
+    public const OFFICE = 'Office of the Chief Executive Officer';
+
+    /**
+     * $forAccount: false for an officer without an account (a delegated memo link), who opens the link instead of signing in.
+     * $fromOffice: the CEO, the Chief of Staff or the Assistant took the action, so it comes from the Office of the CEO.
+     */
+    public function __construct(public string $heading, public string $text, public string $link, public bool $forAccount = true, public bool $fromOffice = false) {}
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: $this->heading);
+        return new Envelope(
+            from: $this->fromOffice ? new Address((string) config('mail.from.address'), self::OFFICE.', NG-CDF Board') : null,
+            subject: $this->heading,
+        );
     }
 
     public function content(): Content

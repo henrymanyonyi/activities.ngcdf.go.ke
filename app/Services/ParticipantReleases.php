@@ -252,6 +252,9 @@ class ParticipantReleases
 
     private function assertDates(ActivityParticipant $participant, Activity $activity, Carbon $lastDay): void
     {
+        if ($participant->is_external || $participant->isGroup()) {
+            throw new ActivityWorkflowException('Only a named officer can be recalled, released or reassigned. Change a group\'s number or days on the team instead.');
+        }
         if (! self::canRelease($activity)) {
             throw new ActivityWorkflowException('An officer can be released only from an approved or in-progress activity. Before approval, change their days instead.');
         }

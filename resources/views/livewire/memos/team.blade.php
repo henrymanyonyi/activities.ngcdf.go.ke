@@ -13,6 +13,7 @@
     <x-slot:actions>
         <a href="{{ route('memos.show', $a) }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-arrow-left text-xs"></i>Back to the memo</a>
         @if ($editable)
+            <button type="button" wire:click="$set('showGroup', true)" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-people-group text-xs"></i>Add a group by number</button>
             <button type="button" wire:click="$set('showExternal', true)" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-user-tie text-xs"></i>Add external participant</button>
             <button type="button" wire:click="$set('showAdd', true)" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-user-plus text-xs"></i>Add officers</button>
         @endif
@@ -55,7 +56,7 @@
                                         @endif
                                     @endif
                                 </td>
-                                <td class="{{ Ui::TD }}">{{ $p->is_external ? '—' : ($p->department?->name ?? '—') }}</td>
+                                <td class="{{ Ui::TD }}">{{ $p->is_external || $p->isGroup() ? '—' : ($p->department?->name ?? '—') }}</td>
                                 <td class="{{ Ui::TD }} font-numeric">{!! $p->is_external ? '—' : ($p->job_grade ? e($p->job_grade) : '<span class="text-amber-600">not set</span>') !!}</td>
                                 <td class="{{ Ui::TD }}">{{ $p->role->label() }}</td>
                                 <td class="{{ Ui::TD }} font-numeric whitespace-nowrap">{{ $p->plannedDays($a) }}{{ $p->isPartial($a) ? ' ('.Ui::dateRange($p->startOn($a), $p->endOn($a)).')' : '' }}</td>
@@ -182,6 +183,21 @@
         <x-slot:footer>
             <button type="button" wire:click="$set('showStaffForm', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
             <button type="button" wire:click="saveStaff" wire:loading.attr="disabled" wire:target="saveStaff" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-floppy-disk text-xs"></i>Add to staff list</button>
+        </x-slot:footer>
+    </x-ui.modal>
+
+    {{-- A group by number, without names --}}
+    <x-ui.modal show="showGroup" :open="$showGroup" size="slim" icon="fa-people-group" title="Add a group by number" subtitle="Officers who take part without being named, for example 10 Fund Account Managers. DSA is their scale's rate for each of them.">
+        <x-ui.field label="Who they are" for="gr-l" error="groupLabel" required><input id="gr-l" type="text" wire:model="groupLabel" maxlength="255" class="{{ Ui::CONTROL }}" placeholder="e.g. Fund Account Managers (FAMs)"></x-ui.field>
+        <div class="grid grid-cols-2 gap-3">
+            <x-ui.field label="Number" for="gr-n" error="groupCount" required><input id="gr-n" type="number" min="1" max="500" wire:model="groupCount" class="{{ Ui::CONTROL }} font-numeric" placeholder="10"></x-ui.field>
+            <x-ui.field label="DSA scale" for="gr-g" error="groupGrade" required><select id="gr-g" wire:model="groupGrade" class="{{ $sel }}"><option value="">Choose…</option>@foreach ($grades as $g)<option value="{{ $g }}">{{ $g === 'INTERN' ? 'INTERN (attachees)' : 'Scale '.$g }}</option>@endforeach</select></x-ui.field>
+        </div>
+        <x-ui.field label="Role" for="gr-r" error="role" required><select id="gr-r" wire:model="role" class="{{ $sel }}">@foreach ($roles as $r)<option value="{{ $r->value }}">{{ $r->label() }}</option>@endforeach</select></x-ui.field>
+        <p class="text-[12px] text-slate-500">Nobody is named, so availability and field days are not checked for them.</p>
+        <x-slot:footer>
+            <button type="button" wire:click="$set('showGroup', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
+            <button type="button" wire:click="addGroup" wire:loading.attr="disabled" wire:target="addGroup" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-people-group text-xs"></i>Add</button>
         </x-slot:footer>
     </x-ui.modal>
 

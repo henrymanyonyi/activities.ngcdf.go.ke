@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Memos;
 
+use App\Enums\EmploymentType;
 use App\Enums\ExternalCategory;
 use App\Enums\ParticipantRole;
 use App\Enums\TravelMode;
@@ -10,6 +11,7 @@ use App\Models\Activity;
 use App\Models\CostCategory;
 use App\Models\Department;
 use App\Models\Designation;
+use App\Models\DsaRate;
 use App\Models\Office;
 use App\Models\Staff;
 use App\Rules\DsaGrade;
@@ -66,6 +68,15 @@ class Team extends Component
 
     public string $role = 'member';
 
+    // A group added by number, without names (e.g. 10 FAMs).
+    public bool $showGroup = false;
+
+    public string $groupLabel = '';
+
+    public string $groupCount = '';
+
+    public string $groupGrade = '';
+
     // External participant.
     public string $externalName = '';
 
@@ -116,7 +127,7 @@ class Team extends Component
     private function done(string $message, array $warnings = []): void
     {
         $this->reset([
-            'showAdd', 'showExternal', 'showRemove', 'showDays', 'showCost', 'showStaffForm',
+            'showAdd', 'showExternal', 'showGroup', 'groupLabel', 'groupCount', 'groupGrade', 'showRemove', 'showDays', 'showCost', 'showStaffForm',
             'staffSearch', 'staffDepartment', 'selectedStaff', 'role', 'externalName', 'externalOrganisation', 'externalCategory',
             'participantId', 'daysStart', 'daysCount', 'costId', 'costCategoryId', 'costParticipantId', 'costDescription', 'costAmount', 'costTravelMode',
         ]);
@@ -189,6 +200,25 @@ class Team extends Component
             'external_category' => ExternalCategory::from($this->externalCategory),
         ], ParticipantRole::from($this->role), Auth::user()))) {
             $this->done('External participant added.');
+        }
+    }
+
+    /** Officers added by number without their names, e.g. 10 Fund Account Managers. */
+    public function addGroup(ActivityEditor $editor): void
+    {
+        $this->validate([
+            'groupLabel' => ['required', 'string', 'max:255'],
+            'groupCount' => ['required', 'integer', 'min:1', 'max:500'],
+            'groupGrade' => ['required', new DsaGrade(EmploymentType::Attachee)],
+            'role' => ['required', $this->roleRule()],
+        ], [], ['groupLabel' => 'who they are', 'groupCount' => 'number', 'groupGrade' => 'DSA scale']);
+
+        if ($this->attempt(fn () => $editor->addGroup($this->activity, [
+            'group_label' => $this->groupLabel,
+            'headcount' => $this->groupCount,
+            'job_grade' => $this->groupGrade,
+        ], ParticipantRole::from($this->role), Auth::user()))) {
+            $this->done("{$this->groupCount} × {$this->groupLabel} added. DSA is worked out for each of them.");
         }
     }
 
@@ -373,6 +403,7 @@ class Team extends Component
             'selectedIds' => array_map('intval', $this->selectedStaff),
             'roles' => ParticipantRole::cases(),
             'externalCategories' => ExternalCategory::cases(),
+            'grades' => DsaRate::grades(),
             'travelModes' => TravelMode::cases(),
             'costCategories' => CostCategory::query()->active()->where('code', '!=', 'dsa')->ordered()->get(['id', 'name']),
             'departments' => Department::query()->active()->ordered()->get(['id', 'name']),

@@ -189,6 +189,7 @@
                     <p class="text-[13px] text-slate-500">Field days shown for this quarter and financial year, including this activity, against the limits in Settings.</p>
                     @if ($editable && ! $s->isDelivered())
                         <div class="flex gap-2">
+                            <button type="button" wire:click="$set('showAddGroup', true)" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-people-group text-xs"></i>Add a group by number</button>
                             <button type="button" wire:click="$set('showAddExternal', true)" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-user-tie text-xs"></i>Add external</button>
                             <button type="button" wire:click="$set('showAddStaff', true)" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-user-plus text-xs"></i>Add officers</button>
                         </div>
@@ -270,7 +271,7 @@
                                             @if ($row['share'])<p class="text-[11px] text-slate-400 font-numeric">incl. {{ Money::format($row['share']) }} shared</p>@endif
                                         </td>
                                         <td class="{{ Ui::TD }} text-right whitespace-nowrap">
-                                            @if ($canRelease && ! $p->is_external && $p->status->isExpected() && $p->plannedDays($a) > 1)
+                                            @if ($canRelease && ! $p->is_external && ! $p->isGroup() && $p->status->isExpected() && $p->plannedDays($a) > 1)
                                                 <button type="button" wire:click="openRelease({{ $p->id }})" class="{{ Ui::BTN_ICON }}" title="Recall, release or reassign {{ $p->displayName() }}" aria-label="Recall, release or reassign {{ $p->displayName() }}"><i class="fa-solid fa-person-walking-arrow-loop-left text-xs"></i></button>
                                             @endif
                                             @if ($editable && ! $s->isDelivered())
@@ -398,7 +399,7 @@
                             @forelse ($a->instructions as $ins)
                                 <div class="border border-slate-100 rounded-xl p-4 mb-2" wire:key="ins-{{ $ins->id }}">
                                     <div class="flex items-center justify-between gap-2">
-                                        <span class="text-sm font-semibold text-slate-700"><i class="fa-solid {{ $ins->kind->icon() }} text-xs text-slate-400 mr-1"></i>{{ $ins->kind->needsWrittenInstruction() ? $ins->department?->name : $ins->kind->office().': '.mb_strtolower($ins->kind->label()) }}</span>
+                                        <a href="{{ route('instructions.show', $ins) }}" wire:navigate class="text-sm font-semibold text-emerald-700 hover:underline"><i class="fa-solid {{ $ins->kind->icon() }} text-xs text-slate-400 mr-1"></i>{{ $ins->kind->needsWrittenInstruction() ? $ins->department?->name : $ins->kind->office().': '.mb_strtolower($ins->kind->label()) }}</a>
                                         <x-ui.badge :classes="$ins->status->badgeClasses()">{{ $ins->status->label() }}</x-ui.badge>
                                     </div>
                                     @if ($ins->note)<p class="text-sm text-slate-700 mt-2 whitespace-pre-line">{{ $ins->note }}</p>@endif
@@ -920,6 +921,21 @@
         <x-slot:footer>
             <button type="button" wire:click="$set('showAddExternal', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
             <button type="button" wire:click="addExternal" wire:loading.attr="disabled" wire:target="addExternal" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-plus text-xs"></i>Add</button>
+        </x-slot:footer>
+    </x-ui.modal>
+
+    <x-ui.modal show="showAddGroup" :open="$showAddGroup" size="slim" icon="fa-people-group" title="Add a group by number" subtitle="Officers who take part without being named, for example 10 Fund Account Managers. DSA is their scale's rate for each of them.">
+        <x-ui.field label="Who they are" for="grp-l" error="groupLabel" required><input id="grp-l" type="text" wire:model="groupLabel" maxlength="255" class="{{ Ui::CONTROL }}" placeholder="e.g. Fund Account Managers (FAMs)"></x-ui.field>
+        <div class="grid grid-cols-2 gap-4">
+            <x-ui.field label="Number" for="grp-n" error="groupCount" required><input id="grp-n" type="number" min="1" max="500" wire:model="groupCount" class="{{ Ui::CONTROL }} font-numeric" placeholder="10"></x-ui.field>
+            <x-ui.field label="DSA scale" for="grp-g" error="groupGrade" required><select id="grp-g" wire:model="groupGrade" class="{{ $sel }}"><option value="">Choose…</option>@foreach (\App\Models\DsaRate::grades() as $g)<option value="{{ $g }}">{{ $g === 'INTERN' ? 'INTERN (attachees)' : 'Scale '.$g }}</option>@endforeach</select></x-ui.field>
+        </div>
+        <x-ui.field label="Role" for="grp-r" error="role"><select id="grp-r" wire:model="role" class="{{ $sel }}">@foreach (ParticipantRole::cases() as $r)<option value="{{ $r->value }}">{{ $r->label() }}</option>@endforeach</select></x-ui.field>
+        @if ($amend)<x-ui.field label="Reason for the change" for="grp-why" error="reason" required><input id="grp-why" type="text" wire:model="reason" class="{{ Ui::CONTROL }}"></x-ui.field>@endif
+        <p class="text-[12px] text-slate-500">Nobody is named, so availability and field days are not checked for them.</p>
+        <x-slot:footer>
+            <button type="button" wire:click="$set('showAddGroup', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
+            <button type="button" wire:click="addGroup" wire:loading.attr="disabled" wire:target="addGroup" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-plus text-xs"></i>Add</button>
         </x-slot:footer>
     </x-ui.modal>
 

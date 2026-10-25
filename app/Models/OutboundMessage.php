@@ -17,11 +17,12 @@ class OutboundMessage extends Model
 
     public const FAILED = 'failed';
 
-    protected $fillable = ['user_id', 'activity_id', 'kind', 'channel', 'recipient', 'subject', 'body', 'url', 'status', 'provider_reference', 'error', 'sent_at'];
+    protected $fillable = ['user_id', 'activity_id', 'kind', 'channel', 'recipient', 'subject', 'body', 'url', 'from_office', 'status', 'provider_reference', 'error', 'sent_at'];
 
     protected function casts(): array
     {
         return [
+            'from_office' => 'boolean',
             'sent_at' => 'datetime',
         ];
     }

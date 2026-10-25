@@ -9,6 +9,7 @@ use App\Notifications\ActivityAlert;
 use App\Support\MobileNumber;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -61,6 +62,7 @@ class OutboundAlerts
                     'subject' => $channel === 'mail' ? 'FAPM: '.$alert->outbound['subject'] : null,
                     'body' => $channel === 'mail' ? $this->emailBody($user, $alert) : $this->smsBody($alert, $url),
                     'url' => $url,
+                    'from_office' => $this->fromOffice(),
                     'status' => OutboundMessage::QUEUED,
                 ]);
 
@@ -94,6 +96,7 @@ class OutboundAlerts
                 'subject' => $channel === 'mail' ? 'FAPM: '.$text['subject'] : null,
                 'body' => $channel === 'mail' ? "Dear {$name},\n\n{$text['line']}\n\n{$text['todo']}" : "NG-CDF FAPM: {$text['line']}".($url ? " Open: {$url}" : ''),
                 'url' => $url,
+                'from_office' => $this->fromOffice(),
                 'status' => OutboundMessage::QUEUED,
             ]);
 
@@ -110,6 +113,16 @@ class OutboundAlerts
     public function emailBody(User $user, ActivityAlert $alert): string
     {
         return "Dear {$user->name},\n\n{$alert->outbound['line']}\n\n{$alert->outbound['todo']}";
+    }
+
+    /**
+     * The action behind the message was taken by the CEO, the Chief of Staff or the Assistant: its email is
+     * headed, and sent, as from the Office of the CEO. Anyone else (a Head of Department, an officer through a
+     * memo request, the System Administrator, the daily reminders) keeps the system's own heading.
+     */
+    private function fromOffice(): bool
+    {
+        return (bool) Auth::user()?->hasAnyRole([User::ROLE_CEO, User::ROLE_CHIEF_OF_STAFF, User::ROLE_ASSISTANT_CHIEF_OF_STAFF]);
     }
 
     /** For the delivery log: the mobile number masked. */

@@ -32,7 +32,8 @@ class Show extends Component
 
     public function mount(ActionInstruction $instruction, AccessLogger $log): void
     {
-        abort_unless($instruction->isFor(Auth::user()), 403);
+        // The instructed Head acts on it; the Office of the CEO (who sees everything) reads it.
+        abort_unless($instruction->isFor(Auth::user()) || Auth::user()->can('activities.view'), 403);
         $this->instruction = $instruction;
         $log->log(AccessLogger::VIEW, $instruction->activity, ['page' => 'instruction', 'instruction' => $instruction->id]);
     }
@@ -63,6 +64,7 @@ class Show extends Component
             'i' => $this->instruction,
             'a' => $this->instruction->activity,
             'lines' => $lines,
+            'acts' => $this->instruction->isFor(Auth::user()),
         ])->title($this->instruction->kind->office().' instruction · '.$this->instruction->activity->reference);
     }
 }

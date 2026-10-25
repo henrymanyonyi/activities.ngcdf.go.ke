@@ -95,8 +95,11 @@ class DsaCalculator
                 }
 
                 $units = $this->units($activity, $participant);
-                $computed = Money::fromCents(Money::toCents($rate->amount) * $units);
-                $description = sprintf('DSA %d %s × %s', $units, $this->settings->get('dsa_basis') === 'days' ? 'days' : 'nights', Money::format(Money::toCents($rate->amount)));
+                // A group added by number (e.g. 10 FAMs) is paid for each of them.
+                $people = $participant->people();
+                $computed = Money::fromCents(Money::toCents($rate->amount) * $units * $people);
+                $description = sprintf('DSA %d %s × %s', $units, $this->settings->get('dsa_basis') === 'days' ? 'days' : 'nights', Money::format(Money::toCents($rate->amount)))
+                    .($participant->isGroup() ? " × {$people} people" : '');
 
                 if (! $line) {
                     $activity->costs()->create([

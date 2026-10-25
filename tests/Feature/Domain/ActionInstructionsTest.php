@@ -104,8 +104,14 @@ it('shows Procurement an instruction sheet with the team and travel costs, never
         ->assertSee('Air ticket Nairobi to Kisumu')
         ->assertDontSee('DSA')
         ->assertDontSee('Confidential reasons for the visit.');
-    $this->actingAs($this->procurementHead)->get(route('memos.show', $activity))->assertForbidden();
-    $this->actingAs($this->procurementHead)->get(route('memos.document', $activity))->assertForbidden();
+    // The approved memo itself, read only: no budget position, no team page, no actions.
+    $this->actingAs($this->procurementHead)->get(route('memos.show', $activity))->assertOk()
+        ->assertSee('instructed your department to act on it')->assertSee('Open your instruction')
+        ->assertDontSee('Budget position')->assertDontSee(route('memos.team', $activity))->assertDontSee('Submit activity report');
+    $this->actingAs($this->procurementHead)->get(route('memos.document', $activity))->assertOk();
+    $this->actingAs($this->procurementHead)->get(route('memos.team', $activity))->assertForbidden();
+    // The Office of the CEO reads every sheet, without acting on it.
+    $this->actingAs(chiefOfStaff())->get(route('instructions.show', $instruction))->assertOk()->assertDontSee('Mark as done')->assertSee('Approved memo');
     $this->actingAs($this->financeHead)->get(route('instructions.show', $instruction))->assertForbidden();
     $this->actingAs($this->otherHead)->get(route('instructions.show', $instruction))->assertForbidden();
 });
@@ -185,7 +191,7 @@ it('lets the CEO instruct any other department with what it must do, showing its
         ->assertDontSee('Air ticket Nairobi to Kisumu')
         ->assertDontSee('Confidential reasons for the visit.');
     $this->actingAs($adminHead)->get(route('memos.index'))->assertSee(route('instructions.index'));
-    $this->actingAs($adminHead)->get(route('memos.show', $activity))->assertForbidden();
+    $this->actingAs($adminHead)->get(route('memos.show', $activity))->assertOk()->assertSee('instructed your department to act on it');
 
     // Each department once; a further department can be added later from the activity.
     expect(fn () => app(ActionInstructions::class)->send($activity->fresh(), [], null, $this->ceo, [['department_id' => $transport->id, 'instruction' => 'Again']]))
@@ -197,4 +203,15 @@ it('lets the CEO instruct any other department with what it must do, showing its
     // Done, with what was done; the Office of the CEO is told.
     app(ActionInstructions::class)->complete($other, 'Vehicle KCZ 123A, driver J. Mutua', null, $adminHead);
     expect($this->ceo->notifications()->where('data->kind', 'instruction_completed')->first()->data['message'])->toStartWith('Legal Services has completed the CEO\'s instruction');
+});
+
+it('keeps a memo closed to an instructed Head until it is approved, and to Heads not instructed', function () {
+    $activity = activityAwaitingTheCeo();
+    $this->actingAs($this->otherHead)->get(route('memos.show', $activity))->assertForbidden();
+
+    $approved = instructableActivity($this->ceo);
+    app(ActionInstructions::class)->send($approved, [InstructionKind::Imprest], null, $this->ceo);
+    $this->actingAs($this->financeHead)->get(route('memos.show', $approved))->assertOk();
+    $this->actingAs($this->otherHead)->get(route('memos.show', $approved))->assertForbidden();
+    expect(fn () => app(ActivityEditor::class)->update($approved->fresh(), ['title' => 'Changed'], $this->financeHead))->toThrow(AuthorizationException::class);
 });

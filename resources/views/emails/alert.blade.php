@@ -5,7 +5,12 @@
 <body style="margin:0;padding:24px;background:#f8fafc;font-family:{{ DocumentFont::STACK }};color:#1e293b;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;">
         <tr><td style="padding:16px 24px;border-bottom:2px solid #059669;">
-            <p style="margin:0;font-size:13px;font-weight:700;color:#065f46;">NG-CDF Board · Field Activity Planning and Monitoring</p>
+            @if ($fromOffice)
+                <p style="margin:0;font-size:15px;font-weight:700;color:#065f46;letter-spacing:.5px;">OFFICE OF THE CHIEF EXECUTIVE OFFICER</p>
+                <p style="margin:2px 0 0;font-size:12px;color:#065f46;">NG-CDF Board · Field Activity Planning and Monitoring</p>
+            @else
+                <p style="margin:0;font-size:13px;font-weight:700;color:#065f46;">NG-CDF Board · Field Activity Planning and Monitoring</p>
+            @endif
             <p style="margin:2px 0 0;font-size:11px;font-weight:700;letter-spacing:1.5px;color:#b91c1c;">RESTRICTED</p>
         </td></tr>
         <tr><td style="padding:20px 24px;font-size:14px;line-height:1.55;">

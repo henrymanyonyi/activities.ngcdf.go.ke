@@ -30,7 +30,7 @@ class ActivityCosting
     /** Recompute and store the totals on the activity. Call after any participant or cost change. */
     public function refresh(Activity $activity): Activity
     {
-        $participants = $activity->participants()->get(['id', 'is_external', 'status']);
+        $participants = $activity->participants()->get(['id', 'is_external', 'status', 'group_label', 'headcount']);
         $counted = $participants->filter(fn (ActivityParticipant $p) => $this->isCounted($activity, $p));
 
         $costs = $activity->costs()->get(['estimated_amount', 'actual_amount']);
@@ -40,7 +40,8 @@ class ActivityCosting
         $best = $costs->sum(fn (ActivityCost $c) => $this->bestCents($c));
 
         $activity->forceFill([
-            'staff_count' => $counted->where('is_external', false)->count(),
+            // A group added by number counts as that many officers.
+            'staff_count' => $counted->where('is_external', false)->sum(fn ($p) => $p->people()),
             'external_count' => $counted->where('is_external', true)->count(),
             'estimated_total' => Money::fromCents($planned),
             'actual_total' => Money::fromCents($actual),

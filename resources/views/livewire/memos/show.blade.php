@@ -40,7 +40,9 @@
         </div>
     @endif
 
-    @if ($a->isWithPreparer() || $s === ActivityStatus::WithHod)
+    @if ($readOnly)
+        <div class="px-4 py-3 rounded-lg text-sm bg-slate-100 border border-slate-200 text-slate-600"><i class="fa-solid fa-eye mr-2"></i>The CEO has approved this {{ $a->organisingDepartment?->name }} memo and instructed your department to act on it. You can read it and its annexes here; it cannot be changed.@if ($instruction = $a->instructions->firstWhere('department_id', auth()->user()->department_id)) <a href="{{ route('instructions.show', $instruction) }}" wire:navigate class="font-semibold text-emerald-700 hover:underline">Open your instruction</a>@endif</div>
+    @elseif ($a->isWithPreparer() || $s === ActivityStatus::WithHod)
     @elseif ($editable && ! $returned)
         <div class="px-4 py-3 rounded-lg text-sm bg-sky-50 border border-sky-200 text-sky-800"><i class="fa-solid fa-circle-info mr-2"></i>This memo is a draft. Only your department can see it until you press <strong>Submit for review</strong>.</div>
     @elseif ($returned)
@@ -71,7 +73,7 @@
             $report = $a->report;
             $planned = $a->costs->sum(fn ($c) => Money::toCents($c->estimated_amount));
             $spent = $a->costs->whereNotNull('actual_amount')->sum(fn ($c) => Money::toCents($c->actual_amount));
-            $canReport = $s === ActivityStatus::Completed && (! $report || $report->isReturned());
+            $canReport = ! $readOnly && $s === ActivityStatus::Completed && (! $report || $report->isReturned());
         @endphp
         <x-ui.card title="Activity report" icon="fa-file-circle-check" padded>
             <x-slot:actions>
@@ -117,7 +119,7 @@
                 <div><p class="{{ Ui::MICRO }}">External</p><p class="text-lg font-bold text-slate-800 font-numeric">{{ $a->external_count }}</p></div>
                 <div><p class="{{ Ui::MICRO }}">Planned cost</p><p class="text-lg font-bold text-slate-800 font-numeric"><span class="text-[10px] text-slate-400 mr-0.5">KES</span>{{ Money::format(Money::toCents($a->estimated_total)) }}</p></div>
             </div>
-            <a href="{{ route('memos.team', $a) }}" wire:navigate class="{{ $editable ? Ui::BTN_PRIMARY : Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-users text-xs"></i>{{ $editable ? 'Build the team and costs' : 'View the team and costs' }}</a>
+            @unless ($readOnly)<a href="{{ route('memos.team', $a) }}" wire:navigate class="{{ $editable ? Ui::BTN_PRIMARY : Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-users text-xs"></i>{{ $editable ? 'Build the team and costs' : 'View the team and costs' }}</a>@endunless
         </div>
         @if ($budget)
             <x-memo.budget-position :position="$budget" class="mt-5 pt-5 border-t border-slate-100" />

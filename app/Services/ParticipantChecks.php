@@ -166,6 +166,7 @@ class ParticipantChecks
 
         return $activity->participants
             ->where('is_external', false)
+            ->whereNotNull('staff_id')
             ->mapWithKeys(fn (ActivityParticipant $p) => [$p->id => $this->conflicts($p->staff_id, $p->startOn($activity), $p->endOn($activity), $activity->id)])
             ->filter(fn (Collection $c) => $c->isNotEmpty())
             ->all();
