@@ -267,6 +267,17 @@ class DelegatedMemos
     }
 
     /**
+     * Only the dates, saved as soon as the officer changes them, so the allowances (DSA) and the total follow at once.
+     */
+    public function saveDates(SubmissionLink $link, string $startDate, int $days): Activity
+    {
+        $memo = $this->editableMemo($link);
+        $this->editor->asPreparer($memo, $link->recipient_name, fn () => $this->editor->update($memo, ['start_date' => $startDate, 'days' => $days], $this->head($link)));
+
+        return $memo->fresh();
+    }
+
+    /**
      * The memo's details, as on the memo form, and its location. The first save creates the memo, in the
      * Head's department, as theirs, prepared by the officer; a repeated save (a refresh, a double click)
      * changes that same memo, never a second one.
