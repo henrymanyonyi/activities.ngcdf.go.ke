@@ -311,7 +311,9 @@ class Budgeting
                 $this->record($item, $resubmitted ? BudgetReview::RESUBMITTED : BudgetReview::SUBMITTED, $user, snapshot: $this->snapshot($item));
             }
 
-            $this->alerts->toCeo(ActivityAlert::budget(($resubmitted ? 'Corrected and resubmitted for your approval: ' : 'Awaiting your approval: ').$this->describe($item), $this->url($item), 'fa-wallet'));
+            $what = $item instanceof DepartmentBudget ? 'A department budget' : 'A budget adjustment';
+            $this->alerts->toCeo(ActivityAlert::budget(($resubmitted ? 'Corrected and resubmitted for your approval: ' : 'Awaiting your approval: ').$this->describe($item), $this->url($item), 'fa-wallet')
+                ->needsAction(null, ($item instanceof DepartmentBudget ? 'Department budget' : 'Budget adjustment').' awaiting your approval', $what.($resubmitted ? ' has been corrected and resubmitted for your approval.' : ' has been submitted for your approval.'), 'Please approve it or return it for correction.'));
         });
     }
 

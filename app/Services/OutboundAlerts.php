@@ -15,16 +15,16 @@ use Throwable;
 
 /**
  * Action-needed email and SMS (exception to NT-03 / BR-11 approved 25 October 2026).
- * Only an alert marked with ActivityAlert::needsAction(), only to Heads of
- * Department, the Chief of Staff and the Assistant, and only the reference and
+ * Only an alert marked with ActivityAlert::needsAction(), only to the CEO (since
+ * 25 October 2026), Heads of Department, the Chief of Staff and the Assistant, and only the reference and
  * the step: the details stay in FAPM. Each message is logged, then delivered
  * once the surrounding transaction commits (as NG-CDF Careers does); a failed
  * delivery is marked failed on its log and never undoes or breaks the action.
  */
 class OutboundAlerts
 {
-    /** The roles that get email and SMS; the CEO is alerted in the system only. */
-    public const ROLES = [User::ROLE_HOD, User::ROLE_CHIEF_OF_STAFF, User::ROLE_ASSISTANT_CHIEF_OF_STAFF];
+    /** The roles that get email and SMS. */
+    public const ROLES = [User::ROLE_CEO, User::ROLE_HOD, User::ROLE_CHIEF_OF_STAFF, User::ROLE_ASSISTANT_CHIEF_OF_STAFF];
 
     public function __construct(private AppSettings $settings) {}
 
