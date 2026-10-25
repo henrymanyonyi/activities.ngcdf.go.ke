@@ -5,7 +5,8 @@
     $total = $lines->sum(fn ($c) => Money::toCents($c->estimated_amount));
     $staffCount = $a->participants->where('is_external', false)->count();
 @endphp
-<x-ui.page :icon="$i->kind->icon()" :title="$i->kind->label()" :subtitle="$a->reference.' · '.$a->title">
+@php $written = $i->kind->needsWrittenInstruction(); @endphp
+<x-ui.page :icon="$i->kind->icon()" :title="$written ? 'Instruction from the CEO' : $i->kind->label()" :subtitle="$a->reference.' · '.$a->title">
     <x-slot:pills><x-ui.badge :classes="$i->status->badgeClasses()">{{ $i->status->label() }}</x-ui.badge></x-slot:pills>
     <x-slot:actions>
         <a href="{{ route('instructions.index') }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-arrow-left text-xs"></i>Instructions</a>
@@ -18,8 +19,13 @@
     </x-slot:actions>
 
     <x-ui.card title="The CEO's instruction" icon="fa-gavel" padded>
-        <p class="text-[13px] text-slate-700">The CEO has approved this activity and instructs {{ $i->department?->name ?? $i->kind->office() }} to <strong>{{ mb_strtolower($i->kind->label()) }}</strong>.</p>
-        @if ($i->note)<p class="mt-2 text-[13px] text-slate-700 whitespace-pre-line border-l-2 border-emerald-500 pl-3">{{ $i->note }}</p>@endif
+        @if ($written)
+            <p class="text-[13px] text-slate-700">The CEO has approved this activity and instructs {{ $i->department?->name ?? 'your department' }} to:</p>
+            <p class="mt-2 text-[14px] font-semibold text-slate-800 whitespace-pre-line border-l-2 border-emerald-500 pl-3">{{ $i->note }}</p>
+        @else
+            <p class="text-[13px] text-slate-700">The CEO has approved this activity and instructs {{ $i->department?->name ?? $i->kind->office() }} to <strong>{{ mb_strtolower($i->kind->label()) }}</strong>.</p>
+            @if ($i->note)<p class="mt-2 text-[13px] text-slate-700 whitespace-pre-line border-l-2 border-emerald-500 pl-3">{{ $i->note }}</p>@endif
+        @endif
         <dl class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-[12px]">
             <div><dt class="text-slate-400">Sent</dt><dd class="text-slate-700 font-numeric">{{ Ui::date($i->sent_at) }} by {{ $i->sender?->name ?? 'the CEO' }}</dd></div>
             <div><dt class="text-slate-400">Acknowledged</dt><dd class="text-slate-700 font-numeric">{{ $i->acknowledged_at ? Ui::date($i->acknowledged_at).' by '.$i->acknowledger?->name : 'Not yet' }}</dd></div>
@@ -56,6 +62,7 @@
         <p class="px-5 py-3 text-[11px] text-slate-400 border-t border-slate-100">{{ $staffCount }} {{ Str::plural('officer', $staffCount) }} of the Board{{ $a->participants->count() > $staffCount ? ', and '.($a->participants->count() - $staffCount).' from outside' : '' }}.</p>
     </x-ui.card>
 
+    @if ($i->kind->costCodes() !== [])
     <x-ui.card :title="$i->kind->costCodes() === null ? 'Planned costs' : 'Travel and transport costs'" icon="fa-coins">
         @if ($lines->isEmpty())
             <x-ui.empty icon="fa-coins" title="No costs of this kind" line="The approved budget has no lines for {{ mb_strtolower($i->kind->office()) }} to act on. Ask the Office of the CEO if you expected some." />
@@ -76,8 +83,9 @@
             </table>
         @endif
     </x-ui.card>
+    @endif
 
-    <x-ui.modal show="showComplete" :open="$showComplete" size="slim" icon="fa-circle-check" title="Mark as done" :subtitle="$i->kind->label().' · '.$a->reference">
+    <x-ui.modal show="showComplete" :open="$showComplete" size="slim" icon="fa-circle-check" title="Mark as done" :subtitle="($written ? 'Instruction from the CEO' : $i->kind->label()).' · '.$a->reference">
         <x-ui.field :label="$i->kind->referenceLabel()" for="ic-ref" error="reference" required><input id="ic-ref" type="text" wire:model="reference" maxlength="100" class="{{ Ui::CONTROL }} font-numeric"></x-ui.field>
         <x-ui.field label="Note (optional)" for="ic-note" error="note"><textarea id="ic-note" wire:model="note" rows="3" maxlength="2000" class="{{ Ui::CONTROL }}"></textarea></x-ui.field>
         <x-slot:footer>

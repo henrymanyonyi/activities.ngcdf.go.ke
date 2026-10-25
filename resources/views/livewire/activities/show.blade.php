@@ -386,20 +386,19 @@
                             <p class="text-sm text-slate-400">No decision yet.</p>
                         @endforelse
 
-                        {{-- The CEO's instructions to Finance (imprest) and Procurement (tickets), and how far each has got. --}}
+                        {{-- The CEO's instructions to the departments that act on it, and how far each has got. --}}
                         @php
-                            $sentKinds = $a->instructions->map(fn ($i) => $i->kind->value)->all();
-                            $canInstruct = $can('instructions.send') && in_array($s, [ActivityStatus::Approved, ActivityStatus::Postponed, ActivityStatus::InProgress], true) && count($sentKinds) < count(\App\Enums\InstructionKind::cases());
+                            $canInstruct = $can('instructions.send') && in_array($s, [ActivityStatus::Approved, ActivityStatus::Postponed, ActivityStatus::InProgress], true);
                         @endphp
                         @if ($a->instructions->isNotEmpty() || $canInstruct)
                             <div class="flex items-center justify-between mt-5 mb-2">
-                                <h3 class="{{ Ui::MICRO }}">Finance and Procurement</h3>
+                                <h3 class="{{ Ui::MICRO }}">Instructions to departments</h3>
                                 @if ($canInstruct)<button type="button" wire:click="$set('showInstruct', true)" class="{{ Ui::BTN_TINT }}"><i class="fa-solid fa-paper-plane text-[9px]"></i>Instruct</button>@endif
                             </div>
                             @forelse ($a->instructions as $ins)
                                 <div class="border border-slate-100 rounded-xl p-4 mb-2" wire:key="ins-{{ $ins->id }}">
                                     <div class="flex items-center justify-between gap-2">
-                                        <span class="text-sm font-semibold text-slate-700"><i class="fa-solid {{ $ins->kind->icon() }} text-xs text-slate-400 mr-1"></i>{{ $ins->kind->office() }}: {{ mb_strtolower($ins->kind->label()) }}</span>
+                                        <span class="text-sm font-semibold text-slate-700"><i class="fa-solid {{ $ins->kind->icon() }} text-xs text-slate-400 mr-1"></i>{{ $ins->kind->needsWrittenInstruction() ? $ins->department?->name : $ins->kind->office().': '.mb_strtolower($ins->kind->label()) }}</span>
                                         <x-ui.badge :classes="$ins->status->badgeClasses()">{{ $ins->status->label() }}</x-ui.badge>
                                     </div>
                                     @if ($ins->note)<p class="text-sm text-slate-700 mt-2 whitespace-pre-line">{{ $ins->note }}</p>@endif
@@ -407,7 +406,7 @@
                                     @if ($ins->completion_note)<p class="text-[12px] text-slate-500 mt-1 whitespace-pre-line">{{ $ins->completion_note }}</p>@endif
                                 </div>
                             @empty
-                                <p class="text-sm text-slate-400">Finance and Procurement have not been instructed.</p>
+                                <p class="text-sm text-slate-400">No department has been instructed yet.</p>
                             @endforelse
                         @endif
                     </div>
@@ -512,7 +511,7 @@
             <textarea id="comment" wire:model="comment" rows="3" class="{{ Ui::CONTROL }}"></textarea>
         </x-ui.field>
         @if ($decision === 'approved')
-            @can('instructions.send')<x-memo.instruct :sent="$a->instructions->map(fn ($i) => $i->kind->value)->all()" />@endcan
+            @can('instructions.send')<x-memo.instruct :sent="$a->instructions->map(fn ($i) => $i->kind->value)->all()" :others="$otherInstructions" />@endcan
         @endif
         <x-slot:footer>
             <button type="button" wire:click="$set('showDecide', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
@@ -575,6 +574,7 @@
                 It goes to the CEO's decision queue. Forwarding is not an approval: only the CEO approves and authorises.
             @endif
         </p>
+
         <x-ui.field label="Recommendation" for="f-rec" error="recommendation">
             <select id="f-rec" wire:model="recommendation" class="{{ $sel }}"><option value="">No recommendation</option>@foreach ($recommendationOptions as $r)<option value="{{ $r->value }}">{{ $r->label() }}</option>@endforeach</select>
         </x-ui.field>
@@ -792,7 +792,7 @@
         <div class="rounded-lg border px-3 py-2.5 {{ $pdOver ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50' }}" aria-live="polite">
             <p class="{{ Ui::MICRO }}">Last day · nights</p>
             <p class="text-[13px] font-bold font-numeric {{ $pdOver ? 'text-amber-800' : 'text-emerald-800' }}">
-                {{ $pdEnd ? Ui::date($pdEnd).' · '.max(0, $daysCount - 1).' '.Str::plural('night', max(0, $daysCount - 1)) : '—' }}
+                {{ $pdEnd ? Ui::date($pdEnd).' · '.\App\Support\DsaPeriod::nightsFor($daysCount).' '.Str::plural('night', \App\Support\DsaPeriod::nightsFor($daysCount)) : '—' }}
                 <span class="font-normal text-slate-500">of {{ $a->days }} activity days</span>
             </p>
             @if ($pdOver)<p class="text-[11px] text-amber-800 mt-0.5">Runs past the activity's last day, {{ Ui::date($a->end_date) }}.</p>@endif
@@ -992,8 +992,8 @@
         </x-slot:footer>
     </x-ui.modal>
 
-    <x-ui.modal show="showInstruct" :open="$showInstruct" size="slim" icon="fa-paper-plane" title="Instruct Finance or Procurement" :subtitle="$a->reference.' · approved'">
-        <x-memo.instruct :sent="$a->instructions->map(fn ($i) => $i->kind->value)->all()" />
+    <x-ui.modal show="showInstruct" :open="$showInstruct" size="slim" icon="fa-paper-plane" title="Instruct departments" :subtitle="$a->reference.' · approved'">
+        <x-memo.instruct :sent="$a->instructions->map(fn ($i) => $i->kind->value)->all()" :others="$otherInstructions" />
         @error('instruct')<p class="text-xs text-red-600" role="alert">{{ $message }}</p>@enderror
         <x-slot:footer>
             <button type="button" wire:click="$set('showInstruct', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>

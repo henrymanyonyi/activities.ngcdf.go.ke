@@ -26,8 +26,8 @@ it('computes DSA from the rate in force × nights (CB-01, BR-02)', function () {
 
     $line = $activity->costs()->where('is_computed', true)->sole();
 
-    expect($line->estimated_amount)->toBe('16800.00') // 8,400 × 2 nights
-        ->and($activity->estimated_total)->toBe('16800.00');
+    expect($line->estimated_amount)->toBe('33600.00') // 8,400 × 4 nights: the departure night and 3 activity nights
+        ->and($activity->estimated_total)->toBe('33600.00');
 });
 
 it('recalculates DSA, and its nights in the description, when the dates change', function () {
@@ -37,8 +37,8 @@ it('recalculates DSA, and its nights in the description, when the dates change',
 
     app(ActivityEditor::class)->update($activity, ['days' => 5], $cos);
 
-    expect($activity->costs()->sole())->description->toBe('DSA 4 nights × 8,400.00')->estimated_amount->toBe('33600.00')
-        ->and($activity->fresh()->estimated_total)->toBe('33600.00');
+    expect($activity->costs()->sole())->description->toBe('DSA 6 nights × 8,400.00')->estimated_amount->toBe('50400.00')
+        ->and($activity->fresh()->estimated_total)->toBe('50400.00');
 });
 
 it('uses the historical rate for past activities (MD-05)', function () {
@@ -48,8 +48,8 @@ it('uses the historical rate for past activities (MD-05)', function () {
     $old = capturedActivity(chiefOfStaff(), ['start_date' => today()->subDays(20)->toDateString(), 'days' => 2]);
     $new = capturedActivity(chiefOfStaff(), ['days' => 2]);
 
-    expect($old->costs()->sole()->estimated_amount)->toBe('8400.00')
-        ->and($new->costs()->sole()->estimated_amount)->toBe('9000.00');
+    expect($old->costs()->sole()->estimated_amount)->toBe('25200.00') // 3 nights × 8,400
+        ->and($new->costs()->sole()->estimated_amount)->toBe('27000.00'); // 3 nights × 9,000
 });
 
 it('keeps an override with its justification when DSA is recalculated (CB-01)', function () {
@@ -61,7 +61,7 @@ it('keeps an override with its justification when DSA is recalculated (CB-01)', 
     app(DsaCalculator::class)->recalculate($activity);
 
     expect($line->fresh()->estimated_amount)->toBe('10000.00')
-        ->and($line->fresh()->computed_amount)->toBe('16800.00')
+        ->and($line->fresh()->computed_amount)->toBe('33600.00')
         ->and($line->fresh()->isOverridden())->toBeTrue();
 });
 

@@ -27,7 +27,7 @@ function dsaLine(Activity $activity): ?ActivityCost
 it('costs each job grade at its approved standard rate', function (string $grade, string $rate) {
     $activity = capturedActivity(chiefOfStaff(), ['days' => 3], [Staff::factory()->create(['job_grade' => $grade])]);
 
-    expect(dsaLine($activity))->unit_rate->toBe($rate)->quantity->toBe('2.00');
+    expect(dsaLine($activity))->unit_rate->toBe($rate)->quantity->toBe('4.00');
 })->with([
     ['1', '18200.00'],
     ['2', '16800.00'],
@@ -47,15 +47,15 @@ it('finds the scale\'s rate for a grade recorded with an older label', function 
     expect(dsaLine($activity)->unit_rate)->toBe('14000.00');
 })->with(['NGCDF 5', 'Scale 5', 'Job Group 5']);
 
-it('costs casuals and attachees without a job grade at the INTERN rate, and a reclassified casual at their grade', function () {
+it('costs a casual at scale 10, an attachee without a job grade at the INTERN rate, and a reclassified attachee at their grade', function () {
     $casual = Staff::factory()->create(['staff_number' => null, 'job_grade' => null, 'employment_type' => EmploymentType::Casual]);
     $attachee = Staff::factory()->create(['staff_number' => null, 'job_grade' => null, 'employment_type' => EmploymentType::Attachee]);
-    $reclassified = Staff::factory()->create(['staff_number' => null, 'job_grade' => '7', 'employment_type' => EmploymentType::Casual]);
+    $reclassified = Staff::factory()->create(['staff_number' => null, 'job_grade' => '7', 'employment_type' => EmploymentType::Attachee]);
 
     $activity = capturedActivity(chiefOfStaff(), ['days' => 3], [$casual, $attachee, $reclassified]);
 
     $rates = $activity->costs()->where('is_computed', true)->with('participant')->get()->mapWithKeys(fn ($c) => [$c->participant->staff_id => $c->unit_rate]);
-    expect($rates->all())->toBe([$casual->id => '4000.00', $attachee->id => '4000.00', $reclassified->id => '11200.00']);
+    expect($rates->all())->toBe([$casual->id => '6300.00', $attachee->id => '4000.00', $reclassified->id => '11200.00']);
 });
 
 it('keeps the same rate wherever the activity is, and never uses the retired destination rates', function () {
@@ -98,8 +98,8 @@ it('does not recalculate a completed activity, but a draft picks up a new rate w
     app(DsaCalculator::class)->recalculate($draft);
 
     expect($warnings)->toBe(['DSA is not recalculated once an activity is completed, closed, declined or cancelled; its recorded amounts are kept.'])
-        ->and(dsaLine($completed))->unit_rate->toBe('11200.00')->estimated_amount->toBe('22400.00')
-        ->and(dsaLine($draft))->unit_rate->toBe('12000.00')->estimated_amount->toBe('24000.00');
+        ->and(dsaLine($completed))->unit_rate->toBe('11200.00')->estimated_amount->toBe('44800.00')
+        ->and(dsaLine($draft))->unit_rate->toBe('12000.00')->estimated_amount->toBe('48000.00');
 });
 
 it('seeds the approved rates once, puts a changed amount back, and leaves later rates, retired rates, settings and costs alone', function () {

@@ -30,14 +30,14 @@ it('lets each participant take part on only some days, with DSA on their own nig
     $p = $activity->participants()->first();
 
     expect($p->plannedDays($activity))->toBe(35)
-        ->and($activity->costs()->where('is_computed', true)->sole()->estimated_amount)->toBe('285600.00'); // 34 nights
+        ->and($activity->costs()->where('is_computed', true)->sole()->estimated_amount)->toBe('302400.00'); // 36 nights: the departure night and 35 activity nights
 
     app(ActivityEditor::class)->setParticipantDates($p, $activity->start_date->copy()->addDays(4), $activity->start_date->copy()->addDays(8), chiefOfStaff());
 
     $p->refresh();
     expect($p->plannedDays($activity))->toBe(5)
         ->and($p->isPartial($activity))->toBeTrue()
-        ->and($activity->costs()->where('is_computed', true)->sole()->estimated_amount)->toBe('33600.00') // 4 nights
+        ->and($activity->costs()->where('is_computed', true)->sole()->estimated_amount)->toBe('50400.00') // 6 nights: their own departure night and 5 nights
         ->and($activity->fresh()->days)->toBe(35);
 });
 

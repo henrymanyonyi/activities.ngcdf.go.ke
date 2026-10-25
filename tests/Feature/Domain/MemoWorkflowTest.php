@@ -77,7 +77,12 @@ it('asks for the introduction, venue and team before a Head of Department can su
     $memo = $this->editor->create(['title' => 'Review', 'purpose' => 'Review', 'activity_category_id' => ActivityCategory::query()->value('id'), 'start_date' => today()->addDays(10)->toDateString(), 'days' => 1], $this->hod);
 
     expect(fn () => $this->lifecycle->submitForReview($memo, $this->hod))->toThrow(ActivityWorkflowException::class,
-        'Before submitting: Write the introduction and justification (section 1.0 of the memo). Add the venue or location. Add at least one officer to the team.');
+        'Before submitting: Give the memo reference (REF NO). Give the date the memo is issued. Write the introduction and justification (section 1.0 of the memo). Add the venue or location. Add at least one officer to the team.');
+
+    // A blank or spaces-only reference does not count.
+    $this->editor->update($memo, ['source_reference' => '   ', 'issued_on' => today()->toDateString()], $this->hod);
+    expect(fn () => $this->lifecycle->submitForReview($memo->fresh(), $this->hod))->toThrow(ActivityWorkflowException::class, 'Give the memo reference (REF NO).');
+    $this->editor->update($memo, ['source_reference' => 'NG-CDF BOARD/ICT/009/2026'], $this->hod);
 
     $this->editor->update($memo, ['justification' => 'Systems are due for review.'], $this->hod);
     $this->editor->addLocation($memo, ['venue' => 'Headquarters'], $this->hod);

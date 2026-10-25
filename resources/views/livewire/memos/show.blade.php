@@ -22,7 +22,7 @@
             @if ($withHod)
                 <button type="button" wire:click="openHodAction('showDecline')" class="{{ Ui::BTN_NEUTRAL }} hover:!text-red-600"><i class="fa-solid fa-circle-xmark text-xs"></i>Decline</button>
                 <button type="button" wire:click="openHodAction('showReturnToOfficer')" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-reply text-xs"></i>Return to the officer</button>
-                <button type="button" wire:click="openHodAction('showForward')" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-share text-xs"></i>Forward to the Chief of Staff</button>
+                <button type="button" wire:click="openHodAction('showForward')" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-share text-xs"></i>Forward</button>
             @elseif ($s !== ActivityStatus::WithHod)
                 <button type="button" wire:click="openSubmit" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-paper-plane text-xs"></i>{{ $returned ? 'Resubmit for review' : 'Submit for review' }}</button>
             @endif
@@ -182,12 +182,13 @@
             <p class="text-[13px] text-slate-600">It goes back to the <strong>{{ $a->review_office?->label() ?? 'reviewer' }}</strong>, who returned it. You cannot change it while it is being reviewed.</p>
         @else
             <x-ui.field label="Send it to" for="s-office" error="office" required>
-                <select id="s-office" wire:model="office" class="{{ Ui::CONTROL }} appearance-none pr-8">
+                <select id="s-office" wire:model.live="office" class="{{ Ui::CONTROL }} appearance-none pr-8">
                     @foreach ($offices as $o)<option value="{{ $o->value }}">{{ $o->label() }}</option>@endforeach
                 </select>
             </x-ui.field>
-            <p class="text-[13px] text-slate-600">You cannot change the memo while it is being reviewed. If something needs correcting, the reviewer will return it to you.</p>
+            <p class="text-[13px] text-slate-600">The reviewer forwards it to the CEO for decision. You cannot change the memo while it is being reviewed; if something needs correcting, the reviewer will return it to you.</p>
         @endif
+        <x-memo.signing-capacity :designation="$designation" />
         @if ($blocking->isNotEmpty())
             <div class="rounded-lg border border-red-200 bg-red-50 p-3 text-[13px] text-red-800" role="alert">
                 <p class="font-semibold mb-1">Complete these first:</p>
@@ -268,11 +269,15 @@
     </x-ui.modal>
 
     {{-- A memo an officer prepared, with the Head for review --}}
-    <x-ui.modal show="showForward" :open="$showForward" size="slim" icon="fa-share" title="Forward to the Chief of Staff?" subtitle="On the officer's behalf. It is recorded that you reviewed and forwarded it, and the usual review and approval follow.">
-        <x-ui.field label="Note to the Chief of Staff (optional)" for="hf-n" error="note"><textarea id="hf-n" wire:model="note" rows="3" maxlength="2000" class="{{ Ui::CONTROL }}"></textarea></x-ui.field>
+    <x-ui.modal show="showForward" :open="$showForward" size="slim" icon="fa-share" title="Forward this memo for review?" subtitle="On the officer's behalf. It is recorded that you reviewed and forwarded it; the reviewer forwards it to the CEO for decision.">
+        <x-ui.field label="Send it to" for="hf-t" error="forwardTo" required>
+            <select id="hf-t" wire:model.live="forwardTo" class="{{ Ui::CONTROL }} appearance-none pr-8">@foreach ($offices as $o)<option value="{{ $o->value }}">{{ $o->label() }}</option>@endforeach</select>
+        </x-ui.field>
+        <x-memo.signing-capacity :designation="$designation" />
+        <x-ui.field label="Note (optional)" for="hf-n" error="note"><textarea id="hf-n" wire:model="note" rows="3" maxlength="2000" class="{{ Ui::CONTROL }}"></textarea></x-ui.field>
         <x-slot:footer>
             <button type="button" wire:click="$set('showForward', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
-            <button type="button" wire:click="forwardToChiefOfStaff" class="{{ Ui::BTN_PRIMARY }}" wire:loading.attr="disabled" wire:target="forwardToChiefOfStaff"><i class="fa-solid fa-share text-xs"></i>Forward</button>
+            <button type="button" wire:click="forwardForReview" class="{{ Ui::BTN_PRIMARY }}" wire:loading.attr="disabled" wire:target="forwardForReview"><i class="fa-solid fa-share text-xs"></i>Forward</button>
         </x-slot:footer>
     </x-ui.modal>
     <x-ui.modal show="showReturnToOfficer" :open="$showReturnToOfficer" size="slim" icon="fa-reply" title="Return to the officer" subtitle="They get a new link by email and SMS, see your comments on the memo page, and submit it to you again.">

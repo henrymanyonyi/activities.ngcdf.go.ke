@@ -15,7 +15,8 @@ use Illuminate\Support\Carbon;
  * Since 22 October 2026 there is one standard rate per grade, whatever the
  * destination: standard rates have no destination_category. Rows that do
  * (the retired Cities / Other towns rates) are history only and never used.
- * Casuals and attachees are on the INTERN rate unless HR gives them a job grade.
+ * Casuals are on scale 10 (25 October 2026); attachees are on the INTERN rate
+ * unless HR gives them a job grade (EmploymentType::defaultDsaGrade).
  *
  * Job grades are the scales in the HR staff register ("Job Scale" 1 to 10),
  * stored as the bare number ("6"), as the Board's memo template prints them.
@@ -91,14 +92,14 @@ class DsaRate extends Model
             ->first();
     }
 
-    /** The grade DSA is costed at: the officer's own, or INTERN for a casual or attachee without one. */
+    /** The grade DSA is costed at: the officer's own, or their terms' default (scale 10 for a casual, INTERN for an attachee). */
     public static function gradeFor(?string $jobGrade, ?EmploymentType $type): ?string
     {
         if (filled($jobGrade)) {
             return $jobGrade;
         }
 
-        return $type !== null && ! $type->requiresStaffNumber() ? self::INTERN : null;
+        return $type?->defaultDsaGrade();
     }
 
     /**

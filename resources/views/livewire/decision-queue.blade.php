@@ -72,7 +72,7 @@
             <textarea id="q-comment" wire:model="comment" rows="3" class="{{ Ui::CONTROL }}"></textarea>
         </x-ui.field>
         @if ($decision === 'approved')
-            @can('instructions.send')<x-memo.instruct />@endcan
+            @can('instructions.send')<x-memo.instruct :others="$otherInstructions" />@endcan
         @endif
         <x-slot:footer>
             <button type="button" wire:click="$set('showDecide', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>

@@ -48,7 +48,7 @@ it('records an activity through the form, with the first location and memo', fun
         ->assertRedirect();
 
     $activity = Activity::sole();
-    expect($activity->nights)->toBe(3)
+    expect($activity->nights)->toBe(5)
         ->and($activity->status)->toBe(ActivityStatus::Draft)
         ->and($activity->locations()->sole()->county_id)->toBe($county->id)
         ->and($activity->documents()->count())->toBe(1);

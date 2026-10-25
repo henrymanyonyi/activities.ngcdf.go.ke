@@ -137,8 +137,9 @@ it('shows the effect of a recall before it is confirmed: DSA reduced to the nigh
     expect($preview['days_before'])->toBe(11)
         ->and($preview['days_after'])->toBe(6)
         ->and($preview['available_from']->toDateString())->toBe(day(36)->toDateString())
-        ->and($preview['before'])->toBe(8400_00 * 10 + 6000_00)
-        ->and($preview['after'])->toBe(8400_00 * 5 + 6000_00)
+        // 11 days pay 12 nights (with the departure night); 6 days now pay 7.
+        ->and($preview['before'])->toBe(8400_00 * 12 + 6000_00)
+        ->and($preview['after'])->toBe(8400_00 * 7 + 6000_00)
         ->and($preview['change'])->toBe(-8400_00 * 5)
         ->and(collect($preview['lines'])->pluck('treatment')->all())->toBe([ParticipantRelease::LINE_REDUCED, ParticipantRelease::LINE_PAYABLE]);
 });
@@ -160,11 +161,11 @@ it('records a recall without deleting the assignment, keeps the approved total, 
         ->original_start_date->toDateString()->toBe(day(30)->toDateString())
         ->original_end_date->toDateString()->toBe(day(40)->toDateString())
         ->recorded_by->toBe($acos->id)
-        ->participant_cost_before->toBe('84000.00')
-        ->participant_cost_after->toBe('42000.00')
+        ->participant_cost_before->toBe('100800.00')
+        ->participant_cost_after->toBe('58800.00')
         ->and($henry->fresh())->end_date->toDateString()->toBe(day(35)->toDateString())->status->isExpected()->toBeTrue()
         ->and($a->approved_estimated_total)->toBe($approved)
-        ->and($a->estimated_total)->toBe('42000.00')
+        ->and($a->estimated_total)->toBe('58800.00')
         ->and($a->status)->toBe(ActivityStatus::Approved)
         ->and($a->amendments()->where('kind', ActivityAmendment::KIND_RELEASE)->sole()->reason)->toBe('Needed for the audit at headquarters');
 

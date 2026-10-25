@@ -161,20 +161,35 @@ class ActivityAlert extends Notification
             ->needsAction($activity->reference, "Activity report for {$activity->reference} returned", "The activity report for {$activity->reference} has been returned to you for correction.", 'Please correct the report or the amounts spent and submit it again.');
     }
 
-    /** To the Head of Finance or Procurement: opens the instruction sheet, never the memo. */
+    /** To the Head of the department instructed (Finance, Procurement or any other): opens the instruction sheet, never the memo. */
     public static function instructionSent(ActionInstruction $instruction): self
     {
         $reference = $instruction->activity->reference;
+        $office = self::instructedOffice($instruction);
+
+        if ($instruction->kind->needsWrittenInstruction()) {
+            return (new self('instruction_sent', "The CEO instructs {$office} to act on {$reference}, {$instruction->activity->title}", null, $instruction->kind->icon(), route('instructions.show', $instruction)))
+                ->needsAction($reference, "CEO's instruction on {$reference}", "The CEO has instructed {$office} to act on approved activity {$reference}.", 'Please open the instruction, acknowledge it, and record what was done.');
+        }
+
         $action = mb_strtolower($instruction->kind->label());
 
-        return (new self('instruction_sent', "The CEO instructs {$instruction->kind->office()}: {$instruction->kind->label()} for {$reference}, {$instruction->activity->title}", null, $instruction->kind->icon(), route('instructions.show', $instruction)))
-            ->needsAction($reference, "CEO's instruction: {$action} for {$reference}", "The CEO instructs {$instruction->kind->office()} to {$action} for activity {$reference}.", 'Please acknowledge it, and record the '.mb_strtolower($instruction->kind->referenceLabel()).' when it is done.');
+        return (new self('instruction_sent', "The CEO instructs {$office}: {$instruction->kind->label()} for {$reference}, {$instruction->activity->title}", null, $instruction->kind->icon(), route('instructions.show', $instruction)))
+            ->needsAction($reference, "CEO's instruction: {$action} for {$reference}", "The CEO instructs {$office} to {$action} for activity {$reference}.", 'Please acknowledge it, and record the '.mb_strtolower($instruction->kind->referenceLabel()).' when it is done.');
     }
 
-    /** To the Office of the CEO and the memo's own department: Finance or Procurement has done it. */
+    /** To the Office of the CEO and the memo's own department: the instructed department has done it. */
     public static function instructionCompleted(ActionInstruction $instruction): self
     {
-        return new self('instruction_completed', "{$instruction->kind->office()} has completed \"{$instruction->kind->label()}\" (ref. {$instruction->completion_reference}): {$instruction->activity->title}", $instruction->activity_id, $instruction->kind->icon());
+        return new self('instruction_completed', self::instructedOffice($instruction)." has completed the CEO's instruction".($instruction->kind->needsWrittenInstruction() ? '' : " \"{$instruction->kind->label()}\"")." (ref. {$instruction->completion_reference}): {$instruction->activity->title}", $instruction->activity_id, $instruction->kind->icon());
+    }
+
+    /** "Finance", "Procurement", or the department's name for any other instruction. */
+    private static function instructedOffice(ActionInstruction $instruction): string
+    {
+        return $instruction->kind->needsWrittenInstruction()
+            ? (($instruction->relationLoaded('department') ? $instruction->department : $instruction->department()->first())?->name ?? 'the department')
+            : $instruction->kind->office();
     }
 
     /** To an officer whose FAPM access was changed (App\Services\StaffChanges). */

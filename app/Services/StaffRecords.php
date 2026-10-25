@@ -35,10 +35,10 @@ class StaffRecords
             'job_grade' => filled($attributes['job_grade'] ?? null) ? (DsaRate::normaliseGrade($attributes['job_grade']) ?? strtoupper(trim($attributes['job_grade']))) : null,
         ]);
 
-        // A casual or attachee without a job grade is costed at the INTERN DSA rate.
+        // Every casual is on DSA scale 10; an attachee without a job grade is costed at the INTERN rate.
         $type = EmploymentType::tryFrom((string) ($attributes['employment_type'] ?? '')) ?? $staff?->employment_type ?? EmploymentType::Permanent;
-        if ($attributes['job_grade'] === null && ! $type->requiresStaffNumber()) {
-            $attributes['job_grade'] = DsaRate::INTERN;
+        if ($type->hasFixedDsaGrade() || ($attributes['job_grade'] === null && $type->defaultDsaGrade() !== null)) {
+            $attributes['job_grade'] = $type->defaultDsaGrade();
         }
 
         if (array_key_exists('is_active', $attributes)) {

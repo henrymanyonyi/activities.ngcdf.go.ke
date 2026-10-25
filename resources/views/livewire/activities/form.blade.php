@@ -84,8 +84,9 @@
                         <input id="days" type="number" min="1" max="120" wire:model.live="days" class="{{ Ui::CONTROL }} font-numeric" @disabled($activity && ! $activity->status->isFreelyEditable())>
                     </x-ui.field>
                     <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
-                        <p class="{{ Ui::MICRO }}">End date · nights</p>
+                        <p class="{{ Ui::MICRO }}">End date · payable nights</p>
                         <p class="text-[13px] font-bold text-emerald-800 font-numeric" aria-live="polite">{{ $endDate ? Ui::date($endDate) : '—' }} · {{ $nights }} {{ Str::plural('night', $nights) }}</p>
+                        @if ($period)<p class="text-[11px] text-emerald-700" aria-live="polite">{{ $period->summary() }}</p>@endif
                     </div>
                 </div>
                 @if ($activity && ! $activity->status->isFreelyEditable())
@@ -139,12 +140,21 @@
                             <p class="text-[11px] text-slate-400 mt-1">You are recorded as the responsible Head of Department.</p>
                         </div>
                     @endif
-                    <x-ui.field label="Memo number" for="ref" error="source_reference">
-                        <input id="ref" type="text" wire:model="source_reference" class="{{ Ui::CONTROL }}" maxlength="100" placeholder="e.g. NGCDF/PPME/12/2026">
-                    </x-ui.field>
-                    <x-ui.field label="Date received" for="recv" error="source_received_on">
-                        <input id="recv" type="date" wire:model="source_received_on" class="{{ Ui::CONTROL }}">
-                    </x-ui.field>
+                    @if ($office)
+                        <x-ui.field label="Memo number" for="ref" error="source_reference">
+                            <input id="ref" type="text" wire:model="source_reference" class="{{ Ui::CONTROL }}" maxlength="100" placeholder="e.g. NGCDF/PPME/12/2026">
+                        </x-ui.field>
+                        <x-ui.field label="Date received" for="recv" error="source_received_on">
+                            <input id="recv" type="date" wire:model="source_received_on" class="{{ Ui::CONTROL }}">
+                        </x-ui.field>
+                    @else
+                        <x-ui.field label="Memo reference" for="ref" error="source_reference" required hint="Printed as REF NO on the memo.">
+                            <input id="ref" type="text" wire:model="source_reference" class="{{ Ui::CONTROL }}" maxlength="100" required placeholder="e.g. NG-CDF BOARD/ICT/004/2026">
+                        </x-ui.field>
+                        <x-ui.field label="Date issued" for="issued" error="issued_on" required hint="Printed as DATE on the memo.">
+                            <input id="issued" type="date" wire:model="issued_on" class="{{ Ui::CONTROL }}" required>
+                        </x-ui.field>
+                    @endif
                     @unless ($activity)
                         <x-ui.field :label="$office ? 'Source document' : 'Supporting document (optional)'" for="memo" error="memo" :hint="$office ? 'Memo, concept note or terms of reference (PDF, Word or image, up to 10 MB). Required before submitting to the CEO.' : 'The system generates the memo for you. Attach anything that supports it, such as an invitation letter. PDF, Word or image, up to 10 MB.'">
                             <input id="memo" type="file" wire:model="memo" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" class="block w-full text-[13px] text-slate-600 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700 file:font-semibold">

@@ -37,7 +37,7 @@ class DecisionQueue extends Component
         $this->activityId = $id;
         $this->decision = DecisionType::from($decision)->value;
         $this->comment = '';
-        $this->reset(['instruct', 'instructionNote']);
+        $this->reset(['instruct', 'instructionNote', 'otherInstructions']);
         $this->resetErrorBag();
         $this->showDecide = true;
     }
@@ -46,6 +46,9 @@ class DecisionQueue extends Component
     {
         $type = DecisionType::from($this->decision);
         $this->validate(['comment' => [$type->requiresComment() ? 'required' : 'nullable', 'string', 'max:2000']]);
+        if ($type === DecisionType::Approved) {
+            $this->validateInstructions();
+        }
         $activity = Activity::query()->findOrFail($this->activityId);
 
         if ($this->attempt(fn () => $lifecycle->decide($activity, $type, $this->comment, Auth::user()), "{$activity->reference}: {$type->label()}.")) {
@@ -53,7 +56,7 @@ class DecisionQueue extends Component
             if ($type === DecisionType::Approved) {
                 $this->sendInstructions($activity->fresh());
             }
-            $this->reset(['showDecide', 'activityId', 'comment', 'instruct', 'instructionNote']);
+            $this->reset(['showDecide', 'activityId', 'comment', 'instruct', 'instructionNote', 'otherInstructions']);
         }
     }
 

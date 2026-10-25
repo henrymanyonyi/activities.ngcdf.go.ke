@@ -59,6 +59,7 @@ class Activity extends Model
         'target_audience',
         'source_reference',
         'source_received_on',
+        'issued_on',
         'start_date',
         'end_date',
         'days',
@@ -93,6 +94,8 @@ class Activity extends Model
             'start_date' => 'date',
             'end_date' => 'date',
             'source_received_on' => 'date',
+            'issued_on' => 'date',
+            'hod_acting' => 'boolean',
             'actual_start_date' => 'date',
             'actual_end_date' => 'date',
             'report_due_on' => 'date',
@@ -288,6 +291,12 @@ class Activity extends Model
     public function isWithPreparer(): bool
     {
         return $this->isDelegated() && in_array($this->status, [ActivityStatus::Draft, ActivityStatus::ReturnedToPreparer], true);
+    }
+
+    /** The Head of Department's designation as signed on the memo, with "Ag." when they signed as acting. */
+    public function signedDesignation(): ?string
+    {
+        return $this->hod_designation ? ($this->hod_acting ? 'Ag. ' : '').$this->hod_designation : null;
     }
 
     /** Declined by the Head of Department before it ever reached the Office of the CEO. */

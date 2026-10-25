@@ -13,6 +13,7 @@ use App\Models\ActivityLocation;
 use App\Models\ActivityParticipant;
 use App\Models\Staff;
 use App\Models\User;
+use App\Support\DsaPeriod;
 use App\Support\Money;
 use App\Support\WorkingDays;
 use Closure;
@@ -481,7 +482,7 @@ class ActivityEditor
     }
 
     /**
-     * BR-01: end date = start + days − 1; nights = days − 1.
+     * BR-01: end date = start + days − 1; nights = the payable nights (App\Support\DsaPeriod).
      *
      * @param  array<string, mixed>  $attributes
      * @return array<string, mixed>
@@ -494,7 +495,7 @@ class ActivityEditor
         return array_merge($attributes, [
             'start_date' => $start->toDateString(),
             'days' => $days,
-            'nights' => $days - 1,
+            'nights' => DsaPeriod::nightsFor($days),
             'end_date' => $start->copy()->addDays($days - 1)->toDateString(),
         ]);
     }

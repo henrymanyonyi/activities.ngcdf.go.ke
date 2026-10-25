@@ -29,8 +29,9 @@ use Throwable;
  * matches more than one is rejected. Department and Duty Station must already
  * be on the reference lists, so a misspelling cannot add a department.
  * Job Grade is the scale from the HR register (1 to 10; a "Job Scale" column
- * is read too), or INTERN, which only casuals and attachees may have; a casual
- * or attachee without a grade gets INTERN.
+ * is read too), or INTERN, which only attachees may have; an attachee without
+ * a grade gets INTERN. Every casual is on scale 10 (25 October 2026): a blank,
+ * INTERN or 10 is recorded as 10, and any other scale is rejected.
  * Email and Phone are the officer's work contacts: an account made from the
  * officer picks them up, and the mobile number gets the action-needed SMS, so
  * Phone must be a Kenyan mobile and is kept as +2547XXXXXXXX. A file with only
@@ -114,17 +115,22 @@ class StaffImporter
                 $rowErrors[] = "{$name} has no PF Number and also appears on row {$seenNames[$nameKey]}.";
             }
 
-            // DSA classification: a numbered grade or INTERN. A casual or attachee without one is
-            // costed at INTERN; one HR has reclassified keeps their grade when the cell is blank.
+            // DSA classification: a numbered grade or INTERN. Every casual is on scale 10; an attachee
+            // without one is costed at INTERN, and one HR has reclassified keeps their grade when the cell is blank.
             $effectiveType = $type ?? $existing?->employment_type ?? EmploymentType::Permanent;
             $gradeText = trim((string) ($row['job_grade'] ?? $row['job_scale'] ?? ''));
             $grade = $gradeText === '' ? null : DsaRate::normaliseGrade($gradeText, $grades);
             if ($gradeText !== '' && $grade === null) {
-                $rowErrors[] = "Job Grade \"{$gradeText}\" is not a scale from 1 to 10, or INTERN for casuals and attachees.";
-            } elseif ($grade === DsaRate::INTERN && $effectiveType->requiresStaffNumber()) {
-                $rowErrors[] = 'Job Grade INTERN is only for casuals and attachees.';
-            } elseif ($grade === null && ! $effectiveType->requiresStaffNumber() && blank($existing?->job_grade)) {
-                $grade = DsaRate::INTERN;
+                $rowErrors[] = "Job Grade \"{$gradeText}\" is not a scale from 1 to 10, or INTERN for attachees.";
+            } elseif ($effectiveType->hasFixedDsaGrade()) {
+                if ($grade !== null && $grade !== DsaRate::INTERN && $grade !== $effectiveType->defaultDsaGrade()) {
+                    $rowErrors[] = "Job Grade \"{$gradeText}\": casuals are on DSA scale 10.";
+                }
+                $grade = $effectiveType->defaultDsaGrade();
+            } elseif ($grade === DsaRate::INTERN && $effectiveType !== EmploymentType::Attachee) {
+                $rowErrors[] = 'Job Grade INTERN is only for attachees.';
+            } elseif ($grade === null && $effectiveType->defaultDsaGrade() !== null && blank($existing?->job_grade)) {
+                $grade = $effectiveType->defaultDsaGrade();
             }
 
             $email = mb_strtolower(trim((string) ($row['email'] ?? '')));
