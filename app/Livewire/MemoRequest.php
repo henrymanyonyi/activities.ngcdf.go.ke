@@ -170,6 +170,32 @@ class MemoRequest extends Component
         $this->constituency_id = '';
     }
 
+    public function updatedDays(): void
+    {
+        $this->saveDates();
+    }
+
+    public function updatedStartDate(): void
+    {
+        $this->saveDates();
+    }
+
+    /** Once the memo exists, a change of dates is saved at once so the DSA lines and the total are recalculated. */
+    private function saveDates(): void
+    {
+        $link = $this->link();
+        if (! $link->activity_id) {
+            return;
+        }
+
+        $this->validate([
+            'start_date' => ['required', 'date', 'after_or_equal:today'],
+            'days' => ['required', 'integer', 'min:1', 'max:120'],
+        ], [], ['days' => 'number of days']);
+
+        $this->act(fn () => app(DelegatedMemos::class)->saveDates($link, $this->start_date, (int) $this->days), 'Dates saved. Allowances (DSA) and the total have been recalculated.', 'days');
+    }
+
     public function save(DelegatedMemos $memos): void
     {
         $data = $this->validate([

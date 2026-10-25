@@ -280,6 +280,9 @@ it('takes the officer through the memo page: code, details, team, cost and submi
         ->set('picked', [$this->teamMate->id])->call('addOfficers')->assertHasNoErrors()
         ->set('costCategory', (string) CostCategory::query()->where('code', 'fuel')->value('id'))->set('costAmount', '8,000')->call('addCost')->assertHasNoErrors()
         ->assertSee('Preview the memo')
+        ->assertSee('DSA 2 nights')
+        // Changing the days saves at once and recalculates the allowances.
+        ->set('days', 5)->assertHasNoErrors()->assertSee('DSA 4 nights')
         ->set('confirmSubmit', true)->call('submit')->assertSee('Submitted');
 
     $memo = SubmissionLink::query()->delegated()->sole()->memo;
