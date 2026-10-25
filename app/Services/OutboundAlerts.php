@@ -1,0 +1,97 @@
+<?php
+
+namespace App\Services;
+
+use App\Jobs\DeliverOutboundMessage;
+use App\Models\OutboundMessage;
+use App\Models\User;
+use App\Notifications\ActivityAlert;
+use App\Support\MobileNumber;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Throwable;
+
+/**
+ * Action-needed email and SMS (exception to NT-03 / BR-11 approved 25 October 2026).
+ * Only an alert marked with ActivityAlert::needsAction(), only to Heads of
+ * Department, the Chief of Staff and the Assistant, and only the reference and
+ * the step: the details stay in FAPM. Each message is logged, then delivered
+ * once the surrounding transaction commits (as NG-CDF Careers does); a failed
+ * delivery is marked failed on its log and never undoes or breaks the action.
+ */
+class OutboundAlerts
+{
+    /** The roles that get email and SMS; the CEO is alerted in the system only. */
+    public const ROLES = [User::ROLE_HOD, User::ROLE_CHIEF_OF_STAFF, User::ROLE_ASSISTANT_CHIEF_OF_STAFF];
+
+    public function __construct(private AppSettings $settings) {}
+
+    /** @param  Collection<int, User>  $recipients */
+    public function send(Collection $recipients, ActivityAlert $alert): void
+    {
+        if ($alert->outbound === null) {
+            return;
+        }
+
+        $email = $this->settings->bool('alerts_email');
+        $sms = $this->settings->bool('alerts_sms');
+        if (! $email && ! $sms) {
+            return;
+        }
+
+        foreach (EloquentCollection::make($recipients->values()->all())->loadMissing(['roles', 'staff']) as $user) {
+            if (! $user->is_active || ! $user->hasAnyRole(self::ROLES)) {
+                continue;
+            }
+
+            $url = ActivityAlert::destination($alert->toArray($user), $user);
+            $channels = array_filter([
+                'mail' => $email ? $user->email : null,
+                'sms' => $sms ? $user->mobileNumber() : null,
+            ]);
+
+            foreach ($channels as $channel => $address) {
+                $message = OutboundMessage::create([
+                    'user_id' => $user->id,
+                    'activity_id' => $alert->activityId,
+                    'kind' => $alert->kind,
+                    'channel' => $channel,
+                    'recipient' => $address,
+                    'subject' => $channel === 'mail' ? 'FAPM: '.$alert->outbound['subject'] : null,
+                    'body' => $channel === 'mail' ? $this->emailBody($user, $alert) : $this->smsBody($alert, $url),
+                    'url' => $url,
+                    'status' => OutboundMessage::QUEUED,
+                ]);
+
+                DB::afterCommit(fn () => $this->deliver($message->id));
+            }
+        }
+    }
+
+    /** One or two SMS parts: who it is from, what happened and where to act. */
+    public function smsBody(ActivityAlert $alert, string $url): string
+    {
+        return "NG-CDF FAPM: {$alert->outbound['line']} Sign in to act: {$url}";
+    }
+
+    public function emailBody(User $user, ActivityAlert $alert): string
+    {
+        return "Dear {$user->name},\n\n{$alert->outbound['line']}\n\n{$alert->outbound['todo']}";
+    }
+
+    /** For the delivery log: the mobile number masked. */
+    public static function displayRecipient(OutboundMessage $message): string
+    {
+        return $message->channel === 'sms' ? MobileNumber::mask($message->recipient) : $message->recipient;
+    }
+
+    private function deliver(int $messageId): void
+    {
+        try {
+            DeliverOutboundMessage::dispatchSync($messageId);
+        } catch (Throwable $e) {
+            report($e);
+        }
+    }
+}

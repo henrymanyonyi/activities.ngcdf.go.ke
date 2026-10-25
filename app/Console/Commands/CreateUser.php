@@ -3,7 +3,9 @@
 namespace App\Console\Commands;
 
 use App\Models\Department;
+use App\Models\Staff;
 use App\Models\User;
+use App\Support\MobileNumber;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -20,7 +22,9 @@ class CreateUser extends Command
         {role : ceo, chief_of_staff, assistant_chief_of_staff, admin or hod}
         {email : Sign-in email address}
         {name : Full name}
-        {--department= : For hod: the department name, e.g. ICT}';
+        {--department= : For hod: the department name, e.g. ICT}
+        {--staff= : PF number of the officer on the staff list; their mobile number is picked up}
+        {--phone= : Mobile number for the action-needed SMS, e.g. 0712345678}';
 
     protected $description = 'Create the CEO, Chief of Staff, Assistant Chief of Staff, System Administrator or a Head of Department account';
 
@@ -63,11 +67,35 @@ class CreateUser extends Command
             return self::FAILURE;
         }
 
+        $staff = null;
+        if (filled($this->option('staff'))) {
+            $staff = Staff::query()->where('staff_number', strtoupper(trim((string) $this->option('staff'))))->first();
+            if (! $staff) {
+                $this->error('No officer on the staff list has PF number '.$this->option('staff').'.');
+
+                return self::FAILURE;
+            }
+            if (User::query()->where('staff_id', $staff->id)->exists()) {
+                $this->error("{$staff->name} already has an account.");
+
+                return self::FAILURE;
+            }
+        }
+
+        $phone = filled($this->option('phone')) ? MobileNumber::normalise((string) $this->option('phone')) : MobileNumber::normalise($staff?->phone);
+        if (filled($this->option('phone')) && $phone === null) {
+            $this->error('Give a Kenyan mobile number with --phone, e.g. 0712345678.');
+
+            return self::FAILURE;
+        }
+
         $password = Str::password(16);
 
         $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
+            'phone' => $phone,
+            'staff_id' => $staff?->id,
             'department_id' => $department?->id,
             'password' => $password,
             'is_active' => true,

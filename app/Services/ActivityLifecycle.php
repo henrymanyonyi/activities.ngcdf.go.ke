@@ -670,12 +670,8 @@ class ActivityLifecycle
             $label = $mode === DecisionMode::RecordedOnBehalf ? "{$decision->label()} (recorded on the CEO's behalf, memo {$memoReference})" : $decision->label();
             $this->move($activity, $decision->status(), trim($label.($comment ? ": {$comment}" : '')), $user, extra: $extra);
 
-            $this->alerts->toStaffOfCeo(ActivityAlert::decided($activity, $decision));
-            $this->alerts->toDepartment($activity, ActivityAlert::progressed($activity, match ($decision) {
-                DecisionType::Approved => 'Approved and authorised by the CEO',
-                DecisionType::Declined => 'Declined by the CEO',
-                DecisionType::Returned => 'Returned by the CEO to the Office of the CEO for clarification',
-            }));
+            $this->alerts->toStaffOfCeo(ActivityAlert::decidedForOffice($activity, $decision));
+            $this->alerts->toDepartment($activity, ActivityAlert::decidedForDepartment($activity, $decision));
 
             return $record;
         });

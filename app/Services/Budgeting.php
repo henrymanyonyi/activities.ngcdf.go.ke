@@ -233,7 +233,8 @@ class Budgeting
 
             $item->forceFill(['status' => BudgetStatus::Returned, 'returned_by' => $user->id, 'returned_at' => now(), 'return_reason' => trim($reason)])->save();
 
-            $this->notifyPreparers($item, $user, ActivityAlert::budget('Returned for correction, please revise and resubmit: '.$this->describe($item), $this->url($item), 'fa-reply'));
+            $this->notifyPreparers($item, $user, ActivityAlert::budget('Returned for correction, please revise and resubmit: '.$this->describe($item), $this->url($item), 'fa-reply')
+                ->needsAction(null, 'Returned by the CEO for correction', 'The CEO has returned a '.($item instanceof DepartmentBudget ? 'department budget' : 'budget adjustment').' you prepared for correction.', 'Please correct it and resubmit it to the CEO.'));
         });
     }
 

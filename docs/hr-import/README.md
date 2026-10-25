@@ -233,3 +233,29 @@ The memo and its annexes, report PDFs and print views, and Excel exports use **G
 - **Embedding:** the font permits embedding. PDFs embed only the characters used (subsetting), so a memo is about 80 KB.
 - **Without the files:** PDFs fall back to DejaVu Sans. Excel files simply name Gill Sans MT, which Office shows.
 - **After installing the fonts:** dompdf remembers fonts in `storage/fonts` (gitignored), and that folder must be writable. Restart any long-running worker so it sees the new fonts.
+
+## I. Staff emails and mobile numbers (25 October 2026)
+
+Neither HR register has an email or phone column: the permanent register's 23 columns and the temporary register's sheets hold none. The import workbook has had **Email** and **Phone** columns from the start, and they are empty in v3. So the details are collected separately and imported over the list already loaded.
+
+### The contacts workbook
+
+- **`files/hr-import/HR-Staff-Contacts-2026-10.xlsx`** (confidential, gitignored) has one row per officer in v3 (510): PF Number and Name exactly as imported, empty orange **Email** and **Phone** columns, and grey reference columns (employment type, department, designation) to help HR find people.
+- **`docs/hr-import/HR-Staff-Contacts-Template.xlsx`** is the same layout, empty, for future updates.
+- Both are built by `files/hr-import/scripts/build_contacts_workbook.py`.
+- HR can also fill the Email and Phone columns of v3 itself. Either file is uploaded through **Staff list › Import HR list** (Check file, then Import).
+
+### How the importer treats them
+
+- **Matching:** officers with a PF Number are matched by it; casuals and attachees without one are matched by exact name, as before.
+- **Email:** checked, and stored in lower case.
+- **Phone:** must be a Kenyan mobile (`0712 345 678`, `712345678` from a number cell, or `+254 712 345 678`). It is stored as `+254712345678`, and an office landline is rejected with its row number.
+- **What a contacts file changes:** with only PF Number, Name, Email and Phone, only the contacts (and the name, if it differs) change. A blank cell never erases a value, and a blank **Active** cell now keeps an officer's status, so a contacts file never reactivates a leaver. A new officer with a blank Active cell is still added as active.
+- **Tested:** importing v3 and then the contacts file into a throwaway in-memory database matched all 510 rows, added no one, and left the 14 inactive officers inactive.
+
+### What the contacts are for
+
+- When the System Administrator or the Chief of Staff creates an account in **User accounts**, they search the staff list and pick the officer. The account takes the officer's name, email, mobile number and (for a Head of Department) department, and stays linked to the officer.
+- Each account's **Contact** button sets or links its mobile number later.
+- The mobile number receives FAPM's action-needed SMS (`App\Services\OutboundAlerts`); without one, the person gets email and in-app alerts only.
+

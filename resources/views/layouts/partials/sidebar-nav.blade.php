@@ -55,6 +55,7 @@
             ['route' => 'settings.reference', 'match' => 'settings.*', 'icon' => 'fa-sliders', 'label' => 'Reference data', 'can' => 'reference.manage'],
             ['route' => 'users.index', 'match' => 'users.*', 'icon' => 'fa-users-gear', 'label' => 'User accounts', 'can' => 'users.manage'],
             ['route' => 'audit.index', 'match' => 'audit.*', 'icon' => 'fa-clock-rotate-left', 'label' => 'Audit and access log', 'can' => 'audit.view'],
+            ['route' => 'reports.show', 'params' => ['report' => 'message-log'], 'match' => 'audit.*', 'active' => request()->routeIs('reports.show') && request()->route('report') === 'message-log', 'icon' => 'fa-paper-plane', 'label' => 'Email and SMS log', 'can' => 'audit.view'],
         ],
     ];
 @endphp

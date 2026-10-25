@@ -2,8 +2,11 @@
 
 namespace App\Providers;
 
+use App\Contracts\SmsGateway;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\RequireTwoFactor;
+use App\Services\Sms\LogSmsGateway;
+use App\Services\Sms\SmsLeopardSmsGateway;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\ServiceProvider;
 use Livewire\Livewire;
@@ -16,7 +19,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // SMS Leopard for every SMS. The log driver is honoured only in tests, so a
+        // stale ACTIVITIES_SMS_DRIVER=log on a server can never swallow real messages.
+        $this->app->bind(SmsGateway::class, fn () => config('activities.sms.driver') === 'log' && $this->app->runningUnitTests()
+            ? new LogSmsGateway
+            : new SmsLeopardSmsGateway(config('activities.sms.smsleopard')));
     }
 
     /**

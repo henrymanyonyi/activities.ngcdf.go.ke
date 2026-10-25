@@ -21,6 +21,7 @@ final class ReportCatalog
         Definitions\Coverage::class,
         Definitions\ActivityRegister::class,
         Definitions\AccessAndAuditLog::class,
+        Definitions\MessageDeliveryLog::class,
     ];
 
     /** @return Collection<string, Report> */

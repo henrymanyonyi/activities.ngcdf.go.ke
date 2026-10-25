@@ -224,3 +224,26 @@ it('puts a casual added on screen without a job grade on INTERN, and refuses INT
 
     expect(Staff::query()->sole())->name->toBe('Casual Officer')->job_grade->toBe('INTERN');
 });
+
+it('updates only emails and mobile numbers from a contacts file, keeping a leaver inactive', function () {
+    $ict = Department::query()->where('name', 'ICT')->firstOrFail();
+    $active = Staff::factory()->create(['staff_number' => 'PF10', 'name' => 'Asha Contact', 'department_id' => $ict->id, 'job_grade' => '6']);
+    $leaver = Staff::factory()->create(['staff_number' => 'PF11', 'name' => 'Ben Leaver', 'department_id' => $ict->id, 'is_active' => false]);
+
+    $result = app(StaffImporter::class)->import(hrCsv(implode("\n", [
+        'PF Number,Name,Email,Phone',
+        'PF10,Asha Contact,Asha.Contact@NGCDF.go.ke,0712 345 678',
+        'PF11,Ben Leaver,,712000999',
+    ])."\n"));
+
+    expect($result)->toBe(['created' => 0, 'updated' => 2, 'skipped' => 0, 'errors' => []]);
+    expect($active->fresh())->email->toBe('asha.contact@ngcdf.go.ke')->phone->toBe('+254712345678')->job_grade->toBe('6')->department_id->toBe($ict->id)->is_active->toBeTrue();
+    expect($leaver->fresh())->phone->toBe('+254712000999')->is_active->toBeFalse();
+});
+
+it('rejects a phone that is not a Kenyan mobile number', function () {
+    $result = app(StaffImporter::class)->import(hrCsv("PF Number,Name,Department,Phone\nPF12,Office Line,ICT,020 123 4567\n"));
+
+    expect($result['errors'])->toBe(['Row 2: Phone "020 123 4567" is not a Kenyan mobile number (e.g. 0712 345 678 or +254 712 345 678).'])
+        ->and(Staff::query()->count())->toBe(0);
+});

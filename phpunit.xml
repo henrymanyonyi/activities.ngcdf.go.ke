@@ -24,6 +24,8 @@
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <!-- Documents render with the fallback font in tests, whatever fonts this machine has; DocumentFontTest sets its own. -->
         <env name="ACTIVITIES_DOCUMENT_FONTS" value="storage/framework/testing/no-document-fonts"/>
+        <env name="ACTIVITIES_SMS_DRIVER" value="log"/>
+        <env name="SMSLEOPARD_API_KEY" value=""/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>

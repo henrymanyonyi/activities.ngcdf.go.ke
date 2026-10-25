@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\Auditable;
+use App\Support\MobileNumber;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -64,7 +65,9 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'email',
+        'phone',
         'department_id',
+        'staff_id',
         'password',
         'is_active',
         'failed_login_attempts',
@@ -123,6 +126,30 @@ class User extends Authenticatable
     public function department(): BelongsTo
     {
         return $this->belongsTo(Department::class);
+    }
+
+    /**
+     * The officer on the staff list this account was made from, if any.
+     *
+     * @return BelongsTo<Staff, $this>
+     */
+    public function staff(): BelongsTo
+    {
+        return $this->belongsTo(Staff::class);
+    }
+
+    /**
+     * Where the action-needed SMS goes: the account's own mobile number, else its officer's on the staff list.
+     * isset(), because a user loaded without these columns must not fail.
+     */
+    public function mobileNumber(): ?string
+    {
+        $phone = isset($this->phone) ? $this->phone : null;
+        if (blank($phone) && isset($this->staff_id)) {
+            $phone = ($this->relationLoaded('staff') ? $this->staff : $this->staff()->first())?->phone;
+        }
+
+        return MobileNumber::normalise($phone);
     }
 
     public function isHeadOfDepartment(): bool

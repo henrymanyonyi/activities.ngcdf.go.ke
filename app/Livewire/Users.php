@@ -4,11 +4,15 @@ namespace App\Livewire;
 
 use App\Livewire\Concerns\RunsActions;
 use App\Models\Department;
+use App\Models\Staff;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Support\MobileNumber;
+use Closure;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -18,6 +22,10 @@ use Livewire\Component;
  * FRD CF-01 / CF-04: one active holder per role in User::ROLES (one per
  * department for Heads of Department), managed by the Chief of Staff or the
  * System Administrator. Accounts are deactivated, never deleted.
+ *
+ * An account is made from an officer on the staff list where possible: it
+ * picks up their name, email, mobile number and department, and keeps the
+ * link, so the action-needed SMS reach them (App\Services\OutboundAlerts).
  */
 #[Layout('layouts.admin')]
 #[Title('User accounts')]
@@ -34,6 +42,17 @@ class Users extends Component
     public string $email = '';
 
     public string $department_id = '';
+
+    public string $phone = '';
+
+    /** The officer on the staff list the account is made from or linked to. */
+    public ?int $staff_id = null;
+
+    public string $staffSearch = '';
+
+    public bool $showContact = false;
+
+    public ?int $contactUserId = null;
 
     public bool $showDepartment = false;
 
@@ -57,9 +76,66 @@ class Users extends Component
     {
         abort_unless(array_key_exists($role, User::ROLES), 404);
         $this->role = $role;
-        $this->reset(['name', 'email', 'department_id']);
+        $this->reset(['name', 'email', 'department_id', 'phone', 'staff_id', 'staffSearch', 'contactUserId']);
         $this->resetErrorBag();
         $this->showCreate = true;
+    }
+
+    /**
+     * Picks an officer from the staff list. Creating an account, it fills in their name, email, mobile and
+     * (for a Head of Department) department; on the contact popup, it links them and takes their mobile.
+     */
+    public function pickStaff(int $id): void
+    {
+        $staff = Staff::query()->active()->findOrFail($id);
+        $this->staff_id = $staff->id;
+        $this->staffSearch = '';
+        $this->phone = (string) $staff->phone ?: $this->phone;
+
+        if (! $this->contactUserId) {
+            $this->name = $staff->name;
+            $this->email = (string) $staff->email ?: $this->email;
+            if ($this->isDepartmental($this->role) && $staff->department_id) {
+                $this->department_id = (string) $staff->department_id;
+            }
+        }
+    }
+
+    public function clearStaff(): void
+    {
+        $this->staff_id = null;
+    }
+
+    public function openContact(int $id): void
+    {
+        $user = User::query()->findOrFail($id);
+        $this->contactUserId = $id;
+        $this->phone = (string) $user->phone;
+        $this->staff_id = $user->staff_id;
+        $this->staffSearch = '';
+        $this->resetErrorBag();
+        $this->showContact = true;
+    }
+
+    /** The mobile number for the action-needed SMS, and the officer the account belongs to. */
+    public function saveContact(): void
+    {
+        $this->guard();
+        $user = User::query()->findOrFail($this->contactUserId);
+        $this->validate($this->contactRules($user->id), [], ['staff_id' => 'officer', 'phone' => 'mobile number']);
+
+        $user->update(['phone' => MobileNumber::normalise($this->phone), 'staff_id' => $this->staff_id]);
+        $this->reset(['showContact', 'contactUserId', 'phone', 'staff_id', 'staffSearch']);
+        $this->toast("{$user->name}'s contact details saved.");
+    }
+
+    /** @return array<string, list<mixed>> */
+    private function contactRules(?int $ignoreUserId = null): array
+    {
+        return [
+            'phone' => ['nullable', 'string', 'max:30', fn (string $attribute, mixed $value, Closure $fail) => MobileNumber::isValid($value) || $fail('Enter a Kenyan mobile number, e.g. 0712 345 678.')],
+            'staff_id' => ['nullable', 'exists:staff,id', Rule::unique('users', 'staff_id')->ignore($ignoreUserId)],
+        ];
     }
 
     public function create(): void
@@ -70,7 +146,8 @@ class Users extends Component
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'department_id' => [$this->isDepartmental($this->role) ? 'required' : 'nullable', 'exists:departments,id'],
-        ], [], ['department_id' => 'department']);
+            ...$this->contactRules(),
+        ], ['staff_id.unique' => 'This officer already has an account.'], ['department_id' => 'department', 'staff_id' => 'officer', 'phone' => 'mobile number']);
 
         if ($holder = $this->activeHolder($this->role, $this->isDepartmental($this->role) ? (int) $this->department_id : null)) {
             $this->addError('role', $this->isDepartmental($this->role)
@@ -82,7 +159,15 @@ class Users extends Component
 
         $password = Str::password(16);
         DB::transaction(function () use ($password) {
-            $user = User::create(['name' => $this->name, 'email' => strtolower(trim($this->email)), 'department_id' => $this->isDepartmental($this->role) ? (int) $this->department_id : null, 'password' => $password, 'is_active' => true]);
+            $user = User::create([
+                'name' => $this->name,
+                'email' => strtolower(trim($this->email)),
+                'phone' => MobileNumber::normalise($this->phone),
+                'staff_id' => $this->staff_id,
+                'department_id' => $this->isDepartmental($this->role) ? (int) $this->department_id : null,
+                'password' => $password,
+                'is_active' => true,
+            ]);
             $user->forceFill(['email_verified_at' => now()])->save();
             $user->assignRole($this->role);
         });
@@ -203,11 +288,14 @@ class Users extends Component
 
     public function render(): View
     {
-        $users = User::query()->with(['roles', 'department'])->orderByDesc('is_active')->orderBy('name')->get();
+        $users = User::query()->with(['roles', 'department', 'staff'])->orderByDesc('is_active')->orderBy('name')->get();
+        $search = trim($this->staffSearch);
 
         return view('livewire.users', [
             'heads' => $users->filter(fn (User $u) => $u->roleName() === User::ROLE_HOD)->sortBy([['is_active', 'desc'], [fn ($a, $b) => strcmp((string) $a->department?->name, (string) $b->department?->name)]])->values(),
             'departments' => Department::query()->active()->ordered()->get(['id', 'name']),
+            'staffMatches' => mb_strlen($search) >= 2 ? Staff::query()->active()->search($search)->with('department')->orderBy('name')->limit(8)->get() : collect(),
+            'pickedStaff' => $this->staff_id ? Staff::query()->with('department')->find($this->staff_id) : null,
             'slots' => collect(User::ROLES)->except(User::DEPARTMENTAL_ROLES)->map(fn ($label, $role) => [
                 'label' => $label,
                 'active' => $users->first(fn (User $u) => $u->is_active && $u->roleName() === $role),

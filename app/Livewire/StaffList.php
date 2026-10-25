@@ -11,6 +11,8 @@ use App\Models\Staff;
 use App\Rules\DsaGrade;
 use App\Services\StaffImporter;
 use App\Services\StaffRecords;
+use App\Support\MobileNumber;
+use Closure;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -126,7 +128,7 @@ class StaffList extends Component
             'contract_ends_on' => ['nullable', 'date'],
             'name' => ['required', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:30'],
+            'phone' => ['nullable', 'string', 'max:30', fn (string $attribute, mixed $value, Closure $fail) => MobileNumber::isValid($value) || $fail('Enter a Kenyan mobile number, e.g. 0712 345 678.')],
             'form_department_id' => ['required', 'exists:departments,id'],
             'designation_id' => ['nullable', 'exists:designations,id'],
             'job_grade' => ['nullable', 'string', 'max:20', new DsaGrade(EmploymentType::tryFrom($this->employment_type) ?? EmploymentType::Permanent)],
@@ -140,7 +142,7 @@ class StaffList extends Component
             'employment_type' => $data['employment_type'],
             'contract_ends_on' => $data['contract_ends_on'] ?: null,
             'email' => $data['email'] ?: null,
-            'phone' => $data['phone'] ?: null,
+            'phone' => MobileNumber::normalise($data['phone']),
             'department_id' => $data['form_department_id'],
             'designation_id' => $data['designation_id'] ?: null,
             'job_grade' => $data['job_grade'] ?: null,

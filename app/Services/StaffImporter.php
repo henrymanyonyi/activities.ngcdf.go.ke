@@ -10,6 +10,7 @@ use App\Models\DsaRate;
 use App\Models\Office;
 use App\Models\Staff;
 use App\Models\User;
+use App\Support\MobileNumber;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
@@ -30,6 +31,11 @@ use Throwable;
  * Job Grade is the scale from the HR register (1 to 10; a "Job Scale" column
  * is read too), or INTERN, which only casuals and attachees may have; a casual
  * or attachee without a grade gets INTERN.
+ * Email and Phone are the officer's work contacts: an account made from the
+ * officer picks them up, and the mobile number gets the action-needed SMS, so
+ * Phone must be a Kenyan mobile and is kept as +2547XXXXXXXX. A file with only
+ * PF Number, Name, Email and Phone updates contacts and nothing else: a blank
+ * cell never erases a value, and a blank Active keeps the officer's status.
  * Every row is checked before anything is saved; with $dryRun nothing is saved.
  *
  * A Head of Department may import too, under the same rules as adding one
@@ -121,9 +127,16 @@ class StaffImporter
                 $grade = DsaRate::INTERN;
             }
 
-            $email = trim((string) ($row['email'] ?? ''));
+            $email = mb_strtolower(trim((string) ($row['email'] ?? '')));
             if ($email !== '' && ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $rowErrors[] = "Email \"{$email}\" is not valid.";
+            }
+
+            // Mobile numbers receive the action-needed SMS, so they are kept in one form, +2547XXXXXXXX.
+            $phoneText = $this->phoneText($row['phone'] ?? null);
+            $phone = MobileNumber::normalise($phoneText);
+            if ($phoneText !== '' && $phone === null) {
+                $rowErrors[] = "Phone \"{$phoneText}\" is not a Kenyan mobile number (e.g. 0712 345 678 or +254 712 345 678).";
             }
 
             $department = Department::normaliseName((string) ($row['department'] ?? ''));
@@ -171,7 +184,7 @@ class StaffImporter
                     'department_id' => $departments->get(mb_strtolower($department)),
                     'office_id' => $offices->get(mb_strtolower($station)),
                     'email' => $email ?: null,
-                    'phone' => mb_substr(trim((string) ($row['phone'] ?? '')), 0, 30) ?: null,
+                    'phone' => $phone,
                     'joined_on' => $joined?->toDateString(),
                     'contract_ends_on' => $ends?->toDateString(),
                 ],
@@ -187,10 +200,11 @@ class StaffImporter
         $skipped = 0;
         $save = function () use ($valid, $office, $user, &$created, &$updated, &$skipped) {
             foreach ($valid as $v) {
-                $active = strtolower(trim((string) ($v['row']['active'] ?? 'yes')));
+                // A blank Active cell keeps an officer's status (a contacts-only file never reactivates a leaver); a new officer is active.
+                $active = strtolower(trim((string) ($v['row']['active'] ?? '')));
                 $attributes = $v['attributes'];
                 $attributes['designation_id'] = Designation::resolveByName($attributes['designation'])?->id;
-                $attributes['is_active'] = ! in_array($active, ['no', 'n', 'false', '0', 'inactive'], true);
+                $attributes['is_active'] = $active === '' ? ($v['existing'] ? null : true) : ! in_array($active, ['no', 'n', 'false', '0', 'inactive'], true);
                 unset($attributes['designation']);
 
                 if (! $office) {
@@ -226,6 +240,16 @@ class StaffImporter
         }
 
         return ['created' => $created, 'updated' => $updated, 'skipped' => $skipped, 'errors' => []];
+    }
+
+    /** A phone typed into a number cell comes back as a number without its leading 0 (712345678). */
+    private function phoneText(mixed $value): string
+    {
+        if (is_int($value) || is_float($value)) {
+            $value = sprintf('%.0f', $value);
+        }
+
+        return trim((string) $value);
     }
 
     /** PF numbers are text; one typed into a number cell comes back as a number and loses only its formatting. */
