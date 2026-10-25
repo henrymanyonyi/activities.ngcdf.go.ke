@@ -19,7 +19,8 @@ Never run `migrate:fresh`, `migrate:refresh`, `db:wipe`, `migrate:rollback` agai
 - Exports carry the RESTRICTED marking, the user and the time (`App\Exports\ReportExport`, `resources/views/reports/document.blade.php`).
 - Files are written and read only through `App\Services\DocumentStore` (encrypted at rest).
 - Nothing is permanently deleted: drafts are soft-deleted, everything else is cancelled; lists are deactivated or merged.
-- No outbound integration, and in-app alerts only to the Office of the CEO and, about their own department's memos, its Head of Department (`App\Services\Alerts`; FRD 12, BR-11).
+- No outbound integration, and in-app alerts only to the Office of the CEO and, about their own department's memos, its Head of Department (`App\Services\Alerts`; FRD 12, BR-11). One exception (25 Oct 2026): the Heads of Finance and Procurement receive the CEO's instructions, below.
+- Finance and Procurement instructions (25 Oct 2026; record the CEO's approval in the next FRD revision): when approving, or later on an approved activity, only the CEO (`instructions.send`) instructs Finance to process the imprest and/or Procurement to procure the travel tickets, through `App\Services\ActionInstructions` only (one of each kind per activity; departments set in Settings › Thresholds, default Financial Services - Accounts and Supply Chain). That department's Head (`instructions.action`, `ActionInstruction::scopeFor` / `isFor`) sees an instruction sheet only: reference, dates, places, team, the CEO's note and the cost lines they act on (Procurement: travel and vehicle hire). Never the memo, its justification, reviews, documents, budget position or DSA lines for Procurement; `Activity::isVisibleTo` is unchanged. They acknowledge, then complete with a reference, which alerts the Office of the CEO and the memo's department.
 
 ## Domain rules
 

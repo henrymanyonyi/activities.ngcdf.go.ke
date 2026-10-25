@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Enums\DecisionType;
 use App\Enums\ReviewOffice;
+use App\Models\ActionInstruction;
 use App\Models\Activity;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
@@ -71,6 +72,18 @@ class ActivityAlert extends Notification
     public static function reportReturned(Activity $activity): self
     {
         return new self('report_returned', "Report returned for correction, please revise and resubmit: {$activity->title}", $activity->id, 'fa-reply');
+    }
+
+    /** To the Head of Finance or Procurement: opens the instruction sheet, never the memo. */
+    public static function instructionSent(ActionInstruction $instruction): self
+    {
+        return new self('instruction_sent', "The CEO instructs {$instruction->kind->office()}: {$instruction->kind->label()} for {$instruction->activity->reference}, {$instruction->activity->title}", null, $instruction->kind->icon(), route('instructions.show', $instruction));
+    }
+
+    /** To the Office of the CEO and the memo's own department: Finance or Procurement has done it. */
+    public static function instructionCompleted(ActionInstruction $instruction): self
+    {
+        return new self('instruction_completed', "{$instruction->kind->office()} has completed \"{$instruction->kind->label()}\" (ref. {$instruction->completion_reference}): {$instruction->activity->title}", $instruction->activity_id, $instruction->kind->icon());
     }
 
     public static function pendingTooLong(Activity $activity, int $workingDays): self

@@ -221,6 +221,16 @@ class Activity extends Model
         return $this->hasOne(CeoDecision::class)->latestOfMany();
     }
 
+    /**
+     * The CEO's instructions to Finance and Procurement (App\Services\ActionInstructions).
+     *
+     * @return HasMany<ActionInstruction, $this>
+     */
+    public function instructions(): HasMany
+    {
+        return $this->hasMany(ActionInstruction::class);
+    }
+
     /** @return HasMany<Directive, $this> */
     public function directives(): HasMany
     {

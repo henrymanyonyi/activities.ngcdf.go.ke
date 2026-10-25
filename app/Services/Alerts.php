@@ -10,7 +10,8 @@ use Illuminate\Support\Facades\Notification;
 
 /**
  * Routes in-app alerts to the authorised users only (BR-11): the Office of
- * the CEO, and a Head of Department only about their own department's memos.
+ * the CEO, a Head of Department only about their own department's memos, and
+ * the Heads of Finance and Procurement only about the CEO's instructions to them.
  */
 class Alerts
 {
@@ -40,6 +41,16 @@ class Alerts
                 ->when($activity->responsible_hod_id, fn ($q, $id) => $q->orWhereKey($id)))
             ->when(! $activity->organising_department_id && ! $activity->responsible_hod_id, fn ($q) => $q->whereRaw('1 = 0'))
             ->get();
+
+        if ($recipients->isNotEmpty()) {
+            Notification::send($recipients, $alert);
+        }
+    }
+
+    /** The active Head of a department (Finance or Procurement receiving an instruction). */
+    public function toHeadOf(int $departmentId, ActivityAlert $alert): void
+    {
+        $recipients = User::query()->role(User::ROLE_HOD)->where('is_active', true)->where('department_id', $departmentId)->get();
 
         if ($recipients->isNotEmpty()) {
             Notification::send($recipients, $alert);

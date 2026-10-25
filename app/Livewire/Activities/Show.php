@@ -13,6 +13,7 @@ use App\Enums\ReviewRecommendation;
 use App\Enums\TravelMode;
 use App\Exceptions\ActivityWorkflowException;
 use App\Livewire\Concerns\RunsActions;
+use App\Livewire\Concerns\SendsInstructions;
 use App\Models\Activity;
 use App\Models\ActivityDocument;
 use App\Models\ActivityLocation;
@@ -54,6 +55,7 @@ use Livewire\WithFileUploads;
 class Show extends Component
 {
     use RunsActions;
+    use SendsInstructions;
     use WithFileUploads;
 
     public Activity $activity;
@@ -97,6 +99,8 @@ class Show extends Component
     public bool $showDirective = false;
 
     public bool $showImprest = false;
+
+    public bool $showInstruct = false;
 
     public bool $showDocument = false;
 
@@ -274,7 +278,7 @@ class Show extends Component
         $this->reset([
             'showDecide', 'showRecordDecision', 'showPostpone', 'showExtend', 'showCancel', 'showComplete', 'showReport', 'showReturnReport', 'showClose', 'showDiscard',
             'showForward', 'showReturnHod', 'showNote', 'reviewText', 'recommendation',
-            'showAddStaff', 'showAddExternal', 'showRemoveParticipant', 'staffDepartment', 'staffOffice', 'showSelectedOnly', 'sameConflictReason', 'showDays', 'showExplain', 'overlapReason', 'staffSort', 'daysStart', 'daysCount', 'showCost', 'showOverride', 'showLocation', 'showDirective', 'showImprest', 'showDocument',
+            'showAddStaff', 'showAddExternal', 'showRemoveParticipant', 'staffDepartment', 'staffOffice', 'showSelectedOnly', 'sameConflictReason', 'showDays', 'showExplain', 'overlapReason', 'staffSort', 'daysStart', 'daysCount', 'showCost', 'showOverride', 'showLocation', 'showDirective', 'showImprest', 'showDocument', 'showInstruct', 'instruct', 'instructionNote',
             'comment', 'memoReference', 'memoDate', 'scan', 'reason', 'newStart', 'newDays', 'extraDays', 'actualDate', 'reportReceivedOn', 'outputsAchieved',
             'findings', 'recommendations', 'reportFile', 'staffSearch', 'selectedStaff', 'conflictReasons', 'externalName', 'externalOrganisation',
             'participantId', 'costId', 'costCategoryId', 'costParticipantId', 'costDescription', 'costAmount', 'costTravelMode', 'overrideAmount',
@@ -300,6 +304,7 @@ class Show extends Component
 
     public function openDecide(string $decision): void
     {
+        $this->reset(['instruct', 'instructionNote']);
         $this->decision = DecisionType::from($decision)->value;
         $this->showDecide = true;
     }
@@ -309,7 +314,21 @@ class Show extends Component
         $this->validate(['comment' => [DecisionType::from($this->decision)->requiresComment() ? 'required' : 'nullable', 'string', 'max:2000']]);
 
         if ($this->attempt(fn () => $lifecycle->decide($this->activity, DecisionType::from($this->decision), $this->comment, $this->user()))) {
+            // Finance and Procurement only after an approval; a failure here leaves the decision in place.
+            if ($this->decision === DecisionType::Approved->value) {
+                $this->sendInstructions($this->activity->fresh());
+            }
             $this->done('Decision recorded: '.DecisionType::from($this->decision)->label().'.');
+        }
+    }
+
+    /** The CEO instructs Finance or Procurement on an already approved activity. */
+    public function instructDepartments(): void
+    {
+        $this->validate(['instruct' => ['required', 'array', 'min:1']], ['instruct.required' => 'Tick Finance, Procurement or both.']);
+
+        if ($this->sendInstructions($this->activity)) {
+            $this->done();
         }
     }
 
@@ -910,6 +929,7 @@ class Show extends Component
             'participants.staff.department', 'participants.designation', 'participants.department', 'costs.category', 'costs.participant.staff',
             'documents', 'decisions.recorder', 'decisions.document', 'directives.department', 'report.document', 'report.recorder', 'report.reviewer',
             'statusHistory.user', 'amendments.user', 'approver', 'creator', 'submissionLink', 'reviewNotes.user', 'responsibleHod',
+            'instructions.department', 'instructions.completer',
             'participants.releases.recorder', 'participants.releases.destination',
         ]);
 

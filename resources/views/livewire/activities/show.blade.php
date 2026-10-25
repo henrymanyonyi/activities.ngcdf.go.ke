@@ -295,7 +295,7 @@
                 </div>
 
                 <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                    <p class="text-[13px] text-slate-500">DSA is computed from the rate table (job grade × destination, {{ app(\App\Services\AppSettings::class)->get('dsa_basis') }}). Travel and other costs are entered per participant or for the whole activity.</p>
+                    <p class="text-[13px] text-slate-500">DSA is computed from the rate table (one standard rate per scale, per {{ app(\App\Services\AppSettings::class)->get('dsa_basis') === 'days' ? 'day' : 'night' }}). Travel and other costs are entered per participant or for the whole activity.</p>
                     <div class="flex gap-2">
                         @if ($editable && ! $s->isDelivered())
                             <button type="button" wire:click="recalculateDsa" wire:loading.attr="disabled" wire:target="recalculateDsa" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-calculator text-xs"></i>Recalculate DSA</button>
@@ -312,7 +312,7 @@
                 @endif
 
                 @if ($a->costs->isEmpty())
-                    <x-ui.empty icon="fa-coins" title="No costs yet" line="DSA appears once the team, a location with a destination category and the DSA rates are in place." />
+                    <x-ui.empty icon="fa-coins" title="No costs yet" line="DSA appears once the team, a location in a county and the DSA rates are in place." />
                 @else
                     @php $canActual = $can('activities.execute') && ($s->isDelivered() || $s === ActivityStatus::InProgress) && ! $s->isReadOnly(); @endphp
                     <div class="overflow-x-auto -mx-5">
@@ -385,6 +385,31 @@
                         @empty
                             <p class="text-sm text-slate-400">No decision yet.</p>
                         @endforelse
+
+                        {{-- The CEO's instructions to Finance (imprest) and Procurement (tickets), and how far each has got. --}}
+                        @php
+                            $sentKinds = $a->instructions->map(fn ($i) => $i->kind->value)->all();
+                            $canInstruct = $can('instructions.send') && in_array($s, [ActivityStatus::Approved, ActivityStatus::Postponed, ActivityStatus::InProgress], true) && count($sentKinds) < count(\App\Enums\InstructionKind::cases());
+                        @endphp
+                        @if ($a->instructions->isNotEmpty() || $canInstruct)
+                            <div class="flex items-center justify-between mt-5 mb-2">
+                                <h3 class="{{ Ui::MICRO }}">Finance and Procurement</h3>
+                                @if ($canInstruct)<button type="button" wire:click="$set('showInstruct', true)" class="{{ Ui::BTN_TINT }}"><i class="fa-solid fa-paper-plane text-[9px]"></i>Instruct</button>@endif
+                            </div>
+                            @forelse ($a->instructions as $ins)
+                                <div class="border border-slate-100 rounded-xl p-4 mb-2" wire:key="ins-{{ $ins->id }}">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <span class="text-sm font-semibold text-slate-700"><i class="fa-solid {{ $ins->kind->icon() }} text-xs text-slate-400 mr-1"></i>{{ $ins->kind->office() }}: {{ mb_strtolower($ins->kind->label()) }}</span>
+                                        <x-ui.badge :classes="$ins->status->badgeClasses()">{{ $ins->status->label() }}</x-ui.badge>
+                                    </div>
+                                    @if ($ins->note)<p class="text-sm text-slate-700 mt-2 whitespace-pre-line">{{ $ins->note }}</p>@endif
+                                    <p class="text-[11px] text-slate-500 mt-2">To {{ $ins->department?->name }} · sent {{ Ui::date($ins->sent_at) }}@if ($ins->acknowledged_at) · acknowledged {{ Ui::date($ins->acknowledged_at) }}@endif @if ($ins->completed_at) · done {{ Ui::date($ins->completed_at) }} by {{ $ins->completer?->name }}, {{ mb_strtolower($ins->kind->referenceLabel()) }} {{ $ins->completion_reference }}@endif</p>
+                                    @if ($ins->completion_note)<p class="text-[12px] text-slate-500 mt-1 whitespace-pre-line">{{ $ins->completion_note }}</p>@endif
+                                </div>
+                            @empty
+                                <p class="text-sm text-slate-400">Finance and Procurement have not been instructed.</p>
+                            @endforelse
+                        @endif
                     </div>
                     <div>
                         <div class="flex items-center justify-between mb-2">
@@ -486,6 +511,9 @@
         <x-ui.field :label="$decision === 'approved' ? 'Comment (optional)' : 'Directive / comment'" for="comment" error="comment" :required="$decision !== 'approved'">
             <textarea id="comment" wire:model="comment" rows="3" class="{{ Ui::CONTROL }}"></textarea>
         </x-ui.field>
+        @if ($decision === 'approved')
+            @can('instructions.send')<x-memo.instruct :sent="$a->instructions->map(fn ($i) => $i->kind->value)->all()" />@endcan
+        @endif
         <x-slot:footer>
             <button type="button" wire:click="$set('showDecide', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
             <button type="button" wire:click="decide" wire:loading.attr="disabled" wire:target="decide" class="{{ $decision === 'declined' ? Ui::BTN_DANGER : Ui::BTN_PRIMARY }}"><i class="fa-solid fa-gavel text-xs"></i><span wire:loading.remove wire:target="decide">{{ DecisionType::from($decision)->actionLabel() }}</span><span wire:loading wire:target="decide">Saving…</span></button>
@@ -961,6 +989,15 @@
         <x-slot:footer>
             <button type="button" wire:click="$set('showDirective', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
             <button type="button" wire:click="saveDirective" wire:loading.attr="disabled" wire:target="saveDirective" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-floppy-disk text-xs"></i>Save</button>
+        </x-slot:footer>
+    </x-ui.modal>
+
+    <x-ui.modal show="showInstruct" :open="$showInstruct" size="slim" icon="fa-paper-plane" title="Instruct Finance or Procurement" :subtitle="$a->reference.' · approved'">
+        <x-memo.instruct :sent="$a->instructions->map(fn ($i) => $i->kind->value)->all()" />
+        @error('instruct')<p class="text-xs text-red-600" role="alert">{{ $message }}</p>@enderror
+        <x-slot:footer>
+            <button type="button" wire:click="$set('showInstruct', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
+            <button type="button" wire:click="instructDepartments" wire:loading.attr="disabled" wire:target="instructDepartments" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-paper-plane text-xs"></i>Send</button>
         </x-slot:footer>
     </x-ui.modal>
 

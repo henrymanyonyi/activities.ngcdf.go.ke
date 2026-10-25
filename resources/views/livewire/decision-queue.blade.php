@@ -71,6 +71,9 @@
         <x-ui.field :label="$decision === 'approved' ? 'Comment (optional)' : 'Directive / comment'" for="q-comment" error="comment" :required="$decision !== 'approved'">
             <textarea id="q-comment" wire:model="comment" rows="3" class="{{ Ui::CONTROL }}"></textarea>
         </x-ui.field>
+        @if ($decision === 'approved')
+            @can('instructions.send')<x-memo.instruct />@endcan
+        @endif
         <x-slot:footer>
             <button type="button" wire:click="$set('showDecide', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
             <button type="button" wire:click="decide" wire:loading.attr="disabled" wire:target="decide" class="{{ $decision === 'declined' ? Ui::BTN_DANGER : Ui::BTN_PRIMARY }}"><i class="fa-solid fa-gavel text-xs"></i>{{ DecisionType::from($decision)->actionLabel() }}</button>

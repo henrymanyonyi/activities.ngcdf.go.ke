@@ -28,7 +28,7 @@ class AlertsBell extends Component
         $this->redirect(match (true) {
             $activityId && $user->can('activities.view') => route('activities.show', $activityId),
             $activityId && $user->can('memos.originate') => route('memos.show', $activityId),
-            $url && $user->canAny(['budgets.prepare', 'budgets.approve']) => $url,
+            $url && $user->canAny(['budgets.prepare', 'budgets.approve', 'instructions.action']) => $url,
             default => route('home'),
         }, navigate: true);
     }

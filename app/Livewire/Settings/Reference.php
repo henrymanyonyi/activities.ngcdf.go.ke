@@ -217,6 +217,7 @@ class Reference extends Component
         $this->guard();
         $rules = collect(AppSettings::DEFINITIONS)->mapWithKeys(fn ($def, $key) => ["settings.{$key}" => match (true) {
             in_array($key, AppSettings::SWITCHES, true) => ['required', 'in:0,1'],
+            in_array($key, AppSettings::DEPARTMENTS, true) => ['required', Rule::in([0, ...Department::query()->pluck('id')->all()])],
             is_int($def[1]) => ['required', 'integer', 'min:0', 'max:1000'],
             default => ['required', 'in:nights,days'],
         }])->all();

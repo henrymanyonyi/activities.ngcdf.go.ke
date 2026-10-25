@@ -39,6 +39,8 @@ class RolesAndPermissionsSeeder extends Seeder
         'staff.add' => 'See the staff list and add officers who are missing (correct only those they added)',
         'budgets.prepare' => 'Prepare department budgets and adjustments as drafts and submit them to the CEO',
         'budgets.approve' => 'Approve department budgets and adjustments, or return them for correction',
+        'instructions.send' => 'Instruct Finance (imprest) and Procurement (tickets) to act on an approved memo',
+        'instructions.action' => 'Acknowledge and complete the CEO\'s instructions addressed to their own department',
     ];
 
     /** @var array<string, list<string>> */
@@ -51,6 +53,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'activities.postpone', 'activities.cancel', 'activities.execute', 'activities.close',
             'reference.manage', 'links.manage', 'reports.export', 'users.manage', 'audit.view',
             'memos.originate', 'memos.review', 'staff.add', 'budgets.prepare', 'budgets.approve',
+            'instructions.send', 'instructions.action',
         ],
         User::ROLE_CHIEF_OF_STAFF => [
             'activities.view', 'activities.manage', 'activities.submit', 'decisions.record', 'directives.manage',
@@ -69,8 +72,10 @@ class RolesAndPermissionsSeeder extends Seeder
         ],
         // Their own department's memos only: prepare, submit, correct and follow them to the
         // CEO's decision. No activities.view, so no register, dashboard, calendar or report.
+        // instructions.action: the Heads of Finance and Procurement receive the CEO's instructions on
+        // approved memos (instruction sheet only, never the memo; App\Models\ActionInstruction::scopeFor).
         User::ROLE_HOD => [
-            'memos.originate', 'staff.add',
+            'memos.originate', 'staff.add', 'instructions.action',
         ],
     ];
 

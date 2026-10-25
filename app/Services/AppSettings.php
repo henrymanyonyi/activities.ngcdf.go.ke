@@ -25,10 +25,15 @@ class AppSettings
         'dsa_basis' => ['DSA basis', 'nights', 'Whether planned DSA is rate × nights or rate × days (OI-01): "nights" or "days".'],
         'acos_forwards_via_cos' => ['Assistant\'s memos go through the Chief of Staff', 0, 'Yes: a memo the Assistant Chief of Staff forwards goes to the Chief of Staff before the CEO. No: the Assistant may forward it straight to the CEO.'],
         'memo_review_reminder_working_days' => ['Memo pending reminder (working days)', 3, 'A memo still under review or awaiting the CEO\'s decision after this many working days is flagged as pending too long and raises a daily reminder.'],
+        'finance_department_id' => ['Finance department (imprest instructions)', 0, 'The department whose Head receives the CEO\'s instruction to process the imprest for an approved memo.'],
+        'procurement_department_id' => ['Procurement department (ticket instructions)', 0, 'The department whose Head receives the CEO\'s instruction to procure the travel tickets for an approved memo.'],
     ];
 
     /** Settings that are a yes (1) or no (0) choice. */
     public const SWITCHES = ['acos_forwards_via_cos'];
+
+    /** Settings that name a department; 0 means the default (App\Enums\InstructionKind::defaultDepartment()). */
+    public const DEPARTMENTS = ['finance_department_id', 'procurement_department_id'];
 
     private const CACHE_KEY = 'app_settings';
 
