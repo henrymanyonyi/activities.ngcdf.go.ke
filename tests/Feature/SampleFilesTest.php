@@ -44,13 +44,14 @@ it('matches the figures and steps in the testing guide walkthrough', function ()
     $activity = capturedActivity($cos, ['start_date' => today()->toDateString(), 'days' => 3], $team);
     $editor = app(ActivityEditor::class);
 
-    expect($activity->estimated_total)->toBe('42000.00')->and($activity->is_late_notice)->toBeTrue();
+    // 3 days pay 4 nights: the departure night and 3 activity nights.
+    expect($activity->estimated_total)->toBe('84000.00')->and($activity->is_late_notice)->toBeTrue();
 
     $cat = fn ($code) => CostCategory::where('code', $code)->value('id');
     $editor->savePlannedCost($activity, ['cost_category_id' => $cat('fuel'), 'estimated_amount' => '18,500'], $cos);
     $peter = $activity->participants()->whereHas('staff', fn ($q) => $q->where('staff_number', 'PF1002'))->first();
     $editor->savePlannedCost($activity, ['cost_category_id' => $cat('travel'), 'activity_participant_id' => $peter->id, 'estimated_amount' => '12000', 'travel_mode' => 'air'], $cos);
-    expect($activity->fresh()->estimated_total)->toBe('72500.00');
+    expect($activity->fresh()->estimated_total)->toBe('114500.00');
 
     $amina = $activity->costs()->where('is_computed', true)->whereHas('participant.staff', fn ($q) => $q->where('staff_number', 'PF1003'))->first();
     app(DsaCalculator::class)->override($amina, '10500', 'Returns a day early');

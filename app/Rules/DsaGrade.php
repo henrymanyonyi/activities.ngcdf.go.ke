@@ -8,7 +8,7 @@ use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Translation\PotentiallyTranslatedString;
 
-/** A job grade the DSA rate table knows: a scale from the HR register (1 to 10), or INTERN for casuals and attachees. */
+/** A job grade the DSA rate table knows: a scale from the HR register (1 to 10), INTERN for attachees, and scale 10 for every casual. */
 class DsaGrade implements ValidationRule
 {
     public function __construct(private EmploymentType $type = EmploymentType::Permanent) {}
@@ -21,9 +21,11 @@ class DsaGrade implements ValidationRule
         $grade = DsaRate::normaliseGrade((string) $value);
 
         if ($grade === null) {
-            $fail('The :attribute must be a scale from 1 to 10, or INTERN for casuals and attachees.');
-        } elseif ($grade === DsaRate::INTERN && $this->type->requiresStaffNumber()) {
-            $fail('INTERN is only for casuals and attachees.');
+            $fail('The :attribute must be a scale from 1 to 10, or INTERN for attachees.');
+        } elseif ($this->type->hasFixedDsaGrade() && $grade !== $this->type->defaultDsaGrade() && $grade !== DsaRate::INTERN) {
+            $fail('Casuals are on DSA scale 10.');
+        } elseif ($grade === DsaRate::INTERN && $this->type !== EmploymentType::Attachee && ! $this->type->hasFixedDsaGrade()) {
+            $fail('INTERN is only for attachees.');
         }
     }
 }

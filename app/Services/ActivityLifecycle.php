@@ -18,6 +18,7 @@ use App\Models\CeoDecision;
 use App\Models\ReportReceipt;
 use App\Models\User;
 use App\Notifications\ActivityAlert;
+use App\Support\DsaPeriod;
 use App\Support\Money;
 use App\Support\WorkingDays;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -62,7 +63,24 @@ class ActivityLifecycle
      * Chief of Staff or the Chief of Staff, or resubmits it after correcting
      * it. A resubmission goes back to the office that returned it.
      */
-    public function submitForReview(Activity $activity, User $user, ?ReviewOffice $office = null, ?string $note = null): void
+    public function submitForReview(Activity $activity, User $user, ?ReviewOffice $office = null, ?string $note = null, bool $acting = false): void
+    {
+        $this->assertHeadMaySubmit($activity, $user);
+
+        $resubmitted = $activity->status === ActivityStatus::ReturnedToHod;
+        $office = ($resubmitted ? $activity->review_office : null) ?? $office ?? ReviewOffice::AssistantChiefOfStaff;
+        $note = trim((string) $note);
+        $reason = match (true) {
+            $resubmitted => 'Corrected and resubmitted to the '.$office->label(),
+            $activity->status === ActivityStatus::WithHod => "Reviewed by the Head of Department and forwarded, on behalf of {$activity->submitted_by_name}, for review by the ".$office->label(),
+            default => 'Submitted for review by the '.$office->label(),
+        }.($note !== '' ? ": {$note}" : '');
+
+        $this->move($activity, ActivityStatus::UnderReview, $reason, $user, extra: ['review_office' => $office, 'status_reason' => null] + $this->signing($user, $acting));
+        $this->alerts->toOffice($office, ActivityAlert::submittedForReview($activity, $resubmitted));
+    }
+
+    private function assertHeadMaySubmit(Activity $activity, User $user): void
     {
         $this->authorize($user, 'memos.originate');
         $this->assertDepartmentMemo($activity, $user);
@@ -75,18 +93,17 @@ class ActivityLifecycle
         }
 
         $this->assertReadyForReview($activity);
+    }
 
-        $resubmitted = $activity->status === ActivityStatus::ReturnedToHod;
-        $office = ($resubmitted ? $activity->review_office : null) ?? $office ?? ReviewOffice::AssistantChiefOfStaff;
-        $note = trim((string) $note);
-        $reason = match (true) {
-            $resubmitted => 'Corrected and resubmitted to the '.$office->label(),
-            $activity->status === ActivityStatus::WithHod => "Reviewed by the Head of Department and forwarded, on behalf of {$activity->submitted_by_name}, for review by the ".$office->label(),
-            default => 'Submitted for review by the '.$office->label(),
-        }.($note !== '' ? ": {$note}" : '');
-
-        $this->move($activity, ActivityStatus::UnderReview, $reason, $user, extra: ['review_office' => $office, 'status_reason' => null]);
-        $this->alerts->toOffice($office, ActivityAlert::submittedForReview($activity, $resubmitted));
+    /**
+     * How the Head signs this submission: their substantive designation from the staff list, and whether
+     * they sign as acting ("Ag."). Kept on the memo only; the officer's own record is never changed.
+     *
+     * @return array{hod_designation: string, hod_acting: bool}
+     */
+    private function signing(User $user, bool $acting): array
+    {
+        return ['hod_designation' => $user->signingDesignation(), 'hod_acting' => $acting];
     }
 
     /**
@@ -98,7 +115,7 @@ class ActivityLifecycle
         if (! in_array($activity->status, [ActivityStatus::Draft, ActivityStatus::ReturnedToPreparer], true) || ! $activity->isDelegated()) {
             throw new ActivityWorkflowException('This memo has already been submitted to the Head of Department.');
         }
-        $this->assertReadyForReview($activity);
+        $this->assertReadyForReview($activity, byHead: false);
 
         $again = $activity->status === ActivityStatus::ReturnedToPreparer;
         $this->move($activity, ActivityStatus::WithHod, ($again ? 'Corrected and resubmitted to the Head of Department by ' : 'Prepared and submitted to the Head of Department by ').$preparerName, null, $preparerName, ['status_reason' => null]);
@@ -637,7 +654,7 @@ class ActivityLifecycle
             $wasPostponed = $activity->status === ActivityStatus::Postponed;
 
             $shift = (int) $activity->start_date->diffInDays($start, false);
-            $activity->forceFill(['start_date' => $start, 'end_date' => $end, 'days' => $days, 'nights' => max(0, $days - 1)])->save();
+            $activity->forceFill(['start_date' => $start, 'end_date' => $end, 'days' => $days, 'nights' => DsaPeriod::nightsFor($days)])->save();
             $this->moveParticipantDates($activity, $shift);
             $warnings = $this->dsa->recalculate($activity);
 
@@ -736,9 +753,10 @@ class ActivityLifecycle
      * stands as the memo, so no signed upload is needed (business owner's
      * decision, 21 October 2026).
      */
-    private function assertReadyForReview(Activity $activity): void
+    /** $byHead: false for an officer submitting to their Head, who adds the memo reference and issue date. */
+    private function assertReadyForReview(Activity $activity, bool $byHead = true): void
     {
-        $missing = $this->memoDocument->blockingIssues($activity);
+        $missing = $this->memoDocument->blockingIssues($activity, $byHead);
 
         if ($missing !== []) {
             throw new ActivityWorkflowException('Before submitting: '.implode(' ', $missing));

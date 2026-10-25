@@ -15,11 +15,11 @@ use Illuminate\Support\Facades\Storage;
 
 beforeEach(fn () => Storage::fake('local'));
 
-it('calculates end date and nights from the start and number of days (BR-01)', function () {
+it('calculates end date and payable nights from the start and number of days (BR-01)', function () {
     $activity = capturedActivity(chiefOfStaff(), ['start_date' => '2026-11-02', 'days' => 3]);
 
     expect($activity->end_date->toDateString())->toBe('2026-11-04')
-        ->and($activity->nights)->toBe(2)
+        ->and($activity->nights)->toBe(4)
         ->and($activity->status)->toBe(ActivityStatus::Draft)
         ->and($activity->reference)->toStartWith('FAPM-2026-27-');
 });

@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Services\ActivityEditor;
 use App\Services\BudgetPosition;
 use App\Services\DocumentStore;
+use App\Support\DsaPeriod;
 use App\Support\FinancialYear;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -79,6 +80,9 @@ class Form extends Component
 
     public string $source_received_on = '';
 
+    /** A Head of Department's memo: the date it is issued, printed on the memo as DATE. */
+    public string $issued_on = '';
+
     public string $start_date = '';
 
     /** Null by default, set in mount(): Livewire rehydrates a null value to the class default, so a default of 1 would silently undo a cleared field. */
@@ -114,6 +118,7 @@ class Form extends Component
             $this->days = $activity->days;
             $this->count_externals_in_per_head = (bool) $activity->count_externals_in_per_head;
             $this->source_received_on = $activity->source_received_on?->toDateString() ?? '';
+            $this->issued_on = $activity->issued_on?->toDateString() ?? '';
             $this->start_date = $activity->start_date->toDateString();
         } else {
             abort_unless($this->isOffice() || $user->department_id, 403, 'Your account is not linked to a department. Ask the System Administrator.');
@@ -121,6 +126,7 @@ class Form extends Component
             $this->source_received_on = today()->toDateString();
             if (! $this->isOffice()) {
                 $this->organising_department_id = (string) $user->department_id;
+                $this->issued_on = today()->toDateString();
             }
         }
     }
@@ -203,8 +209,11 @@ class Form extends Component
             'organising_department_id' => ['required', 'exists:departments,id'],
             // Only a line of a budget the CEO has approved can be charged.
             'budget_line_id' => ['nullable', Rule::exists('budget_lines', 'id')->whereNull('deleted_at')->whereIn('department_budget_id', DepartmentBudget::query()->approved()->pluck('id')->all())],
-            'source_reference' => ['nullable', 'string', 'max:100'],
+            // A Head of Department's memo needs its reference and the date it is issued (25 October 2026);
+            // a memo the Office of the CEO records keeps the date it was received.
+            'source_reference' => $this->isOffice() ? ['nullable', 'string', 'max:100'] : ['required', 'string', 'max:100', 'regex:/\S/'],
             'source_received_on' => ['nullable', 'date', 'before_or_equal:today'],
+            'issued_on' => $this->isOffice() ? ['nullable', 'date'] : ['required', 'date'],
             'start_date' => ['required', 'date'],
             'days' => ['required', 'integer', 'min:1', 'max:120'],
             'count_externals_in_per_head' => ['boolean'],
@@ -220,7 +229,7 @@ class Form extends Component
     /** @return array<string, string> */
     protected function validationAttributes(): array
     {
-        return ['purpose' => 'purpose', 'organising_department_id' => 'requesting department', 'activity_category_id' => 'category', 'memo' => 'source document', 'justification' => 'introduction and justification', 'risks' => 'key risks', 'memo_sections.*.heading' => 'section heading', 'memo_sections.*.body' => 'section text', 'requested_budget' => 'estimated budget', 'target_audience' => 'participants', 'responsible_hod_id' => 'Head of Department', 'responsible_hod_name' => 'Head of Department'];
+        return ['purpose' => 'purpose', 'source_reference' => 'memo reference', 'issued_on' => 'date issued', 'organising_department_id' => 'requesting department', 'activity_category_id' => 'category', 'memo' => 'source document', 'justification' => 'introduction and justification', 'risks' => 'key risks', 'memo_sections.*.heading' => 'section heading', 'memo_sections.*.body' => 'section text', 'requested_budget' => 'estimated budget', 'target_audience' => 'participants', 'responsible_hod_id' => 'Head of Department', 'responsible_hod_name' => 'Head of Department'];
     }
 
     public function save(ActivityEditor $editor, DocumentStore $documents): void
@@ -241,9 +250,12 @@ class Form extends Component
         }
 
         $fields = ['title', 'purpose', 'expected_outputs', 'justification', 'risks', 'memo_sections', 'target_audience', 'requested_budget', 'notes', 'activity_category_id', 'activity_type_id', 'organising_department_id',
-            'budget_line_id', 'source_reference', 'source_received_on', 'start_date', 'days', 'count_externals_in_per_head'];
-        if ($this->isOffice()) {
-            $fields = [...$fields, 'responsible_hod_id', 'responsible_hod_name'];
+            'budget_line_id', 'source_reference', 'start_date', 'days', 'count_externals_in_per_head'];
+        $fields = $this->isOffice()
+            ? [...$fields, 'source_received_on', 'responsible_hod_id', 'responsible_hod_name']
+            : [...$fields, 'issued_on'];
+        if (isset($data['source_reference'])) {
+            $data['source_reference'] = trim((string) $data['source_reference']);
         }
 
         $details = collect($data)->only($fields)->map(fn ($v) => $v === '' || $v === [] ? null : $v)->all();
@@ -295,7 +307,8 @@ class Form extends Component
 
         return view('livewire.activities.form', [
             'endDate' => $start?->copy()->addDays($days - 1),
-            'nights' => $days - 1,
+            'nights' => DsaPeriod::nightsFor($days),
+            'period' => $start ? DsaPeriod::of($start, $days) : null,
             'categories' => ActivityCategory::query()->active()->ordered()->get(['id', 'name']),
             'types' => $this->activity_category_id ? ActivityType::query()->active()->where('activity_category_id', $this->activity_category_id)->orderBy('name')->get(['id', 'name']) : collect(),
             'departments' => Department::query()->active()->ordered()->get(['id', 'name']),

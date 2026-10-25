@@ -171,15 +171,18 @@ class DelegatedMemos
         });
     }
 
-    /** The Head forwards the memo to the Chief of Staff, on the officer's behalf; the existing review follows. */
-    public function forwardToChiefOfStaff(Activity $memo, User $hod, ?string $note = null): void
+    /**
+     * The Head forwards the memo, on the officer's behalf, for review by the Assistant or the Chief of Staff;
+     * the existing review and the CEO's decision follow. $acting: the Head signs as acting.
+     */
+    public function forward(Activity $memo, User $hod, ReviewOffice $office = ReviewOffice::ChiefOfStaff, ?string $note = null, bool $acting = false): void
     {
-        DB::transaction(function () use ($memo, $hod, $note) {
+        DB::transaction(function () use ($memo, $hod, $office, $note, $acting) {
             $locked = $this->locked($memo);
             if ($locked->status !== ActivityStatus::WithHod) {
                 throw new ActivityWorkflowException('Only a memo with you for review can be forwarded.');
             }
-            $this->lifecycle->submitForReview($locked, $hod, ReviewOffice::ChiefOfStaff, $note);
+            $this->lifecycle->submitForReview($locked, $hod, $office, $note, $acting);
             $this->tellPreparer($memo, 'memo_request_forwarded', [
                 'subject' => "Memo {$memo->reference} forwarded",
                 'line' => "The Head of Department has forwarded memo {$memo->reference}, which you prepared, to the Office of the CEO.",

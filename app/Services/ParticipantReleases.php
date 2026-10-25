@@ -12,6 +12,7 @@ use App\Models\ActivityParticipant;
 use App\Models\CostCategory;
 use App\Models\ParticipantRelease;
 use App\Models\User;
+use App\Support\DsaPeriod;
 use App\Support\Money;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Carbon;
@@ -66,7 +67,7 @@ class ParticipantReleases
 
         $start = $participant->startOn($activity);
         $daysAfter = (int) $start->diffInDays($lastDay) + 1;
-        $units = $this->settings->get('dsa_basis') === 'days' ? $daysAfter : max(0, $daysAfter - 1);
+        $units = DsaPeriod::of($start, max(1, $daysAfter))->units((string) $this->settings->get('dsa_basis'));
 
         $lines = $participant->costs->map(function (ActivityCost $line) use ($revised, $units) {
             $before = Money::toCents($line->estimated_amount);

@@ -115,6 +115,8 @@ function departmentMemo(User $hod, array $overrides = []): Activity
         'start_date' => today()->addDays(30)->toDateString(),
         'days' => 1,
         'requested_budget' => '250000.00',
+        'source_reference' => 'NG-CDF BOARD/ICT/001/2026',
+        'issued_on' => today()->toDateString(),
     ], $overrides), $hod);
 
     $editor->addLocation($memo, ['venue' => 'NGCDF Board headquarters'], $hod);

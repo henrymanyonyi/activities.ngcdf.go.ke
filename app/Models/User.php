@@ -152,6 +152,18 @@ class User extends Authenticatable
         return MobileNumber::normalise($phone);
     }
 
+    /**
+     * How the officer signs: their substantive designation on the staff list and their department, e.g.
+     * "Manager, ICT". Falls back to the role when the account is not linked to an officer with a designation.
+     */
+    public function signingDesignation(): string
+    {
+        $designation = isset($this->staff_id) ? Staff::query()->with('designation')->find($this->staff_id)?->designation?->name : null;
+        $department = isset($this->department_id) ? Department::query()->find($this->department_id)?->name : null;
+
+        return ($designation ?: ($this->isHeadOfDepartment() ? 'Head of Department' : $this->roleLabel())).($department ? ", {$department}" : '');
+    }
+
     public function isHeadOfDepartment(): bool
     {
         return $this->hasRole(self::ROLE_HOD);

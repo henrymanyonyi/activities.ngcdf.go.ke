@@ -7,16 +7,19 @@ use App\Models\ActivityCost;
 use App\Models\ActivityParticipant;
 use App\Models\CostCategory;
 use App\Models\DsaRate;
+use App\Support\DsaPeriod;
 use App\Support\Money;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 /**
  * FRD CB-01 / BR-02: planned DSA per staff participant = the standard rate for
- * their job grade × nights (or days, per OI-01), at the rate in force on the
+ * their job grade × payable nights (or days, per OI-01), at the rate in force on the
  * start date. The destination does not change the rate (standard rates,
  * 22 October 2026); a location in a county only shows that officers travel.
- * Casuals and attachees without a job grade are costed at the INTERN rate.
+ * Payable nights follow App\Support\DsaPeriod: an overnight activity pays the
+ * departure night before the start too (days + 1); a same-day activity pays none.
+ * Casuals are on scale 10; attachees without a job grade are costed at the INTERN rate.
  *
  * Completed, closed, declined and cancelled activities are never recalculated,
  * so their recorded amounts stay as they were.
@@ -43,7 +46,7 @@ class DsaCalculator
     {
         $days = $participant ? $participant->plannedDays($activity) : $activity->days;
 
-        return $this->settings->get('dsa_basis') === 'days' ? $days : max(0, $days - 1);
+        return DsaPeriod::of($participant ? $participant->startOn($activity) : $activity->start_date, max(1, $days))->units((string) $this->settings->get('dsa_basis'));
     }
 
     /**

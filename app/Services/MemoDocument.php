@@ -10,6 +10,7 @@ use App\Models\ActivityStatusHistory;
 use App\Models\DsaRate;
 use App\Models\User;
 use App\Support\DocumentFont;
+use App\Support\DsaPeriod;
 use App\Support\Money;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Barryvdh\DomPDF\PDF as DomPdf;
@@ -17,20 +18,23 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 /**
- * The activity memo the system generates from what was captured, laid out
- * like the Board's internal memo template (files/MEMO Template.docx): the
- * memo itself, then Annex A (budget breakdown), Annex B (detailed budget)
- * and Annex C (participant itinerary), each on its own page.
+ * The activity memo the system generates from what was captured, as a PDF in
+ * the layout of the Board's internal memo template (files/MEMO Template .docx,
+ * matched 25 October 2026): US Letter, the logo and the Board's name, INTERNAL
+ * MEMO, TO / FROM / DATE / REF NO / SUBJECT, numbered sections with the risks
+ * as bullets, the request for approval and the four signature blocks (the
+ * Head's designation as signed, "Ag." when acting); then Annex: A, the Activity
+ * Budget Request table with the signatures repeated, and the Participants table.
  *
  * Every figure is the planned (requested) amount from ActivityCosting, so the
- * memo, Annex A and Annex B always agree with each other and with the
- * activity's stored total. Nothing is filled in that was not captured: what
+ * memo and Annex A always agree with each other and with the activity's
+ * stored total. Nothing is filled in that was not captured: what
  * is missing is listed by issues(), and the blocking ones stop a Head of
  * Department's submission.
  */
 class MemoDocument
 {
-    public function __construct(private ParticipantChecks $checks, private DsaCalculator $dsa) {}
+    public function __construct(private ParticipantChecks $checks, private DsaCalculator $dsa, private AppSettings $settings) {}
 
     /**
      * What is missing or inconsistent. Blocking items stop submission for
@@ -42,9 +46,19 @@ class MemoDocument
     {
         $activity->loadMissing(['locations.county', 'participants.staff', 'costs', 'budgetLine']);
         $issues = [];
-        $add = function (string $message, bool $blocking) use (&$issues): void {
-            $issues[] = ['message' => $message, 'blocking' => $blocking];
+        $add = function (string $message, bool $blocking, bool $forHead = false) use (&$issues): void {
+            $issues[] = ['message' => $message, 'blocking' => $blocking, 'for_head' => $forHead];
         };
+
+        // The Head of Department issues the memo: its reference and date are theirs to give (25 October 2026).
+        if ($activity->isDepartmentOriginated()) {
+            if (blank(trim((string) $activity->source_reference))) {
+                $add('Give the memo reference (REF NO).', true, forHead: true);
+            }
+            if ($activity->issued_on === null) {
+                $add('Give the date the memo is issued.', true, forHead: true);
+            }
+        }
 
         if (blank($activity->justification)) {
             $add('Write the introduction and justification (section 1.0 of the memo).', true);
@@ -103,10 +117,14 @@ class MemoDocument
         return $issues;
     }
 
-    /** @return list<string> */
-    public function blockingIssues(Activity $activity): array
+    /**
+     * $byHead false: what an officer preparing the memo must complete; the reference and issue date are the Head's.
+     *
+     * @return list<string>
+     */
+    public function blockingIssues(Activity $activity, bool $byHead = true): array
     {
-        return collect($this->issues($activity))->where('blocking', true)->pluck('message')->values()->all();
+        return collect($this->issues($activity))->where('blocking', true)->when(! $byHead, fn ($c) => $c->where('for_head', false))->pluck('message')->values()->all();
     }
 
     /**
@@ -125,14 +143,18 @@ class MemoDocument
         $lines = $activity->costs;
         $total = $lines->sum(fn (ActivityCost $c) => Money::toCents($c->estimated_amount));
         $submittedAt = $activity->statusHistory->first(fn (ActivityStatusHistory $h) => in_array($h->to_status, [ActivityStatus::UnderReview, ActivityStatus::AwaitingDecision], true))?->created_at;
+        $department = $activity->organisingDepartment?->name;
 
         return [
             'activity' => $activity,
             'isDraft' => $submittedAt === null && ! $activity->status->isApprovedOrLater(),
             'to' => 'Chief Executive Officer',
-            'from' => $activity->organisingDepartment?->name ?? 'Department not set',
-            'date' => $submittedAt ?? today(),
+            'from' => $department ? (str_contains(mb_strtolower($department), 'department') ? $department : $department.' Department') : 'Department not set',
+            // A Head's memo prints the date it is issued; an older memo, the date it was submitted, as before.
+            'date' => $activity->issued_on ?? $submittedAt ?? today(),
             'refNo' => $activity->source_reference ?: $activity->reference,
+            'period' => DsaPeriod::of($activity->start_date, max(1, (int) $activity->days)),
+            'nightsBasis' => $this->settings->get('dsa_basis') !== DsaPeriod::BASIS_DAYS,
             'sections' => $this->sections($activity),
             'request' => $this->requestParagraph($activity, $total),
             'signatures' => $this->signatures($activity, $submittedAt),
@@ -148,7 +170,8 @@ class MemoDocument
     public function pdf(Activity $activity, ?User $user = null): DomPdf
     {
         // Subsetting embeds only the characters used (App\Support\DocumentFont), keeping the file small.
-        $pdf = Pdf::loadView('memos.document', $this->data($activity) + ['user' => $user])->setPaper('a4')->setOption('isFontSubsettingEnabled', true);
+        // US Letter, as the Board's memo template (files/MEMO Template .docx).
+        $pdf = Pdf::loadView('memos.document', $this->data($activity) + ['user' => $user])->setPaper('letter')->setOption('isFontSubsettingEnabled', true);
 
         // "Page n of N" needs the page count, which only exists once the document is laid out.
         $pdf->render();
@@ -156,7 +179,7 @@ class MemoDocument
         $canvas = $dompdf->getCanvas();
         $metrics = $dompdf->getFontMetrics();
         $font = $metrics->getFont(DocumentFont::NAME) ?? $metrics->getFont('DejaVu Sans');
-        $canvas->page_text($canvas->get_width() - 118, $canvas->get_height() - 34, 'Page {PAGE_NUM} of {PAGE_COUNT}', $font, 7, [0.39, 0.45, 0.55]);
+        $canvas->page_text($canvas->get_width() - 100, $canvas->get_height() - 40, 'Page {PAGE_NUM} of {PAGE_COUNT}', $font, 8, [0, 0, 0]);
 
         return $pdf;
     }
@@ -179,7 +202,9 @@ class MemoDocument
         ];
 
         if (filled($activity->risks)) {
-            $sections[] = ['heading' => 'Key Risks to be Mitigated', 'paragraphs' => [(string) $activity->risks]];
+            // Each line of the risks is a bullet, as in the template.
+            $risks = array_values(array_filter(array_map(fn (string $l) => trim(ltrim(trim($l), "-•*\t ")), preg_split('/\R/', (string) $activity->risks))));
+            $sections[] = ['heading' => 'Key Risks to be mitigated', 'paragraphs' => [], 'bullets' => $risks];
         }
 
         foreach ((array) $activity->memo_sections as $extra) {
@@ -188,7 +213,7 @@ class MemoDocument
             }
         }
 
-        return collect($sections)->values()->map(fn (array $s, int $i) => $s + ['number' => ($i + 1).'.0'])->all();
+        return collect($sections)->values()->map(fn (array $s, int $i) => $s + ['number' => ($i + 1).'.0', 'bullets' => []])->all();
     }
 
     private function requestParagraph(Activity $activity, int $total): string
@@ -199,10 +224,10 @@ class MemoDocument
         $vote = $activity->budgetLine ? 'charged under '.$activity->budgetLine->label() : 'charged to the department\'s vote';
 
         return sprintf(
-            'The estimated expenditure amounting to KES %s, for %s over %d %s (%s to %s) at %s, shall be %s. The budget breakdown, the detailed budget and the participant itinerary are in Annexes A, B and C.',
-            Money::format($total), $team, $activity->days, $activity->days === 1 ? 'day' : 'days',
-            $activity->start_date->format('d M Y'), $activity->end_date->format('d M Y'),
-            $activity->locationSummary() ?: 'the venue stated', $vote,
+            'The estimated expenditure amounting to <strong>Kshs.%s</strong>, for %s over %d %s (%s to %s) at %s, shall be %s. Details of the proposed participants and the corresponding budget breakdown are provided in Annex: A attached hereto.',
+            e(number_format(intdiv($total, 100)).($total % 100 ? '.'.str_pad((string) ($total % 100), 2, '0', STR_PAD_LEFT) : '')), e($team), $activity->days, $activity->days === 1 ? 'day' : 'days',
+            e($activity->start_date->format('jS F Y')), e($activity->end_date->format('jS F Y')),
+            e($activity->locationSummary() ?: 'the venue stated'), e($vote),
         );
     }
 
@@ -215,7 +240,8 @@ class MemoDocument
     private function signatures(Activity $activity, ?Carbon $submittedAt): array
     {
         // Forwards since the memo last left the department.
-        $lastSubmission = $activity->statusHistory->filter(fn (ActivityStatusHistory $h) => $h->to_status === ActivityStatus::UnderReview && in_array($h->from_status, [ActivityStatus::Draft, ActivityStatus::ReturnedToHod], true))->last();
+        $fromDepartment = [ActivityStatus::Draft, ActivityStatus::ReturnedToHod, ActivityStatus::WithHod];
+        $lastSubmission = $activity->statusHistory->filter(fn (ActivityStatusHistory $h) => $h->to_status === ActivityStatus::UnderReview && in_array($h->from_status, $fromDepartment, true))->last();
         $forwards = $activity->statusHistory
             ->filter(fn (ActivityStatusHistory $h) => ! $lastSubmission || $h->id > $lastSubmission->id)
             ->filter(fn (ActivityStatusHistory $h) => $h->to_status === ActivityStatus::AwaitingDecision || ($h->to_status === ActivityStatus::UnderReview && $h->from_status === ActivityStatus::UnderReview));
@@ -226,13 +252,18 @@ class MemoDocument
         $preparer = $activity->creator;
         $department = $activity->organisingDepartment?->name;
 
+        // The Head signs with their designation as recorded when they submitted ("Ag." if acting);
+        // before that, with their designation on the staff list.
+        $hodDesignation = $activity->signedDesignation()
+            ?? ($preparer?->isHeadOfDepartment() ? $preparer->signingDesignation() : null);
+
         return [
             [
                 'label' => 'Prepared by',
                 'name' => $preparer?->name ?? $activity->submitted_by_name,
                 'designation' => $activity->isPreparedOnBehalf()
                     ? ($preparer?->roleLabel() ?? 'Office of the CEO').', on behalf of '.$activity->responsibleHodLabel().', Head of Department'.($department ? ", {$department}" : '')
-                    : ($preparer?->isHeadOfDepartment() ? 'Head of Department'.($department ? ", {$department}" : '') : ($preparer?->roleLabel() ?? '')),
+                    : ($hodDesignation ?? ($preparer?->roleLabel() ?? '')),
                 'date' => $submittedAt,
             ],
             ['label' => 'Reviewed by', 'name' => $acos?->user?->name, 'designation' => User::ROLES[User::ROLE_ASSISTANT_CHIEF_OF_STAFF], 'date' => $acos?->created_at],
@@ -328,7 +359,8 @@ class MemoDocument
                         $person->is_external => 'External: '.($person->external_category?->label() ?? 'Other'),
                         default => $person->designation?->name ?? 'Officer',
                     },
-                    'scale' => $person && ! $person->is_external ? (string) (DsaRate::normaliseGrade($person->job_grade) ?? $person->job_grade ?? '') : '',
+                    // The scale DSA is costed at: the officer's own, or their terms' (scale 10 for a casual, INTERN for an attachee).
+                    'scale' => $person && ! $person->is_external ? (string) (DsaRate::normaliseGrade(DsaRate::gradeFor($person->job_grade, $person->staff?->employment_type)) ?? $person->job_grade ?? '') : '',
                     'per_person' => $person !== null,
                     'days' => $line->quantity !== null ? rtrim(rtrim((string) $line->quantity, '0'), '.') : null,
                     'rate' => $line->unit_rate !== null ? Money::toCents($line->unit_rate) : ($person ? $amount : null),

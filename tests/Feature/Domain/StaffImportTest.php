@@ -31,7 +31,7 @@ it('imports permanent staff, casuals and attachees from the unified Excel templa
     expect(Staff::query()->where('name', 'Peter Kamau Njoroge')->sole())
         ->staff_number->toBeNull()
         ->employment_type->toBe(EmploymentType::Casual)
-        ->job_grade->toBe('INTERN')
+        ->job_grade->toBe('10')
         ->joined_on->toDateString()->toBe('2025-12-01')
         ->contract_ends_on->toDateString()->toBe('2026-12-14');
     expect(Staff::query()->where('name', 'Mary Wanjiru')->sole())
@@ -79,7 +79,7 @@ it('numbers rows by their line in the file when the file has blank rows', functi
 
 it('updates a casual without a PF number by exact name and keeps their type when the column is blank', function () {
     $casual = Staff::factory()->create(['staff_number' => null, 'name' => 'Peter Kamau Njoroge', 'employment_type' => EmploymentType::Casual, 'email' => 'peter@example.com']);
-    $path = hrCsv("PF Number,Name,Employment Type,Job Grade,Email,Contract End Date\n,peter kamau njoroge,,9,,2027-01-31\n");
+    $path = hrCsv("PF Number,Name,Employment Type,Job Grade,Email,Contract End Date\n,peter kamau njoroge,,,,2027-01-31\n");
 
     $result = app(StaffImporter::class)->import($path);
 
@@ -87,7 +87,7 @@ it('updates a casual without a PF number by exact name and keeps their type when
         ->and(Staff::query()->count())->toBe(1);
     expect($casual->fresh())
         ->employment_type->toBe(EmploymentType::Casual)
-        ->job_grade->toBe('9')
+        ->job_grade->toBe('10')
         ->email->toBe('peter@example.com')
         ->contract_ends_on->toDateString()->toBe('2027-01-31');
 });
@@ -178,17 +178,18 @@ it('reads job grades as register scales and rejects ones the rate table does not
     $result = app(StaffImporter::class)->import($path);
 
     expect($result['errors'])->toBe([
-        'Row 4: Job Grade "Scale 11" is not a scale from 1 to 10, or INTERN for casuals and attachees.',
-        'Row 5: Job Grade INTERN is only for casuals and attachees.',
+        'Row 4: Job Grade "Scale 11" is not a scale from 1 to 10, or INTERN for attachees.',
+        'Row 5: Job Grade INTERN is only for attachees.',
+        'Row 7: Job Grade "9": casuals are on DSA scale 10.',
     ])->and(Staff::query()->count())->toBe(0);
 
-    $valid = hrCsv("PF Number,Name,Employment Type,Job Grade\nPF1,Grade Typed As Number,Permanent,6\nPF2,Grade As Job Group,Permanent,Job Group 10\n,Casual Intern,Casual,Intern\n,Casual Graded,Casual,9\nPF5,Not Yet Graded,Permanent,\nPF6,Old Label,Permanent,NGCDF 7\nPF7,Scale Label,Permanent,Scale 2\n");
+    $valid = hrCsv("PF Number,Name,Employment Type,Job Grade\nPF1,Grade Typed As Number,Permanent,6\nPF2,Grade As Job Group,Permanent,Job Group 10\n,Casual Intern,Casual,Intern\n,Casual Graded,Casual,10\nPF5,Not Yet Graded,Permanent,\nPF6,Old Label,Permanent,NGCDF 7\nPF7,Scale Label,Permanent,Scale 2\n");
     expect(app(StaffImporter::class)->import($valid)['errors'])->toBe([])
         ->and(Staff::query()->orderBy('id')->pluck('job_grade', 'name')->all())->toBe([
             'Grade Typed As Number' => '6',
             'Grade As Job Group' => '10',
-            'Casual Intern' => 'INTERN',
-            'Casual Graded' => '9',
+            'Casual Intern' => '10',
+            'Casual Graded' => '10',
             'Not Yet Graded' => null,
             'Old Label' => '7',
             'Scale Label' => '2',
@@ -202,15 +203,16 @@ it('reads the scale from a "Job Scale" column, as in the HR register', function 
         ->and(Staff::query()->sole()->job_grade)->toBe('4');
 });
 
-it('keeps a reclassified casual\'s job grade when the list leaves it blank', function () {
-    $casual = Staff::factory()->create(['staff_number' => null, 'name' => 'Reclassified Casual', 'employment_type' => EmploymentType::Casual, 'job_grade' => '8']);
+it('puts every casual on DSA scale 10, including one recorded earlier on INTERN, and keeps a reclassified attachee\'s grade', function () {
+    $casual = Staff::factory()->create(['staff_number' => null, 'name' => 'Earlier Casual', 'employment_type' => EmploymentType::Casual, 'job_grade' => 'INTERN']);
+    $attachee = Staff::factory()->create(['staff_number' => null, 'name' => 'Reclassified Attachee', 'employment_type' => EmploymentType::Attachee, 'job_grade' => '8']);
 
-    app(StaffImporter::class)->import(hrCsv("PF Number,Name,Employment Type,Job Grade\n,Reclassified Casual,Casual,\n"));
+    app(StaffImporter::class)->import(hrCsv("PF Number,Name,Employment Type,Job Grade\n,Earlier Casual,Casual,\n,Reclassified Attachee,Attachee,\n"));
 
-    expect($casual->fresh()->job_grade)->toBe('8');
+    expect($casual->fresh()->job_grade)->toBe('10')->and($attachee->fresh()->job_grade)->toBe('8');
 });
 
-it('puts a casual added on screen without a job grade on INTERN, and refuses INTERN for permanent staff', function () {
+it('puts a casual added on screen on scale 10 and an attachee on INTERN, and refuses INTERN for permanent staff and another scale for a casual', function () {
     $ict = Department::query()->where('name', 'ICT')->value('id');
 
     Livewire::actingAs(chiefOfStaff())->test(StaffList::class)
@@ -218,11 +220,18 @@ it('puts a casual added on screen without a job grade on INTERN, and refuses INT
         ->set(['staff_number' => 'PF900', 'name' => 'Permanent Officer', 'form_department_id' => (string) $ict, 'employment_type' => 'permanent', 'job_grade' => 'INTERN'])
         ->call('save')
         ->assertHasErrors(['job_grade'])
-        ->set(['staff_number' => '', 'name' => 'Casual Officer', 'employment_type' => 'casual', 'job_grade' => ''])
+        ->set(['staff_number' => '', 'name' => 'Casual Officer', 'employment_type' => 'casual', 'job_grade' => '7'])
+        ->call('save')
+        ->assertHasErrors(['job_grade'])
+        ->set(['job_grade' => ''])
+        ->call('save')
+        ->assertHasNoErrors()
+        ->call('edit')
+        ->set(['staff_number' => '', 'name' => 'Attachee Officer', 'form_department_id' => (string) $ict, 'employment_type' => 'attachee', 'job_grade' => ''])
         ->call('save')
         ->assertHasNoErrors();
 
-    expect(Staff::query()->sole())->name->toBe('Casual Officer')->job_grade->toBe('INTERN');
+    expect(Staff::query()->orderBy('id')->pluck('job_grade', 'name')->all())->toBe(['Casual Officer' => '10', 'Attachee Officer' => 'INTERN']);
 });
 
 it('updates only emails and mobile numbers from a contacts file, keeping a leaver inactive', function () {

@@ -47,6 +47,9 @@ class Show extends Component
     // A memo an officer prepared, with the Head for review: forward, return or decline
     public bool $showForward = false;
 
+    /** The reviewer the Head forwards an officer's memo to: the Assistant or the Chief of Staff. */
+    public string $forwardTo = 'chief_of_staff';
+
     public bool $showReturnToOfficer = false;
 
     public bool $showDecline = false;
@@ -56,6 +59,9 @@ class Show extends Component
     public string $office = 'assistant_chief_of_staff';
 
     public string $note = '';
+
+    /** The Head signs as acting ("Ag." before their designation) on this submission. */
+    public bool $acting = false;
 
     public $document = null;
 
@@ -94,6 +100,7 @@ class Show extends Component
     {
         $this->office = ($this->activity->review_office ?? ReviewOffice::AssistantChiefOfStaff)->value;
         $this->note = '';
+        $this->acting = (bool) $this->activity->hod_acting;
         $this->resetErrorBag();
         $this->showSubmit = true;
     }
@@ -103,11 +110,12 @@ class Show extends Component
         $this->validate([
             'office' => ['required', 'in:'.implode(',', array_column(ReviewOffice::cases(), 'value'))],
             'note' => ['nullable', 'string', 'max:2000'],
+            'acting' => ['boolean'],
         ], [], ['note' => 'note to the reviewer']);
 
         $resubmitting = $this->activity->status === ActivityStatus::ReturnedToHod;
 
-        if ($this->attempt(fn () => $lifecycle->submitForReview($this->activity, Auth::user(), ReviewOffice::from($this->office), $this->note))) {
+        if ($this->attempt(fn () => $lifecycle->submitForReview($this->activity, Auth::user(), ReviewOffice::from($this->office), $this->note, $this->acting))) {
             $this->showSubmit = false;
             $this->activity->refresh();
             $this->toast($resubmitting ? 'Resubmitted. The reviewer has been told.' : 'Submitted for review. The '.$this->activity->review_office?->label().' has been told.');
@@ -118,14 +126,16 @@ class Show extends Component
     {
         abort_unless(in_array($action, ['showForward', 'showReturnToOfficer', 'showDecline'], true), 404);
         $this->resetErrorBag();
-        $this->reset(['hodReason', 'note']);
+        $this->reset(['hodReason', 'note', 'acting', 'forwardTo']);
         $this->{$action} = true;
     }
 
-    public function forwardToChiefOfStaff(DelegatedMemos $memos): void
+    public function forwardForReview(DelegatedMemos $memos): void
     {
         $this->validate(['note' => ['nullable', 'string', 'max:2000']], [], ['note' => 'note to the Chief of Staff']);
-        if ($this->attempt(fn () => $memos->forwardToChiefOfStaff($this->activity, Auth::user(), $this->note), 'Forwarded to the Chief of Staff for review. The officer has been told.')) {
+        $this->validate(['forwardTo' => ['required', 'in:'.implode(',', array_column(ReviewOffice::cases(), 'value'))], 'acting' => ['boolean']]);
+        $office = ReviewOffice::from($this->forwardTo);
+        if ($this->attempt(fn () => $memos->forward($this->activity, Auth::user(), $office, $this->note, $this->acting), 'Forwarded to the '.$office->label().' for review. The officer has been told.')) {
             $this->showForward = false;
             $this->activity->refresh();
         }
@@ -272,6 +282,7 @@ class Show extends Component
             'issues' => $activity->status->isWithDepartment() ? $memoDocument->issues($activity) : [],
             'budget' => $activity->organising_department_id ? $budget->forActivity($activity) : null,
             'offices' => ReviewOffice::cases(),
+            'designation' => Auth::user()->signingDesignation(),
             'regions' => $this->showLocation ? Region::query()->orderBy('name')->get(['id', 'name']) : collect(),
             'counties' => $this->showLocation ? County::query()->orderBy('name')->get(['id', 'name']) : collect(),
             'constituencies' => $this->showLocation && $this->locCounty ? Constituency::query()->where('county_id', $this->locCounty)->orderBy('name')->get(['id', 'name']) : collect(),

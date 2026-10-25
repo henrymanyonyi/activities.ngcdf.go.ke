@@ -330,7 +330,7 @@ class MemoRequest extends Component
             'memo' => $memo,
             'editable' => $editable,
             'returned' => $memo?->status === ActivityStatus::ReturnedToPreparer,
-            'issues' => $memo && $editable ? $document->issues($memo) : [],
+            'issues' => $memo && $editable ? array_values(array_filter($document->issues($memo), fn (array $i) => ! $i['for_head'])) : [],
             'categories' => ActivityCategory::query()->active()->ordered()->get(['id', 'name']),
             'types' => $this->activity_category_id ? ActivityType::query()->active()->where('activity_category_id', $this->activity_category_id)->orderBy('name')->get(['id', 'name']) : collect(),
             'counties' => County::query()->orderBy('name')->get(['id', 'name']),

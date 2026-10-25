@@ -17,11 +17,13 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * After approving a memo, the CEO instructs Finance to process the imprest and
- * Procurement to buy the travel tickets (one instruction of each kind per
- * activity). The Head of that department sees an instruction sheet, never the
- * memo: the reference, dates, places, team, the CEO's note and only the cost
- * lines they act on. They acknowledge it, then record it done with a reference,
+ * After approving a memo, the CEO instructs the departments that must act on
+ * it: Finance to process the imprest, Procurement to buy the travel tickets
+ * (one of each per activity), and any other department to do what the CEO
+ * writes (one per department; 26 October 2026). The Head of that department
+ * sees an instruction sheet, never the memo: the reference, dates, places,
+ * team, the CEO's instruction and only the cost lines they act on (all for
+ * Finance, travel for Procurement, none for any other department). They acknowledge it, then record it done with a reference,
  * which alerts the Office of the CEO and the memo's own department. In-app
  * only; nothing leaves the system (BR-11).
  */
@@ -32,9 +34,13 @@ class ActionInstructions
 
     public function __construct(private AppSettings $settings, private Alerts $alerts) {}
 
-    /** The department that acts on this kind: the one chosen in Settings, or the default by name. */
+    /** The department that acts on this kind: the one chosen in Settings, or the default by name; null for "other" (the CEO chooses). */
     public function department(InstructionKind $kind): ?Department
     {
+        if ($kind->settingKey() === null) {
+            return null;
+        }
+
         $id = $this->settings->int($kind->settingKey());
 
         return $id > 0
@@ -54,21 +60,23 @@ class ActionInstructions
     }
 
     /**
-     * @param  list<InstructionKind>  $kinds
+     * @param  list<InstructionKind>  $kinds  Finance and/or Procurement (the "other" kind goes in $others)
+     * @param  list<array{department_id: int|string, instruction: string}>  $others  any other department, with what it must do
      * @return list<string> warnings, such as a department without an active Head
      */
-    public function send(Activity $activity, array $kinds, ?string $note, User $user): array
+    public function send(Activity $activity, array $kinds, ?string $note, User $user, array $others = []): array
     {
         if (! $user->can('instructions.send')) {
-            throw new AuthorizationException('Only the CEO instructs Finance and Procurement.');
+            throw new AuthorizationException('Only the CEO instructs departments to act on an approved memo.');
         }
 
-        $kinds = array_values(array_unique($kinds, SORT_REGULAR));
-        if ($kinds === []) {
+        $kinds = array_values(array_filter(array_unique($kinds, SORT_REGULAR), fn (InstructionKind $k) => $k !== InstructionKind::Other));
+        $others = $this->otherInstructions($others);
+        if ($kinds === [] && $others === []) {
             return [];
         }
 
-        return DB::transaction(function () use ($activity, $kinds, $note, $user) {
+        return DB::transaction(function () use ($activity, $kinds, $note, $user, $others) {
             // Locked and re-read, so a double click cannot send the same instruction twice.
             $activity = Activity::query()->whereKey($activity->id)->lockForUpdate()->firstOrFail();
             if (! in_array($activity->status, self::SENDABLE, true)) {
@@ -76,6 +84,7 @@ class ActionInstructions
             }
 
             $warnings = [];
+            $sends = [];
             foreach ($kinds as $kind) {
                 if (ActionInstruction::query()->where('activity_id', $activity->id)->where('kind', $kind->value)->exists()) {
                     throw new ActivityWorkflowException("{$kind->office()} has already been instructed to {$this->lower($kind->label())} for this activity.");
@@ -83,26 +92,62 @@ class ActionInstructions
 
                 $department = $this->department($kind)
                     ?? throw new ActivityWorkflowException("No {$kind->office()} department is set. Choose it in Reference data › Thresholds.");
+                $sends[] = [$kind, $department, filled($note) ? trim($note) : null, 'the instruction to '.$this->lower($kind->label())];
+            }
+            foreach ($others as [$department, $text]) {
+                if (ActionInstruction::query()->where('activity_id', $activity->id)->where('kind', InstructionKind::Other->value)->where('department_id', $department->id)->exists()) {
+                    throw new ActivityWorkflowException("{$department->name} has already been instructed on this activity.");
+                }
+                $sends[] = [InstructionKind::Other, $department, $text, 'the instruction'];
+            }
 
+            foreach ($sends as [$kind, $department, $text, $what]) {
                 $instruction = ActionInstruction::create([
                     'activity_id' => $activity->id,
                     'kind' => $kind,
                     'department_id' => $department->id,
-                    'note' => filled($note) ? trim($note) : null,
+                    'note' => $text,
                     'status' => InstructionStatus::Sent,
                     'sent_by' => $user->id,
                     'sent_at' => now(),
                 ]);
 
-                $this->alerts->toHeadOf($department->id, ActivityAlert::instructionSent($instruction->setRelation('activity', $activity)));
+                $this->alerts->toHeadOf($department->id, ActivityAlert::instructionSent($instruction->setRelation('activity', $activity)->setRelation('department', $department)));
 
                 if (! User::query()->role(User::ROLE_HOD)->where('is_active', true)->where('department_id', $department->id)->exists()) {
-                    $warnings[] = "{$department->name} has no active Head of Department yet; the instruction to {$this->lower($kind->label())} waits until one is set up.";
+                    $warnings[] = "{$department->name} has no active Head of Department yet; {$what} waits until one is set up.";
                 }
             }
 
             return $warnings;
         });
+    }
+
+    /**
+     * Each other department once, active, with what it must do in writing.
+     *
+     * @param  list<array{department_id: int|string, instruction: string}>  $others
+     * @return list<array{0: Department, 1: string}>
+     */
+    private function otherInstructions(array $others): array
+    {
+        $result = [];
+        foreach ($others as $row) {
+            $text = trim((string) ($row['instruction'] ?? ''));
+            $department = filled($row['department_id'] ?? null) ? Department::query()->active()->find((int) $row['department_id']) : null;
+            if (! $department) {
+                throw new ActivityWorkflowException('Choose the department to instruct.');
+            }
+            if ($text === '') {
+                throw new ActivityWorkflowException("Write what {$department->name} must do.");
+            }
+            if (isset($result[$department->id])) {
+                throw new ActivityWorkflowException("{$department->name} is listed twice. Put everything it must do in one instruction.");
+            }
+            $result[$department->id] = [$department, mb_substr($text, 0, 2000)];
+        }
+
+        return array_values($result);
     }
 
     public function acknowledge(ActionInstruction $instruction, User $user): void

@@ -278,7 +278,7 @@ class Show extends Component
         $this->reset([
             'showDecide', 'showRecordDecision', 'showPostpone', 'showExtend', 'showCancel', 'showComplete', 'showReport', 'showReturnReport', 'showClose', 'showDiscard',
             'showForward', 'showReturnHod', 'showNote', 'reviewText', 'recommendation',
-            'showAddStaff', 'showAddExternal', 'showRemoveParticipant', 'staffDepartment', 'staffOffice', 'showSelectedOnly', 'sameConflictReason', 'showDays', 'showExplain', 'overlapReason', 'staffSort', 'daysStart', 'daysCount', 'showCost', 'showOverride', 'showLocation', 'showDirective', 'showImprest', 'showDocument', 'showInstruct', 'instruct', 'instructionNote',
+            'showAddStaff', 'showAddExternal', 'showRemoveParticipant', 'staffDepartment', 'staffOffice', 'showSelectedOnly', 'sameConflictReason', 'showDays', 'showExplain', 'overlapReason', 'staffSort', 'daysStart', 'daysCount', 'showCost', 'showOverride', 'showLocation', 'showDirective', 'showImprest', 'showDocument', 'showInstruct', 'instruct', 'instructionNote', 'otherInstructions',
             'comment', 'memoReference', 'memoDate', 'scan', 'reason', 'newStart', 'newDays', 'extraDays', 'actualDate', 'reportReceivedOn', 'outputsAchieved',
             'findings', 'recommendations', 'reportFile', 'staffSearch', 'selectedStaff', 'conflictReasons', 'externalName', 'externalOrganisation',
             'participantId', 'costId', 'costCategoryId', 'costParticipantId', 'costDescription', 'costAmount', 'costTravelMode', 'overrideAmount',
@@ -304,7 +304,7 @@ class Show extends Component
 
     public function openDecide(string $decision): void
     {
-        $this->reset(['instruct', 'instructionNote']);
+        $this->reset(['instruct', 'instructionNote', 'otherInstructions']);
         $this->decision = DecisionType::from($decision)->value;
         $this->showDecide = true;
     }
@@ -312,6 +312,9 @@ class Show extends Component
     public function decide(ActivityLifecycle $lifecycle): void
     {
         $this->validate(['comment' => [DecisionType::from($this->decision)->requiresComment() ? 'required' : 'nullable', 'string', 'max:2000']]);
+        if (DecisionType::from($this->decision) === DecisionType::Approved) {
+            $this->validateInstructions();
+        }
 
         if ($this->attempt(fn () => $lifecycle->decide($this->activity, DecisionType::from($this->decision), $this->comment, $this->user()))) {
             // Finance and Procurement only after an approval; a failure here leaves the decision in place.
@@ -322,10 +325,14 @@ class Show extends Component
         }
     }
 
-    /** The CEO instructs Finance or Procurement on an already approved activity. */
+    /** The CEO instructs the departments that act on an already approved activity. */
     public function instructDepartments(): void
     {
-        $this->validate(['instruct' => ['required', 'array', 'min:1']], ['instruct.required' => 'Tick Finance, Procurement or both.']);
+        if (! $this->hasInstructions()) {
+            $this->addError('instruct', 'Tick Finance or Procurement, or add another department.');
+
+            return;
+        }
 
         if ($this->sendInstructions($this->activity)) {
             $this->done();

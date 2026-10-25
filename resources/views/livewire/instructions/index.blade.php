@@ -1,5 +1,5 @@
 @use('App\Support\Ui')
-<x-ui.page icon="fa-clipboard-check" title="Instructions" subtitle="The CEO's instructions to your department on approved activities: process the imprest, or procure the travel tickets. Open one to see what is needed.">
+<x-ui.page icon="fa-clipboard-check" title="Instructions" subtitle="The CEO's instructions to your department on approved activities: process the imprest, procure the travel tickets, or whatever the CEO asks your department to do. Open one to see what is needed.">
     <x-slot:pills><span class="inline-flex items-center px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[11px] font-semibold font-numeric">{{ $openCount }} open</span></x-slot:pills>
     <x-slot:filters>
         <div class="flex gap-2">
@@ -21,7 +21,7 @@
                     <tbody class="divide-y divide-slate-100">
                         @foreach ($instructions as $i)
                             <tr class="hover:bg-slate-50/60" wire:key="ins-{{ $i->id }}">
-                                <td class="{{ Ui::TD }}"><a href="{{ route('instructions.show', $i) }}" wire:navigate class="font-semibold text-emerald-700 hover:underline"><i class="fa-solid {{ $i->kind->icon() }} text-xs mr-1.5"></i>{{ $i->kind->label() }}</a></td>
+                                <td class="{{ Ui::TD }}"><a href="{{ route('instructions.show', $i) }}" wire:navigate class="font-semibold text-emerald-700 hover:underline"><i class="fa-solid {{ $i->kind->icon() }} text-xs mr-1.5"></i>{{ $i->kind->needsWrittenInstruction() ? Str::limit((string) $i->note, 60) : $i->kind->label() }}</a></td>
                                 <td class="{{ Ui::TD }}"><span class="font-numeric text-slate-400">{{ $i->activity->reference }}</span> <span class="text-slate-700">{{ $i->activity->title }}</span></td>
                                 <td class="{{ Ui::TD }}">{{ $i->activity->organisingDepartment?->name ?? 'Office of the CEO' }}</td>
                                 <td class="{{ Ui::TD }} font-numeric whitespace-nowrap">{{ Ui::dateRange($i->activity->start_date, $i->activity->end_date) }}</td>

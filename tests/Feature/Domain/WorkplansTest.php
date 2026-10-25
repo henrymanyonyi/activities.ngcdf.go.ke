@@ -192,7 +192,8 @@ it('imports the practice guide\'s ICT workplan and staff list as they are', func
     expect($this->budgeting->importLines($budget, $file, $this->hod))->toBe(['added' => 4, 'updated' => 0, 'errors' => []])
         ->and($this->budgeting->totals($budget->fresh())['original'])->toBe(6_570_000_00)
         ->and(app(StaffImporter::class)->import(base_path('docs/guides/FAPM-Practice-Staff-List.xlsx')))->toBe(['created' => 9, 'updated' => 0, 'skipped' => 0, 'errors' => []])
-        ->and(Staff::query()->where('name', 'Faith Wanjiku')->value('job_grade'))->toBe('INTERN');
+        ->and(Staff::query()->where('name', 'Faith Wanjiku')->value('job_grade'))->toBe('10')
+        ->and(Staff::query()->where('name', 'Brian Kiptoo')->value('job_grade'))->toBe('INTERN');
 });
 
 it('creates the draft and imports a workplan already in Excel in one step, from the Head\'s budget page', function () {

@@ -217,11 +217,13 @@ it('lets the Head decline the memo with a reason, keeping it out of the Office o
 
 it('lets the Head forward the memo to the Chief of Staff, into the existing review and approval', function () {
     [, $memo] = submittedDelegatedMemo($this);
+    // The Head gives the memo its reference and issue date before sending it on.
+    app(ActivityEditor::class)->update($memo, ['source_reference' => 'NG-CDF BOARD/ICT/010/2026', 'issued_on' => today()->toDateString()], $this->hod);
 
-    Livewire::actingAs($this->hod)->test(MemoPage::class, ['activity' => $memo])
-        ->assertSee('Prepared by')->assertSee('Forward to the Chief of Staff')
+    Livewire::actingAs($this->hod)->test(MemoPage::class, ['activity' => $memo->fresh()])
+        ->assertSee('Prepared by')->assertSee('Return to the officer')
         ->call('openHodAction', 'showForward')->set('note', 'Reviewed; please proceed.')
-        ->call('forwardToChiefOfStaff')->assertHasNoErrors();
+        ->call('forwardForReview')->assertHasNoErrors();
 
     $memo = $memo->fresh();
     expect($memo)->status->toBe(ActivityStatus::UnderReview)->review_office->toBe(ReviewOffice::ChiefOfStaff)
@@ -280,9 +282,9 @@ it('takes the officer through the memo page: code, details, team, cost and submi
         ->set('picked', [$this->teamMate->id])->call('addOfficers')->assertHasNoErrors()
         ->set('costCategory', (string) CostCategory::query()->where('code', 'fuel')->value('id'))->set('costAmount', '8,000')->call('addCost')->assertHasNoErrors()
         ->assertSee('Preview the memo')
-        ->assertSee('DSA 2 nights')
-        // Changing the days saves at once and recalculates the allowances.
-        ->set('days', 5)->assertHasNoErrors()->assertSee('DSA 4 nights')
+        ->assertSee('DSA 4 nights')
+        // Changing the days saves at once and recalculates the allowances: 5 days pay 6 nights.
+        ->set('days', 5)->assertHasNoErrors()->assertSee('DSA 6 nights')
         ->set('confirmSubmit', true)->call('submit')->assertSee('Submitted');
 
     $memo = SubmissionLink::query()->delegated()->sole()->memo;

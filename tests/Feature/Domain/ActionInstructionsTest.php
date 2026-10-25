@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ActivityStatus;
 use App\Enums\DecisionType;
 use App\Enums\InstructionKind;
 use App\Enums\InstructionStatus;
@@ -150,4 +151,50 @@ it('sends to the department chosen in Settings instead of the default', function
 
     expect(ActionInstruction::query()->sole()->department_id)->toBe($ict->id)
         ->and($warnings)->toBe(['ICT has no active Head of Department yet; the instruction to procure the travel tickets waits until one is set up.']);
+});
+
+it('lets the CEO instruct any other department with what it must do, showing its Head the instruction and no costs', function () {
+    $activity = activityAwaitingTheCeo();
+    $transport = Department::query()->where('name', 'Legal Services')->firstOrFail();
+    expect($activity->organising_department_id)->not->toBe($transport->id);
+    $adminHead = headOfDepartment($transport);
+
+    Livewire::actingAs($this->ceo)->test(DecisionQueue::class)
+        ->call('open', $activity->id, 'approved')
+        ->call('addOtherInstruction')
+        ->call('decide')->assertHasErrors(['otherInstructions.0.department_id', 'otherInstructions.0.instruction']);
+
+    expect($activity->fresh()->status)->toBe(ActivityStatus::AwaitingDecision);
+
+    Livewire::actingAs($this->ceo)->test(DecisionQueue::class)
+        ->call('open', $activity->id, 'approved')
+        ->set('instruct', ['imprest'])
+        ->call('addOtherInstruction')
+        ->set('otherInstructions.0.department_id', (string) $transport->id)
+        ->set('otherInstructions.0.instruction', 'Provide a Board vehicle and driver for the three days.')
+        ->call('decide')->assertHasNoErrors();
+
+    $other = $activity->instructions()->where('kind', InstructionKind::Other->value)->sole();
+    expect($other)->department_id->toBe($transport->id)->note->toBe('Provide a Board vehicle and driver for the three days.')
+        ->and($activity->instructions()->count())->toBe(2)
+        ->and($adminHead->notifications()->where('data->kind', 'instruction_sent')->sole()->data['url'])->toBe(route('instructions.show', $other));
+
+    $this->actingAs($adminHead)->get(route('instructions.show', $other))->assertOk()
+        ->assertSee('Provide a Board vehicle and driver for the three days.')
+        ->assertSee('Wanjiru Example')
+        ->assertDontSee('Air ticket Nairobi to Kisumu')
+        ->assertDontSee('Confidential reasons for the visit.');
+    $this->actingAs($adminHead)->get(route('memos.index'))->assertSee(route('instructions.index'));
+    $this->actingAs($adminHead)->get(route('memos.show', $activity))->assertForbidden();
+
+    // Each department once; a further department can be added later from the activity.
+    expect(fn () => app(ActionInstructions::class)->send($activity->fresh(), [], null, $this->ceo, [['department_id' => $transport->id, 'instruction' => 'Again']]))
+        ->toThrow(ActivityWorkflowException::class, 'Legal Services has already been instructed');
+    $ict = Department::query()->where('name', 'ICT')->firstOrFail();
+    app(ActionInstructions::class)->send($activity->fresh(), [], null, $this->ceo, [['department_id' => $ict->id, 'instruction' => 'Set up connectivity at the venue.']]);
+    expect($activity->instructions()->where('kind', InstructionKind::Other->value)->count())->toBe(2);
+
+    // Done, with what was done; the Office of the CEO is told.
+    app(ActionInstructions::class)->complete($other, 'Vehicle KCZ 123A, driver J. Mutua', null, $adminHead);
+    expect($this->ceo->notifications()->where('data->kind', 'instruction_completed')->first()->data['message'])->toStartWith('Legal Services has completed the CEO\'s instruction');
 });

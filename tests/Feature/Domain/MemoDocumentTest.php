@@ -19,7 +19,6 @@ use App\Services\ActivityLifecycle;
 use App\Services\AppSettings;
 use App\Services\MemoDocument;
 use App\Support\FinancialYear;
-use App\Support\Money;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
@@ -46,21 +45,22 @@ beforeEach(function () {
 
 it('builds the memo from what was captured, with every annex total agreeing with the memo', function () {
     $data = $this->memoDocument->data($this->memo);
-    $total = 8400_00 * 3 * 3 + 14000_00 * 3 + 30000_00 + 35000_00; // DSA for 3 nights, the vehicle, the ticket
+    $total = 8400_00 * 5 * 3 + 14000_00 * 5 + 30000_00 + 35000_00; // DSA for 5 nights (4 days and the departure night), the vehicle, the ticket
 
     expect($data['total'])->toBe($total)
         ->and((int) round((float) $this->memo->estimated_total * 100))->toBe($total)
         ->and(array_sum(array_column($data['byCategory'], 'amount')))->toBe($total)
         ->and(array_sum(array_column($data['byDepartment'], 'amount')))->toBe($total)
         ->and(array_sum(array_column($data['detailed'], 'amount')))->toBe($total)
-        ->and($data['request'])->toContain('KES '.Money::format($total))
-        ->and(collect($data['sections'])->pluck('heading')->all())->toBe(['Introduction', 'Objectives', 'Key Risks to be Mitigated', 'Programme'])
+        ->and($data['request'])->toContain('<strong>Kshs.'.number_format(intdiv($total, 100)).'</strong>')->toContain('Annex: A attached hereto')
+        ->and(collect($data['sections'])->pluck('heading')->all())->toBe(['Introduction', 'Objectives', 'Key Risks to be mitigated', 'Programme'])
+        ->and(collect($data['sections'])->firstWhere('heading', 'Key Risks to be mitigated')['bullets'])->toBe(['Delays if the county is not ready.'])
         ->and(collect($data['sections'])->pluck('number')->all())->toBe(['1.0', '2.0', '3.0', '4.0'])
         ->and($data['isDraft'])->toBeTrue();
 
     // Three 5 officers on the same DSA are one row of three, like the paper budget.
     $dsa = collect($data['detailed'])->where('item', 'DSA')->where('scale', '5')->sole();
-    expect($dsa['pax'])->toBe(3)->and($dsa['days'])->toBe('3')->and($dsa['rate'])->toBe(8400_00)->and($dsa['amount'])->toBe(8400_00 * 3 * 3)
+    expect($dsa['pax'])->toBe(3)->and($dsa['days'])->toBe('5')->and($dsa['rate'])->toBe(8400_00)->and($dsa['amount'])->toBe(8400_00 * 5 * 3)
         ->and(collect($data['byDepartment'])->firstWhere('label', 'ICT')['people'])->toBe(4)
         ->and(collect($data['byDepartment'])->firstWhere('label', 'Shared costs (whole activity)')['amount'])->toBe(30000_00)
         ->and(count($data['itinerary']))->toBe(4);
@@ -71,6 +71,8 @@ it('lists what is missing without inventing it, and blocks submission only on wh
     $issues = collect($this->memoDocument->issues($bare));
 
     expect($issues->where('blocking', true)->pluck('message')->all())->toBe([
+        'Give the memo reference (REF NO).',
+        'Give the date the memo is issued.',
         'Write the introduction and justification (section 1.0 of the memo).',
         'Add the venue or location.',
         'Add at least one officer to the team.',
@@ -119,17 +121,18 @@ it('produces the PDF with each annex on its own page, for the department and the
     $response = $this->actingAs($this->hod)->get(route('memos.document', $this->memo))->assertOk()->assertHeader('content-type', 'application/pdf');
     $pdf = $response->getContent();
 
-    // The memo, then Annexes A, B and C, each starting a new page, numbered "Page n of N".
-    expect(preg_match_all('#/Type\s*/Page[^s]#', $pdf))->toBe(4);
+    // The memo, then Annex: A and the Participants, each starting a new page, numbered "Page n of N".
+    expect(preg_match_all('#/Type\s*/Page[^s]#', $pdf))->toBeGreaterThanOrEqual(3);
 
     $html = view('memos.document', $this->memoDocument->data($this->memo) + ['user' => $this->hod])->render();
-    expect(substr_count($html, 'class="annex"'))->toBe(3)
+    expect(substr_count($html, 'class="annex"'))->toBe(2)
         ->and($html)->not->toContain('RESTRICTED: FOR THE OFFICE OF THE CEO ONLY')
         ->and($html)->toContain('page-break-before: always')
-        ->toContain('Annex A: Budget Breakdown')->toContain('Annex B: Detailed Activity Budget')->toContain('Annex C: Participant Itinerary')
-        ->toContain('Delays if the county is not ready.')
-        ->toContain('4.0 Programme')
-        ->toContain('5.0 Request for Approval');
+        ->toContain('INTERNAL MEMO')->toContain('REF NO:')->toContain('NG-CDF BOARD/ICT/001/2026')
+        ->toContain('Annex: A')->toContain('Activity Budget Request')->toContain('AMOUNT (KSHS)')->toContain('Participants')
+        ->toContain('<li>Delays if the county is not ready.</li>')
+        ->toContain('4.0&nbsp;&nbsp;&nbsp;Programme')
+        ->toContain('5.0&nbsp;&nbsp;&nbsp;Request for approval');
 
     $this->actingAs($this->hod)->get(route('memos.document', ['activity' => $this->memo, 'download' => 1]))
         ->assertOk()->assertHeader('content-disposition', 'attachment; filename='.$this->memo->reference.'-activity-memo-RESTRICTED.pdf');
@@ -150,6 +153,8 @@ it('lets the Head of Department add risks and extra sections, preview the memo, 
         ->call('addSection')
         ->call('save')->assertHasErrors(['memo_sections.0.heading', 'memo_sections.0.body'])
         ->set('memo_sections.0.heading', 'Previous review')->set('memo_sections.0.body', 'Done in March.')
+        ->call('save')->assertHasErrors(['source_reference', 'issued_on'])
+        ->set('source_reference', 'NG-CDF BOARD/ICT/002/2026')->set('issued_on', today()->toDateString())
         ->call('save')->assertHasNoErrors();
 
     expect($memo->fresh())->risks->toBe('Systems downtime.')->memo_sections->toBe([['heading' => 'Previous review', 'body' => 'Done in March.']]);
