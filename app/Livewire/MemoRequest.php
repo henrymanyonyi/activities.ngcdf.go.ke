@@ -293,7 +293,7 @@ class MemoRequest extends Component
     {
         $link = $memos->find($this->token);
         $verified = $link && $link->isUsable() && $memos->isVerified($link);
-        $memo = $verified && $link->activity_id ? Activity::query()->with(['participants', 'costs.category', 'costs.participant', 'documents', 'locations'])->find($link->activity_id) : null;
+        $memo = $verified && $link->activity_id ? Activity::query()->with(['participants.staff', 'costs.category', 'costs.participant.staff', 'documents', 'locations'])->find($link->activity_id) : null;
         $editable = $verified && (! $memo || $memo->isWithPreparer());
         $search = trim($this->staffSearch);
 

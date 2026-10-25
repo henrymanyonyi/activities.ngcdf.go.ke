@@ -15,6 +15,7 @@ use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 
 /**
  * Budgeting › Department budgets: every department's budget for the chosen
@@ -28,6 +29,7 @@ use Livewire\Component;
 class Index extends Component
 {
     use RunsActions;
+    use WithFileUploads;
 
     #[Url(except: '')]
     public string $fy = '';
@@ -42,6 +44,9 @@ class Index extends Component
     public string $prepareYear = '';
 
     public string $prepareNotes = '';
+
+    /** A workplan already in the template, imported as the draft's lines when it is created. */
+    public $prepareFile = null;
 
     public function mount(): void
     {
@@ -63,6 +68,7 @@ class Index extends Component
         $this->prepareDepartment = (string) ($this->ownDepartment() ?? $departmentId ?? '');
         $this->prepareYear = $this->fy;
         $this->prepareNotes = '';
+        $this->prepareFile = null;
         $this->showPrepare = true;
     }
 
@@ -72,13 +78,24 @@ class Index extends Component
             'prepareDepartment' => ['required', 'exists:departments,id'],
             'prepareYear' => ['required', 'regex:/^\d{4}\/\d{2}$/'],
             'prepareNotes' => ['nullable', 'string', 'max:2000'],
-        ], [], ['prepareDepartment' => 'department', 'prepareYear' => 'financial year', 'prepareNotes' => 'notes']);
+            'prepareFile' => ['nullable', 'file', 'mimes:xlsx,xls,csv,txt', 'max:'.config('activities.max_list_kb')],
+        ], [], ['prepareDepartment' => 'department', 'prepareYear' => 'financial year', 'prepareNotes' => 'notes', 'prepareFile' => 'workplan file']);
 
         $budget = $this->attempt(fn () => $budgeting->create($this->ownDepartment() ?? (int) $this->prepareDepartment, $this->prepareYear, $this->prepareNotes, Auth::user()));
-
-        if ($budget instanceof DepartmentBudget) {
-            $this->redirectRoute('budgets.show', $budget, navigate: true);
+        if (! $budget instanceof DepartmentBudget) {
+            return;
         }
+
+        if ($this->prepareFile) {
+            $result = $this->attempt(fn () => $budgeting->importLines($budget, $this->prepareFile, Auth::user()));
+            if (is_array($result)) {
+                session()->flash('notify', $result['errors'] === []
+                    ? ['type' => 'success', 'message' => "Draft created with {$result['added']} lines from your workplan. Check them, then submit to the CEO."]
+                    : ['type' => 'error', 'message' => 'Draft created, but the workplan file was not imported: '.implode(' ', array_slice($result['errors'], 0, 3)).' Fix the file and use Import from template.']);
+            }
+        }
+
+        $this->redirectRoute('budgets.show', $budget, navigate: true);
     }
 
     public function render(BudgetPosition $position, Budgeting $budgeting): View
@@ -117,10 +134,11 @@ class Index extends Component
             'years' => FinancialYear::options(),
             'totals' => $position->totals($yearFigures),
             'statusCounts' => collect(BudgetStatus::cases())->mapWithKeys(fn (BudgetStatus $s) => [$s->value => $all->where('status', $s)->count()]),
-            'withoutBudget' => Department::query()->active()->whereNotIn('id', $budgets->keys())->count(),
+            'withoutBudget' => Department::query()->active()->when($own, fn ($q, $id) => $q->whereKey($id))->whereNotIn('id', $budgets->keys())->count(),
             'departments' => Department::query()->active()->ordered()->get(['id', 'name']),
             'canPrepare' => Budgeting::canPrepare(Auth::user()) || ($own && Budgeting::canPrepareFor(Auth::user(), $own)),
             'ownDepartment' => $own,
-        ]);
+            'canApprove' => Budgeting::canApprove(Auth::user()),
+        ])->title($own ? 'Workplan and budget' : 'Department budgets');
     }
 }

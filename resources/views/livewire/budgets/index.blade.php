@@ -15,10 +15,11 @@
             <a href="{{ route('budgets.adjustments') }}" wire:navigate class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-sliders text-xs"></i>Adjustments</a>
         @endunless
         @if ($canPrepare && ! ($ownDepartment && ($rows->first()['budget'] ?? null)))
-            <button type="button" wire:click="openPrepare" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-plus text-xs"></i>{{ $ownDepartment ? 'Prepare the workplan' : 'Prepare a budget' }}</button>
+            <button type="button" wire:click="openPrepare" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-plus text-xs"></i>{{ $ownDepartment ? 'Prepare or import the workplan' : 'Prepare a budget' }}</button>
         @endif
     </x-slot:actions>
 
+    @unless ($ownDepartment)
     <x-slot:tabs>
         <div role="tablist" class="flex flex-wrap gap-1.5">
             @foreach ($filters as $key => [$label, $count])
@@ -31,6 +32,7 @@
             @endforeach
         </div>
     </x-slot:tabs>
+    @endunless
 
     <x-slot:stats>
         <x-ui.stat :index="0" icon="fa-wallet" :label="'Approved allocation · FY '.$fy" :value="$kes($totals['allocation'])" :money="$totals['allocation'] !== null" sub="approved budgets, with approved adjustments" />
@@ -64,9 +66,16 @@
                                 </td>
                                 <td class="{{ Ui::TD }}">
                                     @if ($b)
-                                        <x-ui.status :status="$b->status" />
+                                        <div class="flex items-center gap-1.5">
+                                            <x-ui.status :status="$b->status" />
+                                            @if ($canApprove && $b->status === BudgetStatus::Submitted)
+                                                <a href="{{ route('budgets.show', $b) }}" wire:navigate class="{{ Ui::BTN_TINT }}"><i class="fa-solid fa-magnifying-glass text-[9px]"></i>Review and approve</a>
+                                            @elseif ($ownDepartment && $b->status->isEditable())
+                                                <a href="{{ route('budgets.show', $b) }}" wire:navigate class="{{ Ui::BTN_TINT }}"><i class="fa-solid fa-pen text-[9px]"></i>Open</a>
+                                            @endif
+                                        </div>
                                     @else
-                                        <div class="flex items-center gap-1.5"><x-ui.badge>No budget</x-ui.badge>@if ($canPrepare)<button type="button" wire:click="openPrepare({{ $r['department']->id }})" class="{{ Ui::BTN_TINT }}"><i class="fa-solid fa-plus text-[9px]"></i>Prepare</button>@endif</div>
+                                        <div class="flex items-center gap-1.5"><x-ui.badge>No budget</x-ui.badge>@if ($canPrepare)<button type="button" wire:click="openPrepare({{ $r['department']->id }})" class="{{ Ui::BTN_TINT }}"><i class="fa-solid fa-plus text-[9px]"></i>Prepare or import</button>@endif</div>
                                     @endif
                                 </td>
                                 @if ($b)
@@ -98,12 +107,16 @@
         <x-ui.field label="Financial year" for="p-y" error="prepareYear" required>
             <select id="p-y" wire:model="prepareYear" class="{{ $sel }}">@foreach ($years as $y)<option value="{{ $y }}">FY {{ $y }}</option>@endforeach</select>
         </x-ui.field>
+        <x-ui.field label="Workplan in Excel (optional)" for="p-f" error="prepareFile" hint="Already have it in the workplan template? Attach it and its rows become the lines. Download the template with the Workplan template button.">
+            <input id="p-f" type="file" wire:model="prepareFile" accept=".xlsx,.xls,.csv" class="block w-full text-[13px] text-slate-600 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700 file:font-semibold">
+            <div wire:loading wire:target="prepareFile" class="text-[11px] text-slate-400">Uploading…</div>
+        </x-ui.field>
         <x-ui.field label="Notes" for="p-n" error="prepareNotes" hint="Optional: the source, such as the approved printed estimates.">
             <textarea id="p-n" wire:model="prepareNotes" rows="3" maxlength="2000" class="{{ Ui::CONTROL }}"></textarea>
         </x-ui.field>
         <x-slot:footer>
             <button type="button" wire:click="$set('showPrepare', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
-            <button type="button" wire:click="prepare" class="{{ Ui::BTN_PRIMARY }}" wire:loading.attr="disabled" wire:target="prepare"><i class="fa-solid fa-pen-ruler text-xs"></i>Create draft</button>
+            <button type="button" wire:click="prepare" class="{{ Ui::BTN_PRIMARY }}" wire:loading.attr="disabled" wire:target="prepare,prepareFile"><i class="fa-solid fa-pen-ruler text-xs"></i>{{ $prepareFile ? 'Create draft and import' : 'Create draft' }}</button>
         </x-slot:footer>
     </x-ui.modal>
 </x-ui.page>

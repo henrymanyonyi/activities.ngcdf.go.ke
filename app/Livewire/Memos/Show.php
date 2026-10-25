@@ -260,7 +260,7 @@ class Show extends Component
     {
         $activity = $this->activity->load([
             'category', 'type', 'organisingDepartment', 'budgetLine', 'locations.region', 'locations.county', 'locations.constituency',
-            'documents', 'statusHistory.user', 'reviewNotes.user', 'creator', 'responsibleHod', 'approver', 'participants', 'preparedBy',
+            'documents', 'statusHistory.user', 'reviewNotes.user', 'creator', 'responsibleHod', 'approver', 'participants.staff', 'preparedBy.designation',
             'report.submitter', 'report.reviewer', 'report.document', 'costs.category', 'costs.participant.staff',
         ]);
 
