@@ -5,6 +5,7 @@
 | Area | Change |
 |---|---|
 | Memo routing (confirmed 26 Oct 2026) | A memo always goes **Head of Department → Assistant or Chief of Staff → CEO**. There is no direct route to the CEO; the Assistant's memos pass the Chief of Staff whenever Settings say so. |
+| Email heading | An action-needed email from an action taken by the CEO, the Chief of Staff or the Assistant (a return, a forward, a decision, an instruction, a returned report or budget) is headed **OFFICE OF THE CHIEF EXECUTIVE OFFICER** and sent as "Office of the Chief Executive Officer, NG-CDF Board". Emails from a Head of Department's or an officer's action, and the automatic reminders, keep the FAPM heading. |
 | Instructions | After approving, the CEO instructs the departments that must act: Finance (imprest), Procurement (tickets) and **any other department** with a written instruction (e.g. Administration: provide a vehicle). Its Head gets the instruction sheet (instruction, dates, places, team; no memo, no costs), acknowledges it and records what was done. Instructions are checked before the approval is recorded. |
 | Signing | The Head signs with their designation from the staff list and department, e.g. **Manager, ICT**. Ticking **I am signing in an acting capacity** prints **Ag. Manager, ICT**. Stored on the memo (`activities.hod_designation`, `hod_acting`); the officer's record never changes. |
 | Memo PDF | Rebuilt on `files/MEMO Template .docx`: US Letter, the template's margins, logo and Board name, INTERNAL MEMO, TO / FROM / DATE / REF NO / SUBJECT, numbered sections with the risks as bullets, the four signature blocks, Annex: A (Activity Budget Request, with the signatures repeated) and Participants. Sample: `docs/samples/FAPM-Sample-Activity-Memo.pdf`. |
@@ -15,7 +16,7 @@
 ## Steps
 
 1. **Back up** the production database.
-2. Deploy the code, then `php artisan migrate --force`. Two new migrations: `2026_10_25_125148_add_issue_date_and_signing_capacity_to_activities_table` (adds `issued_on`, `hod_designation`, `hod_acting`) and `2026_10_25_131929_allow_instructions_to_any_department` (the unique index on `action_instructions` becomes activity, kind and department; the new index is added before the old one is removed). No data is changed.
+2. Deploy the code, then `php artisan migrate --force`. Three new migrations, including `add_from_office_to_outbound_messages_table` (the email heading below). The other two: `2026_10_25_125148_add_issue_date_and_signing_capacity_to_activities_table` (adds `issued_on`, `hod_designation`, `hod_acting`) and `2026_10_25_131929_allow_instructions_to_any_department` (the unique index on `action_instructions` becomes activity, kind and department; the new index is added before the old one is removed). No data is changed.
 3. `php artisan db:seed --force` (syncs the standard DSA rates, including scale 10 at 6,300).
 4. `npm run build`.
 5. **Casual staff:** an authorised operator reviews and runs `docs/deploy/2026-10-25-casual-staff-dsa-scale-10.sql` by hand, reading each step's output, and commits only if the check shows `casuals_not_on_10 = 0`. It keeps each previous grade in `staff_dsa_grade_backup_20261025` and writes `audit_logs`. Recovery steps are at the end of the file.

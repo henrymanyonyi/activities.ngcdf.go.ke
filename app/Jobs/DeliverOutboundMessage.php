@@ -34,7 +34,7 @@ class DeliverOutboundMessage implements ShouldQueue
             if ($message->channel === 'sms') {
                 $reference = $sms->send($message->recipient, $message->body);
             } else {
-                Mail::to($message->recipient)->send(new AlertMessage((string) $message->subject, $message->body, (string) $message->url, $message->user_id !== null));
+                Mail::to($message->recipient)->send(new AlertMessage((string) $message->subject, $message->body, (string) $message->url, $message->user_id !== null, $message->from_office));
             }
         } catch (Throwable $e) {
             $this->failed($e);

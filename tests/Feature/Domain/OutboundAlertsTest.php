@@ -115,3 +115,20 @@ it('marks a failed SMS on the log without undoing the action', function () {
         ->error->toBe('SMS not accepted: insufficient balance');
     expect(OutboundMessage::query()->where('channel', 'mail')->value('status'))->toBe(OutboundMessage::SENT);
 });
+
+it('heads the email as from the Office of the CEO when the CEO, the Chief of Staff or the Assistant acted, and not otherwise', function () {
+    fakeSmsGateway();
+
+    $this->actingAs($this->hod);
+    $this->lifecycle->submitForReview($this->memo, $this->hod, ReviewOffice::AssistantChiefOfStaff);
+    $this->actingAs($this->acos);
+    $this->lifecycle->returnForCorrection($this->memo->fresh(), 'Add the programme.', $this->acos);
+
+    expect(OutboundMessage::query()->where('channel', 'mail')->orderBy('id')->pluck('from_office', 'kind')->all())
+        ->toBe(['submitted_for_review' => false, 'returned_for_correction' => true]);
+    Mail::assertSent(AlertMessage::class, fn (AlertMessage $m) => $m->hasTo($this->hod->email) && $m->fromOffice
+        && $m->hasFrom(config('mail.from.address'), 'Office of the Chief Executive Officer, NG-CDF Board')
+        && str_contains($m->render(), 'OFFICE OF THE CHIEF EXECUTIVE OFFICER'));
+    Mail::assertSent(AlertMessage::class, fn (AlertMessage $m) => $m->hasTo($this->acos->email) && ! $m->fromOffice
+        && ! str_contains($m->render(), 'OFFICE OF THE CHIEF EXECUTIVE OFFICER'));
+});
