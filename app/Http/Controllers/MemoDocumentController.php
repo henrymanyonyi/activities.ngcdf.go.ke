@@ -17,7 +17,8 @@ class MemoDocumentController extends Controller
 {
     public function __invoke(Request $request, Activity $activity, MemoDocument $memo, AccessLogger $log): Response
     {
-        abort_unless($activity->isVisibleTo($request->user()), 403);
+        // The Office of the CEO, the department's own Head, or (approved memos, read only) a Head the CEO instructed.
+        abort_unless($activity->isReadableBy($request->user()), 403);
 
         $download = $request->boolean('download');
         $log->log($download ? AccessLogger::DOWNLOAD : AccessLogger::PRINT, $activity, ['document' => 'activity_memo']);

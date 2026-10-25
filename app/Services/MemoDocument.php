@@ -218,7 +218,7 @@ class MemoDocument
 
     private function requestParagraph(Activity $activity, int $total): string
     {
-        $people = $activity->participants->where('is_external', false)->count();
+        $people = $activity->participants->where('is_external', false)->sum(fn (ActivityParticipant $p) => $p->people());
         $externals = $activity->participants->where('is_external', true)->count();
         $team = $people.' '.($people === 1 ? 'officer' : 'officers').($externals ? " and {$externals} external ".($externals === 1 ? 'participant' : 'participants') : '');
         $vote = $activity->budgetLine ? 'charged under '.$activity->budgetLine->label() : 'charged to the department\'s vote';
@@ -356,12 +356,14 @@ class MemoDocument
                     'item' => $item,
                     'category' => match (true) {
                         $person === null => 'Whole activity',
+                        $person->isGroup() => (string) $person->group_label,
                         $person->is_external => 'External: '.($person->external_category?->label() ?? 'Other'),
                         default => $person->designation?->name ?? 'Officer',
                     },
                     // The scale DSA is costed at: the officer's own, or their terms' (scale 10 for a casual, INTERN for an attachee).
                     'scale' => $person && ! $person->is_external ? (string) (DsaRate::normaliseGrade(DsaRate::gradeFor($person->job_grade, $person->staff?->employment_type)) ?? $person->job_grade ?? '') : '',
                     'per_person' => $person !== null,
+                    'people' => $person?->people() ?? 1,
                     'days' => $line->quantity !== null ? rtrim(rtrim((string) $line->quantity, '0'), '.') : null,
                     'rate' => $line->unit_rate !== null ? Money::toCents($line->unit_rate) : ($person ? $amount : null),
                     'amount' => $amount,
@@ -373,7 +375,7 @@ class MemoDocument
                 'item' => $group->first()['item'],
                 'category' => $group->first()['category'],
                 'scale' => $group->first()['scale'],
-                'pax' => $group->first()['per_person'] ? $group->count() : null,
+                'pax' => $group->first()['per_person'] ? $group->sum('people') : null,
                 'days' => $group->first()['days'],
                 'rate' => $group->first()['rate'],
                 'amount' => $group->sum('amount'),
@@ -401,9 +403,13 @@ class MemoDocument
                 $travel = $p->costs->first(fn (ActivityCost $c) => $c->travel_mode !== null)?->travel_mode?->label();
 
                 return [
-                    'name' => $p->displayName(),
+                    'name' => $p->isGroup() ? (string) $p->group_label : $p->displayName(),
                     'number' => $p->is_external ? '' : (string) $p->staff?->staff_number,
-                    'designation' => $p->is_external ? (string) $p->external_organisation : (string) $p->designation?->name,
+                    'designation' => match (true) {
+                        $p->is_external => (string) $p->external_organisation,
+                        $p->isGroup() => $p->people().' officers (scale '.$p->job_grade.')',
+                        default => (string) $p->designation?->name,
+                    },
                     'department' => $p->is_external ? 'External' : (string) $p->department?->name,
                     'role' => $p->role->label(),
                     'from' => $p->startOn($activity),

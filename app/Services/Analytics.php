@@ -97,7 +97,7 @@ class Analytics
         foreach ($activities as $activity) {
             $breakdown = $this->costing->breakdown($activity)['rows']->keyBy(fn ($r) => $r['participant']->id);
 
-            foreach ($activity->participants->where('is_external', false) as $p) {
+            foreach ($activity->participants->where('is_external', false)->whereNotNull('staff_id') as $p) {
                 if (! empty($filters['department_id']) && (int) $p->staff?->department_id !== (int) $filters['department_id']) {
                     continue;
                 }
@@ -192,8 +192,8 @@ class Analytics
                 $split = $this->split($activity->costs);
                 $rows[$key]['activities'][$activity->id] = true;
                 foreach ($activity->participants->where('is_external', false) as $p) {
-                    $rows[$key]['staff'][$p->staff_id] = true;
-                    $rows[$key]['days'] += $p->plannedDays($activity);
+                    $rows[$key]['staff'][$p->staff_id ?? 'group-'.$p->id] = $p->people();
+                    $rows[$key]['days'] += $p->plannedDays($activity) * $p->people();
                 }
                 foreach (['dsa', 'travel', 'other', 'total', 'planned', 'actual'] as $k) {
                     $rows[$key][$k] += $split[$k];
@@ -208,8 +208,8 @@ class Analytics
                 $rows[$key] ??= $blank($p->department);
                 $split = $this->split($activity->costs->where('activity_participant_id', $p->id));
                 $rows[$key]['activities'][$activity->id] = true;
-                $rows[$key]['staff'][$p->staff_id] = true;
-                $rows[$key]['days'] += $p->plannedDays($activity);
+                $rows[$key]['staff'][$p->staff_id ?? 'group-'.$p->id] = $p->people();
+                $rows[$key]['days'] += $p->plannedDays($activity) * $p->people();
                 foreach (['dsa', 'travel', 'other', 'total', 'planned', 'actual'] as $k) {
                     $rows[$key][$k] += $split[$k];
                 }
@@ -219,7 +219,7 @@ class Analytics
         $positions = app(BudgetPosition::class)->forYear(FinancialYear::for($period->from))->keyBy(fn ($r) => $r['department']?->id ?? 0);
 
         return collect($rows)->map(function ($r, $key) use ($positions, $lens) {
-            $r['staff_count'] = count($r['staff']);
+            $r['staff_count'] = (int) array_sum($r['staff']); // a group added by number counts as its number
             $r['activity_count'] = count($r['activities']);
             $r['budget'] = $lens === 'requesting' ? ($positions[$key]['allocation'] ?? null) : null;
             $r['variance'] = $r['budget'] === null ? null : $positions[$key]['balance'];
@@ -295,6 +295,7 @@ class Analytics
     {
         return ActivityParticipant::query()
             ->where('is_external', false)
+            ->whereNotNull('staff_id')
             ->whereIn('status', ParticipationStatus::values(ParticipationStatus::Nominated, ParticipationStatus::Confirmed, ParticipationStatus::Attended))
             ->whereHas('activity', fn (Builder $q) => $q->status(ActivityStatus::InProgress, ActivityStatus::Approved)->overlapping(today(), today()))
             ->with(['staff.department', 'activity.locations.county', 'activity.locations.constituency', 'activity.locations.region'])

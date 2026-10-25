@@ -91,7 +91,7 @@ class Show extends Component
 
     public function mount(Activity $activity, AccessLogger $log): void
     {
-        abort_unless($activity->isVisibleTo(Auth::user()), 403);
+        abort_unless($activity->isReadableBy(Auth::user()), 403);
         $this->activity = $activity;
         $log->log(AccessLogger::VIEW, $activity); // CF-06: every view of an activity
     }
@@ -271,16 +271,18 @@ class Show extends Component
         $activity = $this->activity->load([
             'category', 'type', 'organisingDepartment', 'budgetLine', 'locations.region', 'locations.county', 'locations.constituency',
             'documents', 'statusHistory.user', 'reviewNotes.user', 'creator', 'responsibleHod', 'approver', 'participants.staff', 'preparedBy.designation',
-            'report.submitter', 'report.reviewer', 'report.document', 'costs.category', 'costs.participant.staff',
+            'report.submitter', 'report.reviewer', 'report.document', 'costs.category', 'costs.participant.staff', 'instructions',
         ]);
 
         return view('livewire.memos.show', [
             'a' => $activity,
-            'editable' => $activity->status->isWithDepartment() && ! $activity->isWithPreparer(),
+            // A Head the CEO instructed reads the approved memo only: no actions, no team page, no budget position.
+            'readOnly' => $readOnly = ! $activity->isVisibleTo(Auth::user()),
+            'editable' => ! $readOnly && $activity->status->isWithDepartment() && ! $activity->isWithPreparer(),
             'withHod' => $activity->status === ActivityStatus::WithHod && Auth::user()->isHeadOfDepartment(),
             'canDiscard' => $activity->isDepartmentDraft(),
             'issues' => $activity->status->isWithDepartment() ? $memoDocument->issues($activity) : [],
-            'budget' => $activity->organising_department_id ? $budget->forActivity($activity) : null,
+            'budget' => ! $readOnly && $activity->organising_department_id ? $budget->forActivity($activity) : null,
             'offices' => ReviewOffice::cases(),
             'designation' => Auth::user()->signingDesignation(),
             'regions' => $this->showLocation ? Region::query()->orderBy('name')->get(['id', 'name']) : collect(),

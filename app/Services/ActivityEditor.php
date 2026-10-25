@@ -11,6 +11,7 @@ use App\Models\ActivityAmendment;
 use App\Models\ActivityCost;
 use App\Models\ActivityLocation;
 use App\Models\ActivityParticipant;
+use App\Models\DsaRate;
 use App\Models\Staff;
 use App\Models\User;
 use App\Support\DsaPeriod;
@@ -256,6 +257,54 @@ class ActivityEditor
 
             if ($activity->status->requiresAmendment()) {
                 $this->lifecycle->recordAmendment($activity, ActivityAmendment::KIND_PARTICIPANTS, "Added external participant {$data['external_name']}", (string) $amendmentReason, $user, false);
+            }
+
+            return $participant;
+        });
+    }
+
+    /**
+     * Officers added by number without their names, e.g. 10 Fund Account Managers (26 October 2026): a label,
+     * the number and their DSA scale. DSA is the scale's rate × nights × the number; there is no availability
+     * or field-day check, as nobody is named.
+     *
+     * @param  array{group_label: string, headcount: int|string, job_grade: string}  $data
+     */
+    public function addGroup(Activity $activity, array $data, ParticipantRole $role, User $user, ?string $amendmentReason = null): ActivityParticipant
+    {
+        $this->authorizeDetails($activity, $user);
+        $this->assertEditable($activity);
+
+        $label = trim((string) $data['group_label']);
+        $headcount = (int) $data['headcount'];
+        $grade = DsaRate::normaliseGrade((string) $data['job_grade']);
+        if ($label === '') {
+            throw new ActivityWorkflowException('Say who they are, e.g. Fund Account Managers (FAMs).');
+        }
+        if ($headcount < 1 || $headcount > 500) {
+            throw new ActivityWorkflowException('Give the number of officers, from 1 to 500.');
+        }
+        if ($grade === null) {
+            throw new ActivityWorkflowException('Choose their DSA scale.');
+        }
+        if ($activity->status->requiresAmendment() && blank($amendmentReason)) {
+            throw new ActivityWorkflowException('Give a reason for changing the team of a submitted or approved activity.');
+        }
+
+        return DB::transaction(function () use ($activity, $label, $headcount, $grade, $role, $user, $amendmentReason) {
+            $participant = $activity->participants()->create([
+                'is_external' => false,
+                'group_label' => mb_substr($label, 0, 255),
+                'headcount' => $headcount,
+                'job_grade' => $grade,
+                'role' => $role,
+                'status' => ParticipationStatus::Nominated,
+            ]);
+            $this->dsa->recalculate($activity);
+
+            if ($activity->status->requiresAmendment()) {
+                $this->lifecycle->recordAmendment($activity, ActivityAmendment::KIND_PARTICIPANTS, "Added {$headcount} × {$label}", (string) $amendmentReason, $user,
+                    $headcount > $this->settings->int('tolerance_participant_changes') || $this->lifecycle->costBeyondTolerance($activity));
             }
 
             return $participant;

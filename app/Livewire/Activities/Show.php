@@ -4,6 +4,7 @@ namespace App\Livewire\Activities;
 
 use App\Enums\ActivityStatus;
 use App\Enums\DecisionType;
+use App\Enums\EmploymentType;
 use App\Enums\ExternalCategory;
 use App\Enums\ImprestStatus;
 use App\Enums\ParticipantRole;
@@ -27,6 +28,7 @@ use App\Models\Office;
 use App\Models\ParticipantRelease;
 use App\Models\Region;
 use App\Models\Staff;
+use App\Rules\DsaGrade;
 use App\Services\AccessLogger;
 use App\Services\ActivityCosting;
 use App\Services\ActivityEditor;
@@ -87,6 +89,15 @@ class Show extends Component
     public bool $showAddStaff = false;
 
     public bool $showAddExternal = false;
+
+    // A group added by number, without names (e.g. 10 FAMs).
+    public bool $showAddGroup = false;
+
+    public string $groupLabel = '';
+
+    public string $groupCount = '';
+
+    public string $groupGrade = '';
 
     public bool $showRemoveParticipant = false;
 
@@ -278,7 +289,7 @@ class Show extends Component
         $this->reset([
             'showDecide', 'showRecordDecision', 'showPostpone', 'showExtend', 'showCancel', 'showComplete', 'showReport', 'showReturnReport', 'showClose', 'showDiscard',
             'showForward', 'showReturnHod', 'showNote', 'reviewText', 'recommendation',
-            'showAddStaff', 'showAddExternal', 'showRemoveParticipant', 'staffDepartment', 'staffOffice', 'showSelectedOnly', 'sameConflictReason', 'showDays', 'showExplain', 'overlapReason', 'staffSort', 'daysStart', 'daysCount', 'showCost', 'showOverride', 'showLocation', 'showDirective', 'showImprest', 'showDocument', 'showInstruct', 'instruct', 'instructionNote', 'otherInstructions',
+            'showAddStaff', 'showAddExternal', 'showAddGroup', 'groupLabel', 'groupCount', 'groupGrade', 'showRemoveParticipant', 'staffDepartment', 'staffOffice', 'showSelectedOnly', 'sameConflictReason', 'showDays', 'showExplain', 'overlapReason', 'staffSort', 'daysStart', 'daysCount', 'showCost', 'showOverride', 'showLocation', 'showDirective', 'showImprest', 'showDocument', 'showInstruct', 'instruct', 'instructionNote', 'otherInstructions',
             'comment', 'memoReference', 'memoDate', 'scan', 'reason', 'newStart', 'newDays', 'extraDays', 'actualDate', 'reportReceivedOn', 'outputsAchieved',
             'findings', 'recommendations', 'reportFile', 'staffSearch', 'selectedStaff', 'conflictReasons', 'externalName', 'externalOrganisation',
             'participantId', 'costId', 'costCategoryId', 'costParticipantId', 'costDescription', 'costAmount', 'costTravelMode', 'overrideAmount',
@@ -593,6 +604,26 @@ class Show extends Component
             'external_category' => ExternalCategory::from($this->externalCategory),
         ], ParticipantRole::from($this->role), $this->user(), $this->reason ?: null))) {
             $this->done('External participant added.');
+        }
+    }
+
+    /** Officers added by number without their names, e.g. 10 Fund Account Managers. */
+    public function addGroup(ActivityEditor $editor): void
+    {
+        $this->validate([
+            'groupLabel' => ['required', 'string', 'max:255'],
+            'groupCount' => ['required', 'integer', 'min:1', 'max:500'],
+            'groupGrade' => ['required', new DsaGrade(EmploymentType::Attachee)],
+            'role' => ['required', 'in:'.implode(',', array_column(ParticipantRole::cases(), 'value'))],
+            'reason' => [$this->activity->status->requiresAmendment() ? 'required' : 'nullable', 'string', 'max:1000'],
+        ], [], ['groupLabel' => 'who they are', 'groupCount' => 'number', 'groupGrade' => 'DSA scale']);
+
+        if ($this->attempt(fn () => $editor->addGroup($this->activity, [
+            'group_label' => $this->groupLabel,
+            'headcount' => $this->groupCount,
+            'job_grade' => $this->groupGrade,
+        ], ParticipantRole::from($this->role), $this->user(), $this->reason ?: null))) {
+            $this->done("{$this->groupCount} × {$this->groupLabel} added.");
         }
     }
 
@@ -955,7 +986,7 @@ class Show extends Component
         }
 
         $conflicts = $checks->conflictsFor($activity);
-        $fieldDays = $activity->participants->where('is_external', false)
+        $fieldDays = $activity->participants->where('is_external', false)->whereNotNull('staff_id')
             ->mapWithKeys(fn (ActivityParticipant $p) => [$p->id => $checks->fieldDayFlags($p->staff_id, $activity, $p->plannedDays($activity))]);
 
         // The days popup warns as soon as the chosen days overlap another approved activity.
