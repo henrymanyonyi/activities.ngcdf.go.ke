@@ -64,16 +64,21 @@ it('emails and texts the reviewer when a memo is submitted, with the reference o
         ->and(OutboundMessage::query()->where('channel', 'sms')->value('provider_reference'))->toBe('SL-1');
 });
 
-it('sends email and SMS only when the recipient must act, and never to the CEO', function () {
+it('sends email and SMS only when the recipient must act, including the CEO when a decision is awaited', function () {
     fakeSmsGateway();
     $this->lifecycle->submitForReview($this->memo, $this->hod, ReviewOffice::AssistantChiefOfStaff);
     OutboundMessage::query()->each(fn (OutboundMessage $m) => $m->forceFill(['kind' => 'earlier'])->save());
 
-    // Forwarding tells the Head of Department in the system only; the CEO is never emailed or texted.
+    // Forwarding tells the Head of Department in the system only; the CEO, who must decide, is emailed and texted.
+    $this->ceo->update(['phone' => '+254700000999']);
     $this->lifecycle->forward($this->memo->fresh(), $this->acos);
     expect($this->hod->notifications()->where('data->kind', 'memo_progressed')->count())->toBe(1)
         ->and($this->ceo->notifications()->where('data->kind', 'awaiting_decision')->count())->toBe(1)
-        ->and(OutboundMessage::query()->where('kind', '!=', 'earlier')->count())->toBe(0);
+        ->and(OutboundMessage::query()->where('kind', '!=', 'earlier')->get(['user_id', 'channel', 'recipient', 'subject'])->toArray())->toBe([
+            ['user_id' => $this->ceo->id, 'channel' => 'mail', 'recipient' => $this->ceo->email, 'subject' => "FAPM: Memo {$this->memo->reference} awaiting your decision"],
+            ['user_id' => $this->ceo->id, 'channel' => 'sms', 'recipient' => '+254700000999', 'subject' => null],
+        ]);
+    OutboundMessage::query()->each(fn (OutboundMessage $m) => $m->forceFill(['kind' => 'earlier'])->save());
 
     // The CEO's approval needs the Head of Department to act: it goes out to them, by email (no mobile on their account).
     $this->lifecycle->decide($this->memo->fresh(), DecisionType::Approved, null, $this->ceo);

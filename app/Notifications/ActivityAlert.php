@@ -76,7 +76,10 @@ class ActivityAlert extends Notification
 
     public static function awaitingDecision(Activity $activity, bool $amended = false): self
     {
-        return new self('awaiting_decision', ($amended ? 'Amended, back for decision: ' : 'Awaiting your decision: ').$activity->title, $activity->id, 'fa-hourglass-half');
+        return (new self('awaiting_decision', ($amended ? 'Amended, back for decision: ' : 'Awaiting your decision: ').$activity->title, $activity->id, 'fa-hourglass-half'))
+            ->needsAction($activity->reference, "Memo {$activity->reference} awaiting your decision", $amended
+                ? "Activity {$activity->reference} has been amended and is back for your decision."
+                : "Memo {$activity->reference} is awaiting your decision.", 'Please approve, decline or return it.');
     }
 
     public static function decided(Activity $activity, DecisionType $decision): self
