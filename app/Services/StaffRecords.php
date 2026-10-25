@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Enums\EmploymentType;
+use App\Models\DsaRate;
 use App\Models\Staff;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -15,7 +17,7 @@ use Illuminate\Auth\Access\AuthorizationException;
 class StaffRecords
 {
     /**
-     * @param  array{staff_number: string, name: string, email?: ?string, phone?: ?string, department_id: int|string, designation_id?: mixed, job_grade?: ?string, office_id?: mixed, is_active?: bool}  $attributes
+     * @param  array{staff_number: ?string, name: string, employment_type?: string, contract_ends_on?: ?string, email?: ?string, phone?: ?string, department_id: int|string, designation_id?: mixed, job_grade?: ?string, office_id?: mixed, is_active?: bool}  $attributes
      */
     public function save(array $attributes, User $user, ?Staff $staff = null): Staff
     {
@@ -29,9 +31,15 @@ class StaffRecords
         }
 
         $attributes = array_merge($attributes, [
-            'staff_number' => strtoupper(trim($attributes['staff_number'])),
-            'job_grade' => filled($attributes['job_grade'] ?? null) ? strtoupper(trim($attributes['job_grade'])) : null,
+            'staff_number' => filled($attributes['staff_number'] ?? null) ? strtoupper(trim($attributes['staff_number'])) : null,
+            'job_grade' => filled($attributes['job_grade'] ?? null) ? (DsaRate::normaliseGrade($attributes['job_grade']) ?? strtoupper(trim($attributes['job_grade']))) : null,
         ]);
+
+        // A casual or attachee without a job grade is costed at the INTERN DSA rate.
+        $type = EmploymentType::tryFrom((string) ($attributes['employment_type'] ?? '')) ?? $staff?->employment_type ?? EmploymentType::Permanent;
+        if ($attributes['job_grade'] === null && ! $type->requiresStaffNumber()) {
+            $attributes['job_grade'] = DsaRate::INTERN;
+        }
 
         if (array_key_exists('is_active', $attributes)) {
             $attributes['exited_on'] = $attributes['is_active'] ? null : ($staff?->exited_on ?? today());

@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Notifications\ActivityAlert;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 use Livewire\Component;
@@ -21,14 +22,7 @@ class AlertsBell extends Component
         $alert = Auth::user()->notifications()->findOrFail($id);
         $alert->markAsRead();
 
-        $user = Auth::user();
-        $activityId = $alert->data['activity_id'] ?? null;
-
-        $this->redirect(match (true) {
-            $activityId && $user->can('activities.view') => route('activities.show', $activityId),
-            $activityId && $user->can('memos.originate') => route('memos.show', $activityId),
-            default => route('home'),
-        }, navigate: true);
+        $this->redirect(ActivityAlert::destination($alert->data, Auth::user()), navigate: true);
     }
 
     public function render(): View

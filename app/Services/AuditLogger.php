@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\AuditLog;
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Request;
@@ -20,8 +21,33 @@ class AuditLogger
      * @param  array<string, mixed>|null  $old
      * @param  array<string, mixed>|null  $new
      */
+    /** Who acts without an account (an officer preparing a memo through a Head's link), for changes made inside actingAs(). */
+    private static ?string $actor = null;
+
+    /**
+     * Runs the callback with every audit row it writes attributed to this person.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $callback
+     * @return T
+     */
+    public static function actingAs(string $actorName, Closure $callback): mixed
+    {
+        $previous = self::$actor;
+        self::$actor = $actorName;
+
+        try {
+            return $callback();
+        } finally {
+            self::$actor = $previous;
+        }
+    }
+
     public function record(Model|string $subject, string $event, ?array $old = null, ?array $new = null, ?string $actorName = null): AuditLog
     {
+        $actorName ??= self::$actor;
+
         return AuditLog::create([
             'auditable_type' => is_string($subject) ? $subject : $subject->getMorphClass(),
             'auditable_id' => is_string($subject) ? null : $subject->getKey(),

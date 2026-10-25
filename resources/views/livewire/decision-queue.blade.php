@@ -50,7 +50,8 @@
                     @endif
                 </div>
 
-                <div class="flex lg:flex-col gap-2 shrink-0">
+                <div class="flex flex-wrap lg:flex-col gap-2 shrink-0">
+                    <a href="{{ route('memos.document', $a) }}" target="_blank" rel="noopener" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-file-pdf text-xs text-red-600"></i>Memo and annexes</a>
                     @can('activities.decide')
                         <button type="button" wire:click="open({{ $a->id }}, 'approved')" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-check text-xs"></i>Approve and authorise</button>
                         <button type="button" wire:click="open({{ $a->id }}, 'returned')" class="{{ Ui::BTN_NEUTRAL }}"><i class="fa-solid fa-rotate-left text-xs"></i>Return</button>
@@ -70,6 +71,9 @@
         <x-ui.field :label="$decision === 'approved' ? 'Comment (optional)' : 'Directive / comment'" for="q-comment" error="comment" :required="$decision !== 'approved'">
             <textarea id="q-comment" wire:model="comment" rows="3" class="{{ Ui::CONTROL }}"></textarea>
         </x-ui.field>
+        @if ($decision === 'approved')
+            @can('instructions.send')<x-memo.instruct />@endcan
+        @endif
         <x-slot:footer>
             <button type="button" wire:click="$set('showDecide', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
             <button type="button" wire:click="decide" wire:loading.attr="disabled" wire:target="decide" class="{{ $decision === 'declined' ? Ui::BTN_DANGER : Ui::BTN_PRIMARY }}"><i class="fa-solid fa-gavel text-xs"></i>{{ DecisionType::from($decision)->actionLabel() }}</button>

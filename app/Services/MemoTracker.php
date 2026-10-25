@@ -66,6 +66,7 @@ class MemoTracker
             ],
             self::PERSPECTIVE_DEPARTMENT => [
                 'drafts' => ['label' => 'Drafts', 'icon' => 'fa-pen-ruler', 'empty' => 'No drafts. Start with "Create new activity memo".'],
+                'from_staff' => ['label' => 'Prepared by officers', 'icon' => 'fa-user-check', 'empty' => 'No memo is being prepared by an officer. Use "Ask an officer to prepare a memo".'],
                 'returned' => ['label' => 'Returned for correction', 'icon' => 'fa-reply', 'empty' => 'Nothing has been returned to you.'],
                 'pending' => ['label' => 'Awaiting review and decision', 'icon' => 'fa-hourglass-half', 'empty' => 'No memo is with the Office of the CEO.'],
                 'approved' => ['label' => 'Approved and authorised', 'icon' => 'fa-circle-check', 'empty' => 'No approved memos yet.'],
@@ -88,7 +89,9 @@ class MemoTracker
             'returned' => $this->perspective($user) === self::PERSPECTIVE_DEPARTMENT ? $query->status(ActivityStatus::ReturnedToHod) : $query->status(ActivityStatus::Returned),
             'ceo_returned' => $query->status(ActivityStatus::Returned),
             'approved' => $query->status(...$this->approvedStatuses()),
-            'declined' => $query->status(ActivityStatus::Declined),
+            // The Office of the CEO sees only memos that reached it; a Head of Department also those they declined.
+            'declined' => $query->status(ActivityStatus::Declined)->when($this->perspective($user) !== self::PERSPECTIVE_DEPARTMENT, fn (Builder $q) => $q
+                ->whereDoesntHave('statusHistory', fn (Builder $h) => $h->where('from_status', ActivityStatus::WithHod->value)->where('to_status', ActivityStatus::Declined->value))),
             'in_review' => $query->status(ActivityStatus::UnderReview),
             'mine' => $query->status(ActivityStatus::UnderReview)->where('review_office', ($office ?? ReviewOffice::ChiefOfStaff)->value),
             'with_hod' => $query->status(ActivityStatus::ReturnedToHod),
@@ -99,7 +102,8 @@ class MemoTracker
                 : $query->where(fn (Builder $q) => $q
                     ->whereHas('statusHistory', fn (Builder $h) => $h->where('user_id', $user->id)->where('created_at', '>=', $since))
                     ->orWhereHas('reviewNotes', fn (Builder $n) => $n->where('user_id', $user->id)->where('created_at', '>=', $since))),
-            'drafts' => $query->status(ActivityStatus::Draft),
+            'drafts' => $query->status(ActivityStatus::Draft)->whereNull('prepared_by_staff_id'),
+            'from_staff' => $query->whereNotNull('prepared_by_staff_id')->status(ActivityStatus::Draft, ActivityStatus::WithHod, ActivityStatus::ReturnedToPreparer),
             'pending' => $query->status(ActivityStatus::UnderReview, ActivityStatus::AwaitingDecision, ActivityStatus::Returned),
             default => $query,
         };
@@ -117,7 +121,7 @@ class MemoTracker
         return match ($this->perspective($user)) {
             self::PERSPECTIVE_CEO => $this->query($user, 'awaiting')->count(),
             self::PERSPECTIVE_REVIEWER => $this->query($user, 'mine')->count() + $this->query($user, 'ceo_returned')->count(),
-            self::PERSPECTIVE_DEPARTMENT => $this->query($user, 'returned')->count(),
+            self::PERSPECTIVE_DEPARTMENT => $this->query($user, 'returned')->count() + $this->query($user, 'from_staff')->status(ActivityStatus::WithHod)->count(),
             default => 0,
         };
     }
@@ -143,7 +147,7 @@ class MemoTracker
 
         return [
             'originated' => $rows->count(),
-            'with_department' => $count(ActivityStatus::Draft, ActivityStatus::ReturnedToHod),
+            'with_department' => $count(ActivityStatus::Draft, ActivityStatus::ReturnedToHod, ActivityStatus::WithHod, ActivityStatus::ReturnedToPreparer),
             'with_acos' => $rows->filter(fn (Activity $a) => $a->status === ActivityStatus::UnderReview && $a->review_office === ReviewOffice::AssistantChiefOfStaff)->count(),
             'with_cos' => $rows->filter(fn (Activity $a) => $a->status === ActivityStatus::UnderReview && $a->review_office === ReviewOffice::ChiefOfStaff)->count(),
             'awaiting_ceo' => $count(ActivityStatus::AwaitingDecision),
@@ -179,7 +183,7 @@ class MemoTracker
     public function stageDurations(Collection $history): array
     {
         $stage = fn (?ActivityStatus $s) => match ($s) {
-            ActivityStatus::Draft, ActivityStatus::ReturnedToHod => 'department',
+            ActivityStatus::Draft, ActivityStatus::ReturnedToHod, ActivityStatus::WithHod, ActivityStatus::ReturnedToPreparer => 'department',
             ActivityStatus::UnderReview, ActivityStatus::Returned => 'review',
             ActivityStatus::AwaitingDecision => 'ceo',
             default => null,

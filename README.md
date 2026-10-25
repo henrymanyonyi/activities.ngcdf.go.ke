@@ -13,7 +13,7 @@ Stack: Laravel 13, PHP 8.3+, Livewire 3, Jetstream (Fortify, two-factor), Tailwi
 ```bash
 composer install && npm install && npm run build
 cp .env.example .env && php artisan key:generate      # set DB_* (db_ngcdf_activities)
-php artisan migrate && php artisan db:seed            # roles, geography, reference lists, thresholds, provisional DSA rates (safe to re-run)
+php artisan migrate && php artisan db:seed            # roles, geography, reference lists, thresholds, the standard DSA rates (safe to re-run)
 php artisan activities:create-user chief_of_staff cos@ngcdf.go.ke "Name"
 php artisan activities:create-user ceo ceo@ngcdf.go.ke "Name"
 composer run dev

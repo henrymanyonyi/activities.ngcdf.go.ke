@@ -73,15 +73,23 @@ it('lets the Head of Department edit a draft but not move it to another departme
         ->organising_department_id->toBe($this->ict->id);
 });
 
-it('asks for the venue and the signed memo before a Head of Department can submit', function () {
+it('asks for the introduction, venue and team before a Head of Department can submit, but no signed upload', function () {
     $memo = $this->editor->create(['title' => 'Review', 'purpose' => 'Review', 'activity_category_id' => ActivityCategory::query()->value('id'), 'start_date' => today()->addDays(10)->toDateString(), 'days' => 1], $this->hod);
 
-    expect(fn () => $this->lifecycle->submitForReview($memo, $this->hod))->toThrow(ActivityWorkflowException::class, 'Add the venue or location before submitting.');
+    expect(fn () => $this->lifecycle->submitForReview($memo, $this->hod))->toThrow(ActivityWorkflowException::class,
+        'Before submitting: Write the introduction and justification (section 1.0 of the memo). Add the venue or location. Add at least one officer to the team.');
 
+    $this->editor->update($memo, ['justification' => 'Systems are due for review.'], $this->hod);
     $this->editor->addLocation($memo, ['venue' => 'Headquarters'], $this->hod);
+    $this->editor->addStaff($memo, [Staff::factory()->create()->id], ParticipantRole::Member, $this->hod);
 
-    expect(fn () => $this->lifecycle->submitForReview($memo->fresh(), $this->hod))->toThrow(ActivityWorkflowException::class, 'Attach the signed memo or concept note before submitting.')
-        ->and($memo->fresh()->status)->toBe(ActivityStatus::Draft);
+    // The generated memo stands as the memo: nothing is uploaded, and the reviewer can still forward it to the CEO.
+    $this->lifecycle->submitForReview($memo->fresh(), $this->hod);
+    expect($memo->fresh()->status)->toBe(ActivityStatus::UnderReview)
+        ->and($memo->documents()->count())->toBe(0);
+
+    $this->lifecycle->forward($memo->fresh(), $this->acos);
+    expect($memo->fresh()->status)->toBe(ActivityStatus::AwaitingDecision);
 });
 
 it('submits the memo to the chosen reviewer, who is alerted, and locks it for the Head of Department', function () {
@@ -137,8 +145,6 @@ it('returns the memo for correction with a mandatory reason, and takes the resub
 it('forwards a reviewed memo to the CEO with the recommendation kept, without approving it', function () {
     $memo = departmentMemo($this->hod);
     $this->lifecycle->submitForReview($memo, $this->hod);
-
-    expect(fn () => $this->lifecycle->forward($memo->fresh(), $this->acos))->toThrow(ActivityWorkflowException::class, 'Add at least one staff participant first.');
 
     $memo = withTeam($memo, $this->acos);
     $where = $this->lifecycle->forward($memo, $this->acos, ReviewRecommendation::Approve, 'Well prepared.');

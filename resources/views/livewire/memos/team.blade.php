@@ -48,7 +48,11 @@
                                     <p class="font-medium text-slate-700">{{ $p->displayName() }}</p>
                                     @if ($p->is_external)<p class="text-[11px] text-slate-400">External{{ $p->external_organisation ? ' · '.$p->external_organisation : '' }}</p>@else<p class="text-[11px] text-slate-400 font-numeric">{{ $p->staff?->staff_number }}</p>@endif
                                     @if (in_array($p->id, $overlapping))
-                                        <p class="text-[12px] {{ $p->conflict_reason ? 'text-slate-500' : 'text-red-600' }} mt-0.5"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Also on another approved activity on these dates.@if ($p->conflict_reason) Reason: {{ $p->conflict_reason }}@endif</p>
+                                        @if ($p->conflict_reason)
+                                            <p class="text-[12px] text-slate-500 mt-0.5"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Also on another approved activity on these dates. Reason: {{ $p->conflict_reason }}</p>
+                                        @else
+                                            <p class="text-[12px] text-red-600 mt-0.5"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Not available on these days: on another approved activity. Remove them, change their days, or ask the Office of the CEO to release them.</p>
+                                        @endif
                                     @endif
                                 </td>
                                 <td class="{{ Ui::TD }}">{{ $p->is_external ? '—' : ($p->department?->name ?? '—') }}</td>
@@ -57,7 +61,6 @@
                                 <td class="{{ Ui::TD }} font-numeric whitespace-nowrap">{{ $p->plannedDays($a) }}{{ $p->isPartial($a) ? ' ('.Ui::dateRange($p->startOn($a), $p->endOn($a)).')' : '' }}</td>
                                 <td class="{{ Ui::TD }} text-right whitespace-nowrap">
                                     @if ($editable)
-                                        @if (in_array($p->id, $overlapping) && ! $p->conflict_reason)<button type="button" wire:click="openExplain({{ $p->id }})" class="{{ Ui::BTN_TINT }}">Give reason</button>@endif
                                         @if ($a->days > 1)<button type="button" wire:click="openDays({{ $p->id }})" class="{{ Ui::BTN_TINT }}">Days</button>@endif
                                         <button type="button" wire:click="confirmRemove({{ $p->id }})" class="{{ Ui::BTN_ICON_DANGER }}" aria-label="Remove {{ $p->displayName() }}"><i class="fa-solid fa-xmark text-xs"></i></button>
                                     @endif
@@ -115,21 +118,45 @@
             <select wire:model="role" class="{{ $sel }} sm:w-44" aria-label="Role">@foreach ($roles as $r)<option value="{{ $r->value }}">{{ $r->label() }}</option>@endforeach</select>
         </div>
         @error('selectedStaff')<p class="text-xs text-red-600" role="alert">{{ $message }}</p>@enderror
+        @php
+            $selectable = $candidates->reject(fn ($st) => isset($unavailable[$st->id]))->pluck('id');
+            $shownTicked = $selectable->intersect($selectedIds)->count();
+            $allShown = $selectable->isNotEmpty() && $shownTicked === $selectable->count();
+            $leftOut = $candidates->count() - $selectable->count();
+        @endphp
+        @if ($selectable->isNotEmpty())
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200">
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" wire:click="toggleShown" @checked($allShown)
+                        x-data x-effect="$el.indeterminate = {{ $shownTicked > 0 && ! $allShown ? 'true' : 'false' }}"
+                        class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                    <span class="text-[13px] font-semibold text-slate-700">{{ $allShown ? 'Clear all shown' : 'Select all shown' }}</span>
+                </label>
+                <span class="text-[12px] text-slate-500 font-numeric">{{ count($selectedIds) }} selected</span>
+                @if ($leftOut > 0)<span class="text-[12px] text-slate-400">· {{ $leftOut }} not available {{ $leftOut === 1 ? 'is' : 'are' }} left out</span>@endif
+                @if ($candidates->count() >= 100)<span class="text-[12px] text-amber-700">· Only the first 100 are shown; search or pick a department to narrow the list.</span>@endif
+            </div>
+        @endif
         <div class="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-[45vh] overflow-y-auto">
             @forelse ($candidates as $st)
-                @php $ticked = in_array($st->id, $selectedIds); $clash = isset($candidateOverlaps[$st->id]); @endphp
-                <div class="px-3 py-2.5 {{ $ticked ? 'bg-emerald-50/50' : '' }}" wire:key="cand-{{ $st->id }}">
-                    <label class="flex items-start gap-3 cursor-pointer">
-                        <input type="checkbox" value="{{ $st->id }}" wire:model.live="selectedStaff" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                @php
+                    $ticked = in_array($st->id, $selectedIds);
+                    $busy = collect($unavailable[$st->id] ?? []);
+                    $maybe = collect($pending[$st->id] ?? []);
+                @endphp
+                <div class="px-3 py-2.5 {{ $busy->isNotEmpty() ? 'bg-slate-50' : ($ticked ? 'bg-emerald-50/50' : '') }}" wire:key="cand-{{ $st->id }}">
+                    <label class="flex items-start gap-3 {{ $busy->isNotEmpty() ? 'cursor-not-allowed' : 'cursor-pointer' }}">
+                        <input type="checkbox" value="{{ $st->id }}" wire:model.live="selectedStaff" class="mt-1 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" @disabled($busy->isNotEmpty() && ! $ticked)>
                         <span class="min-w-0 flex-1">
                             <span class="block text-[13px] font-medium text-slate-700">{{ $st->name }} <span class="text-[11px] text-slate-400 font-numeric">{{ $st->staff_number }}</span></span>
                             <span class="block text-[11px] text-slate-400">{{ $st->designation?->name ?? 'No designation' }} · {{ $st->department?->name ?? 'No department' }} · grade {{ $st->job_grade ?: 'not set' }}</span>
-                            @if ($clash)<span class="block text-[12px] text-amber-700"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Already on another approved activity on these dates.</span>@endif
+                            @if ($busy->isNotEmpty())
+                                <span class="block text-[12px] text-red-600"><i class="fa-solid fa-ban mr-1"></i>Not available until {{ $busy->max('to')->format('d M Y') }}: on another approved activity ({{ $busy->map(fn ($b) => Ui::dateRange($b['from'], $b['to']))->unique()->implode(', ') }}).</span>
+                            @elseif ($maybe->isNotEmpty())
+                                <span class="block text-[12px] text-amber-700"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Also on a memo awaiting decision on these dates. If that memo is approved first, they will not be available.</span>
+                            @endif
                         </span>
                     </label>
-                    @if ($ticked && $clash)
-                        <input type="text" wire:model="conflictReasons.{{ $st->id }}" maxlength="500" placeholder="Reason they can take part in both (required)" aria-label="Reason for {{ $st->name }}" class="{{ Ui::CONTROL }} mt-2 ml-7 w-[calc(100%-1.75rem)]">
-                    @endif
                 </div>
             @empty
                 <p class="px-3 py-6 text-center text-[13px] text-slate-400">No officer matches. Check the spelling, or add the officer to the staff list.</p>
@@ -149,7 +176,7 @@
             <x-ui.field label="Name" for="ns-n" error="staffName" required><input id="ns-n" type="text" wire:model="staffName" maxlength="255" class="{{ Ui::CONTROL }}"></x-ui.field>
             <x-ui.field label="Department" for="ns-d" error="staffDepartmentId" required><select id="ns-d" wire:model="staffDepartmentId" class="{{ $sel }}"><option value="">Choose…</option>@foreach ($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select></x-ui.field>
             <x-ui.field label="Designation" for="ns-des" error="staffDesignationId"><select id="ns-des" wire:model="staffDesignationId" class="{{ $sel }}"><option value="">Choose…</option>@foreach ($designations as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select></x-ui.field>
-            <x-ui.field label="Job grade" for="ns-g" error="staffJobGrade" hint="Sets the officer's DSA rate, e.g. NGCDF 5."><input id="ns-g" type="text" wire:model="staffJobGrade" maxlength="20" class="{{ Ui::CONTROL }}"></x-ui.field>
+            <x-ui.field label="Job grade" for="ns-g" error="staffJobGrade" hint="The scale from the HR register (1 to 10); it sets the officer's DSA rate."><input id="ns-g" type="text" wire:model="staffJobGrade" maxlength="20" class="{{ Ui::CONTROL }}"></x-ui.field>
             <x-ui.field label="Duty station" for="ns-o" error="staffOfficeId"><select id="ns-o" wire:model="staffOfficeId" class="{{ $sel }}"><option value="">Choose…</option>@foreach ($offices as $o)<option value="{{ $o->id }}">{{ $o->name }}</option>@endforeach</select></x-ui.field>
         </div>
         <x-slot:footer>
@@ -184,19 +211,9 @@
             <x-ui.field label="First day" for="d-s" error="daysStart" required><input id="d-s" type="date" wire:model="daysStart" min="{{ $a->start_date->toDateString() }}" max="{{ $a->end_date->toDateString() }}" class="{{ Ui::CONTROL }}"></x-ui.field>
             <x-ui.field label="Number of days" for="d-c" error="daysCount" required><input id="d-c" type="number" min="1" max="{{ $a->days }}" wire:model="daysCount" class="{{ Ui::CONTROL }} font-numeric"></x-ui.field>
         </div>
-        <x-ui.field label="Reason, if these days overlap another activity" for="d-r" error="overlapReason"><input id="d-r" type="text" wire:model="overlapReason" maxlength="500" class="{{ Ui::CONTROL }}"></x-ui.field>
         <x-slot:footer>
             <button type="button" wire:click="$set('showDays', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
             <button type="button" wire:click="saveDays" wire:loading.attr="disabled" wire:target="saveDays" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-floppy-disk text-xs"></i>Save days</button>
-        </x-slot:footer>
-    </x-ui.modal>
-
-    {{-- Explain an overlap --}}
-    <x-ui.modal show="showExplain" :open="$showExplain" size="slim" icon="fa-triangle-exclamation" :title="'Why can '.($selected?->displayName() ?? 'this officer').' take part?'" subtitle="They are on another approved activity on these dates. The memo cannot go to the CEO until each overlap has a reason.">
-        <x-ui.field label="Reason" for="x-r" error="overlapReason" required><textarea id="x-r" wire:model="overlapReason" rows="3" maxlength="500" class="{{ Ui::CONTROL }}"></textarea></x-ui.field>
-        <x-slot:footer>
-            <button type="button" wire:click="$set('showExplain', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
-            <button type="button" wire:click="explainConflict" wire:loading.attr="disabled" wire:target="explainConflict" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-floppy-disk text-xs"></i>Save reason</button>
         </x-slot:footer>
     </x-ui.modal>
 

@@ -11,14 +11,17 @@ use App\Models\BudgetLine;
 use App\Models\Constituency;
 use App\Models\County;
 use App\Models\Department;
+use App\Models\DepartmentBudget;
 use App\Models\Region;
 use App\Models\User;
 use App\Services\ActivityEditor;
+use App\Services\BudgetPosition;
 use App\Services\DocumentStore;
 use App\Support\FinancialYear;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -47,6 +50,11 @@ class Form extends Component
     public string $notes = '';
 
     public string $justification = '';
+
+    public string $risks = '';
+
+    /** @var list<array{heading: string, body: string}> sections the template does not cover */
+    public array $memo_sections = [];
 
     public string $target_audience = '';
 
@@ -99,9 +107,10 @@ class Form extends Component
             $this->activity = $activity;
             $this->loadedVersion = (string) $activity->updated_at?->toIso8601String();
             // Optional columns are NULL in the database but strings here, so cast before filling.
-            foreach (['title', 'purpose', 'expected_outputs', 'justification', 'target_audience', 'requested_budget', 'notes', 'source_reference', 'activity_category_id', 'activity_type_id', 'organising_department_id', 'budget_line_id', 'responsible_hod_id', 'responsible_hod_name'] as $key) {
+            foreach (['title', 'purpose', 'expected_outputs', 'justification', 'risks', 'target_audience', 'requested_budget', 'notes', 'source_reference', 'activity_category_id', 'activity_type_id', 'organising_department_id', 'budget_line_id', 'responsible_hod_id', 'responsible_hod_name'] as $key) {
                 $this->{$key} = (string) ($activity->{$key} ?? '');
             }
+            $this->memo_sections = collect((array) $activity->memo_sections)->map(fn ($s) => ['heading' => (string) ($s['heading'] ?? ''), 'body' => (string) ($s['body'] ?? '')])->values()->all();
             $this->days = $activity->days;
             $this->count_externals_in_per_head = (bool) $activity->count_externals_in_per_head;
             $this->source_received_on = $activity->source_received_on?->toDateString() ?? '';
@@ -130,6 +139,20 @@ class Form extends Component
     public function updatedResponsibleHodId(string $value): void
     {
         $this->responsible_hod_name = $value !== '' ? (string) User::query()->whereKey($value)->value('name') : '';
+    }
+
+    /** Another section of the memo, after the template's own. */
+    public function addSection(): void
+    {
+        if (count($this->memo_sections) < 10) {
+            $this->memo_sections[] = ['heading' => '', 'body' => ''];
+        }
+    }
+
+    public function removeSection(int $index): void
+    {
+        unset($this->memo_sections[$index]);
+        $this->memo_sections = array_values($this->memo_sections);
     }
 
     public function updatedActivityCategoryId(): void
@@ -166,6 +189,10 @@ class Form extends Component
             'purpose' => ['required', 'string', 'max:5000'],
             'expected_outputs' => ['nullable', 'string', 'max:5000'],
             'justification' => ['nullable', 'string', 'max:5000'],
+            'risks' => ['nullable', 'string', 'max:5000'],
+            'memo_sections' => ['array', 'max:10'],
+            'memo_sections.*.heading' => ['required', 'string', 'max:150'],
+            'memo_sections.*.body' => ['required', 'string', 'max:5000'],
             'target_audience' => ['nullable', 'string', 'max:255'],
             'requested_budget' => ['nullable', 'numeric', 'min:0', 'max:9999999999999', 'regex:/^\d+(\.\d{1,2})?$/'],
             'responsible_hod_id' => ['nullable', 'exists:users,id'],
@@ -174,7 +201,8 @@ class Form extends Component
             'activity_category_id' => ['required', 'exists:activity_categories,id'],
             'activity_type_id' => ['nullable', 'exists:activity_types,id'],
             'organising_department_id' => ['required', 'exists:departments,id'],
-            'budget_line_id' => ['nullable', 'exists:budget_lines,id'],
+            // Only a line of a budget the CEO has approved can be charged.
+            'budget_line_id' => ['nullable', Rule::exists('budget_lines', 'id')->whereNull('deleted_at')->whereIn('department_budget_id', DepartmentBudget::query()->approved()->pluck('id')->all())],
             'source_reference' => ['nullable', 'string', 'max:100'],
             'source_received_on' => ['nullable', 'date', 'before_or_equal:today'],
             'start_date' => ['required', 'date'],
@@ -192,7 +220,7 @@ class Form extends Component
     /** @return array<string, string> */
     protected function validationAttributes(): array
     {
-        return ['purpose' => 'purpose', 'organising_department_id' => 'requesting department', 'activity_category_id' => 'category', 'memo' => 'source document', 'requested_budget' => 'estimated budget', 'target_audience' => 'participants', 'responsible_hod_id' => 'Head of Department', 'responsible_hod_name' => 'Head of Department'];
+        return ['purpose' => 'purpose', 'organising_department_id' => 'requesting department', 'activity_category_id' => 'category', 'memo' => 'source document', 'justification' => 'introduction and justification', 'risks' => 'key risks', 'memo_sections.*.heading' => 'section heading', 'memo_sections.*.body' => 'section text', 'requested_budget' => 'estimated budget', 'target_audience' => 'participants', 'responsible_hod_id' => 'Head of Department', 'responsible_hod_name' => 'Head of Department'];
     }
 
     public function save(ActivityEditor $editor, DocumentStore $documents): void
@@ -212,13 +240,13 @@ class Form extends Component
             return;
         }
 
-        $fields = ['title', 'purpose', 'expected_outputs', 'justification', 'target_audience', 'requested_budget', 'notes', 'activity_category_id', 'activity_type_id', 'organising_department_id',
+        $fields = ['title', 'purpose', 'expected_outputs', 'justification', 'risks', 'memo_sections', 'target_audience', 'requested_budget', 'notes', 'activity_category_id', 'activity_type_id', 'organising_department_id',
             'budget_line_id', 'source_reference', 'source_received_on', 'start_date', 'days', 'count_externals_in_per_head'];
         if ($this->isOffice()) {
             $fields = [...$fields, 'responsible_hod_id', 'responsible_hod_name'];
         }
 
-        $details = collect($data)->only($fields)->map(fn ($v) => $v === '' ? null : $v)->all();
+        $details = collect($data)->only($fields)->map(fn ($v) => $v === '' || $v === [] ? null : $v)->all();
 
         $activity = $this->attempt(function () use ($editor, $documents, $details, $data, $user) {
             if ($this->activity) {
@@ -259,7 +287,7 @@ class Form extends Component
         }
     }
 
-    public function render(): View
+    public function render(BudgetPosition $budget): View
     {
         $start = $this->start_date ? Carbon::parse($this->start_date) : null;
         $days = max(1, (int) $this->days);
@@ -275,7 +303,8 @@ class Form extends Component
                 ? User::query()->role(User::ROLE_HOD)->where('department_id', $this->organising_department_id)->orderByDesc('is_active')->orderBy('name')->get(['id', 'name', 'is_active'])
                 : collect(),
             'office' => $this->isOffice(),
-            'budgetLines' => BudgetLine::query()->where('financial_year', $fy)->when($this->organising_department_id, fn ($q, $id) => $q->where('department_id', $id))->orderBy('name')->get(),
+            'budget' => $this->organising_department_id ? $budget->forDepartment(FinancialYear::fromLabel($fy), (int) $this->organising_department_id) : null,
+            'budgetLines' => BudgetLine::query()->approved()->where('financial_year', $fy)->when($this->organising_department_id, fn ($q, $id) => $q->where('department_id', $id))->orderBy('name')->get(),
             'regions' => Region::query()->orderBy('name')->get(['id', 'name']),
             'counties' => County::query()->when($this->region_id, fn ($q, $id) => $q->whereHas('constituencies', fn ($c) => $c->where('region_id', $id)))->orderBy('name')->get(['id', 'name']),
             'constituencies' => $this->county_id ? Constituency::query()->where('county_id', $this->county_id)->orderBy('name')->get(['id', 'name']) : collect(),

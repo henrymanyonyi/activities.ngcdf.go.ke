@@ -10,6 +10,7 @@ use App\Enums\ReviewOffice;
 use App\Models\Concerns\Auditable;
 use App\Support\FinancialYear;
 use App\Support\Money;
+use App\Support\WorkingDays;
 use Database\Factories\ActivityFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -44,6 +45,8 @@ class Activity extends Model
         'purpose',
         'expected_outputs',
         'justification',
+        'risks',
+        'memo_sections',
         'requested_budget',
         'responsible_hod_id',
         'responsible_hod_name',
@@ -64,6 +67,7 @@ class Activity extends Model
         'imprest_reference',
         'imprest_status',
         'submission_link_id',
+        'prepared_by_staff_id',
         'submitted_by_name',
         'submitted_by_email',
         'submitted_by_phone',
@@ -105,6 +109,7 @@ class Activity extends Model
             'actual_total' => 'decimal:2',
             'cost_total' => 'decimal:2',
             'requested_budget' => 'decimal:2',
+            'memo_sections' => 'array',
         ];
     }
 
@@ -217,6 +222,16 @@ class Activity extends Model
         return $this->hasOne(CeoDecision::class)->latestOfMany();
     }
 
+    /**
+     * The CEO's instructions to Finance and Procurement (App\Services\ActionInstructions).
+     *
+     * @return HasMany<ActionInstruction, $this>
+     */
+    public function instructions(): HasMany
+    {
+        return $this->hasMany(ActionInstruction::class);
+    }
+
     /** @return HasMany<Directive, $this> */
     public function directives(): HasMany
     {
@@ -247,6 +262,46 @@ class Activity extends Model
         return $this->belongsTo(User::class, 'responsible_hod_id');
     }
 
+    /** @return HasMany<ParticipantRelease, $this> */
+    public function releases(): HasMany
+    {
+        return $this->hasMany(ParticipantRelease::class)->orderBy('id');
+    }
+
+    /**
+     * Prepared in the system by the responsible Head of Department, so the
+     * memo the system generates stands as the memo (no signed upload needed).
+     */
+    /** @return BelongsTo<Staff, $this> */
+    public function preparedBy(): BelongsTo
+    {
+        return $this->belongsTo(Staff::class, 'prepared_by_staff_id')->withTrashed();
+    }
+
+    /** Prepared by an officer through a Head of Department's delegated link (App\Services\DelegatedMemos). */
+    public function isDelegated(): bool
+    {
+        return $this->prepared_by_staff_id !== null;
+    }
+
+    /** The officer who prepares it has it: being written, or returned to them. The Head does not edit it meanwhile. */
+    public function isWithPreparer(): bool
+    {
+        return $this->isDelegated() && in_array($this->status, [ActivityStatus::Draft, ActivityStatus::ReturnedToPreparer], true);
+    }
+
+    /** Declined by the Head of Department before it ever reached the Office of the CEO. */
+    public function wasDeclinedByHod(): bool
+    {
+        return $this->status === ActivityStatus::Declined && $this->statusHistory()
+            ->where('from_status', ActivityStatus::WithHod->value)->where('to_status', ActivityStatus::Declined->value)->exists();
+    }
+
+    public function isDepartmentOriginated(): bool
+    {
+        return $this->responsible_hod_id !== null && (int) $this->responsible_hod_id === (int) $this->created_by;
+    }
+
     /** @return HasMany<ActivityReviewNote, $this> */
     public function reviewNotes(): HasMany
     {
@@ -267,7 +322,7 @@ class Activity extends Model
     /** A draft the Head of Department is still preparing (not one the Office of the CEO is recording). */
     public function isDepartmentDraft(): bool
     {
-        return $this->status === ActivityStatus::Draft && $this->responsible_hod_id !== null && (int) $this->responsible_hod_id === (int) $this->created_by;
+        return $this->status === ActivityStatus::Draft && $this->isDepartmentOriginated();
     }
 
     /** Who holds the memo now. */
@@ -276,12 +331,14 @@ class Activity extends Model
         $department = $this->organisingDepartment?->name;
 
         return match ($this->status) {
-            ActivityStatus::Draft => $this->isDepartmentDraft() ? 'Head of Department'.($department ? ", {$department}" : '') : 'Office of the CEO',
+            ActivityStatus::Draft => $this->isWithPreparer() ? ($this->submitted_by_name ?: 'The officer preparing it') : ($this->isDepartmentDraft() ? 'Head of Department'.($department ? ", {$department}" : '') : 'Office of the CEO'),
+            ActivityStatus::ReturnedToPreparer => $this->submitted_by_name ?: 'The officer preparing it',
+            ActivityStatus::WithHod => 'Head of Department'.($department ? ", {$department}" : ''),
             ActivityStatus::ReturnedToHod => 'Head of Department'.($department ? ", {$department}" : ''),
             ActivityStatus::UnderReview => $this->review_office?->label() ?? 'Office of the CEO',
             ActivityStatus::AwaitingDecision => 'Chief Executive Officer',
             ActivityStatus::Returned => 'Chief of Staff and Assistant Chief of Staff',
-            ActivityStatus::Declined => 'Nobody: the CEO declined it',
+            ActivityStatus::Declined => $this->wasDeclinedByHod() ? 'Nobody: the Head of Department declined it' : 'Nobody: the CEO declined it',
             default => 'Nobody: the CEO has decided',
         };
     }
@@ -290,12 +347,18 @@ class Activity extends Model
     public function nextAction(): string
     {
         return match ($this->status) {
-            ActivityStatus::Draft => $this->isDepartmentDraft() ? 'Complete the memo and submit it for review.' : 'Complete the memo and forward it to the CEO.',
+            ActivityStatus::Draft => match (true) {
+                $this->isWithPreparer() => 'The officer completes the memo and submits it to the Head of Department.',
+                $this->isDepartmentDraft() => 'Complete the memo and submit it for review.',
+                default => 'Complete the memo and forward it to the CEO.',
+            },
+            ActivityStatus::WithHod => 'The Head of Department forwards it to the Chief of Staff, returns it to the officer or declines it.',
+            ActivityStatus::ReturnedToPreparer => 'The officer makes the changes asked for and submits it again.',
             ActivityStatus::UnderReview => 'Review the memo, then forward it or return it for correction.',
             ActivityStatus::ReturnedToHod => 'Make the corrections asked for and resubmit.',
             ActivityStatus::AwaitingDecision => 'The CEO approves and authorises, declines, or returns it.',
             ActivityStatus::Returned => 'Answer the CEO\'s comments, then forward it again or return it to the Head of Department.',
-            ActivityStatus::Declined => 'None. The CEO declined this memo.',
+            ActivityStatus::Declined => $this->wasDeclinedByHod() ? 'None. The Head of Department declined this memo.' : 'None. The CEO declined this memo.',
             ActivityStatus::Cancelled => 'None. The activity was cancelled.',
             default => 'None. Approved and authorised'.($this->approved_at ? ' on '.$this->approved_at->format('d M Y') : '').'.',
         };
@@ -338,9 +401,63 @@ class Activity extends Model
         return $heads > 0 ? Money::divide(Money::toCents($this->cost_total), $heads) : null;
     }
 
+    /** Completed, past the report due date, and the department's report is not in (none yet, or returned for correction). */
     public function isReportOverdue(): bool
     {
-        return $this->status === ActivityStatus::Completed && $this->report_due_on?->isBefore(today());
+        if ($this->status !== ActivityStatus::Completed || ! $this->report_due_on?->isBefore(today())) {
+            return false;
+        }
+        $report = $this->reportReceipt();
+
+        return ! $report || $report->isReturned();
+    }
+
+    /** The report, loaded if a list did not load it (lists call rag() on every row). */
+    private function reportReceipt(): ?ReportReceipt
+    {
+        return $this->relationLoaded('report') ? $this->report : $this->report()->first();
+    }
+
+    /**
+     * Whether the activity report reached the CEO within the due period
+     * (Settings › Thresholds, working days after the end date). Timed from
+     * the date it was first received.
+     *
+     * @return array{status: 'on_time'|'late'|'due'|'overdue', days: int, received_on: ?Carbon, due_on: Carbon}|null
+     */
+    public function reportTimeliness(): ?array
+    {
+        if (! $this->report_due_on) {
+            return null;
+        }
+
+        $received = $this->reportReceipt()?->received_on;
+        if ($received) {
+            $late = WorkingDays::between($this->report_due_on, $received);
+
+            return ['status' => $late > 0 ? 'late' : 'on_time', 'days' => $late, 'received_on' => $received, 'due_on' => $this->report_due_on];
+        }
+
+        $late = WorkingDays::between($this->report_due_on, today());
+
+        return $late > 0
+            ? ['status' => 'overdue', 'days' => $late, 'received_on' => null, 'due_on' => $this->report_due_on]
+            : ['status' => 'due', 'days' => WorkingDays::between(today(), $this->report_due_on), 'received_on' => null, 'due_on' => $this->report_due_on];
+    }
+
+    /** "Submitted on time", "Submitted 2 working days late", "Due in 3 working days", "Overdue by 4 working days". */
+    public function reportTimelinessLabel(): ?string
+    {
+        $t = $this->reportTimeliness();
+        $days = fn (int $n) => $n.' working '.($n === 1 ? 'day' : 'days');
+
+        return match ($t['status'] ?? null) {
+            'on_time' => 'Submitted on time',
+            'late' => 'Submitted '.$days($t['days']).' late',
+            'overdue' => 'Overdue by '.$days($t['days']),
+            'due' => $t['days'] === 0 ? 'Due today' : 'Due in '.$days($t['days']),
+            default => null,
+        };
     }
 
     /**

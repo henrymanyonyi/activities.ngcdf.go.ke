@@ -15,10 +15,14 @@ final class ReportCatalog
         Definitions\PlannedAgainstActual::class,
         Definitions\OfficerFieldDays::class,
         Definitions\DepartmentFieldExpenditure::class,
+        Definitions\BudgetPositionReport::class,
+        Definitions\BudgetAdjustmentsRegister::class,
+        Definitions\ReportCompliance::class,
         Definitions\OverdueReportsAndDirectives::class,
         Definitions\Coverage::class,
         Definitions\ActivityRegister::class,
         Definitions\AccessAndAuditLog::class,
+        Definitions\MessageDeliveryLog::class,
     ];
 
     /** @return Collection<string, Report> */

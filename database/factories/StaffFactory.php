@@ -21,7 +21,7 @@ class StaffFactory extends Factory
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
             'department_id' => Department::factory(),
-            'job_grade' => 'NGCDF 5',
+            'job_grade' => '5',
             'is_active' => true,
             'source' => 'manual',
         ];

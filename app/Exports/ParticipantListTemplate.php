@@ -3,15 +3,24 @@
 namespace App\Exports;
 
 use App\Services\ParticipantListImporter;
+use App\Support\DocumentFont;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithDefaultStyles;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithStyles;
+use PhpOffice\PhpSpreadsheet\Style\Style;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 /** The published participant-list format, with two example rows (one staff, one external). */
-class ParticipantListTemplate implements FromArray, ShouldAutoSize, WithHeadings, WithStyles
+class ParticipantListTemplate implements FromArray, ShouldAutoSize, WithDefaultStyles, WithHeadings, WithStyles
 {
+    /** @return array<string, mixed> */
+    public function defaultStyles(Style $defaultStyle): array
+    {
+        return ['font' => ['name' => DocumentFont::NAME]];
+    }
+
     /** @return list<string> */
     public function headings(): array
     {
@@ -22,7 +31,7 @@ class ParticipantListTemplate implements FromArray, ShouldAutoSize, WithHeadings
     public function array(): array
     {
         return [
-            ['NGCDF/0123', 'Jane Wanjiru', 'Monitoring & Evaluation', 'Senior Officer', 'NGCDF 5', 'Headquarters', 'Nairobi Region', 'Team lead', 3, 'No', '', '', 'jane@example.go.ke', '0700000000'],
+            ['NGCDF/0123', 'Jane Wanjiru', 'Monitoring & Evaluation', 'Senior Officer', '5', 'Headquarters', 'Nairobi Region', 'Team lead', 3, 'No', '', '', 'jane@example.go.ke', '0700000000'],
             ['', 'Hon. John Doe', '', '', '', '', '', 'Member', 2, 'Yes', 'National Assembly', 'Member of Parliament', '', ''],
         ];
     }

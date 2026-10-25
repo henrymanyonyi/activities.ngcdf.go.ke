@@ -6,14 +6,20 @@ use App\Enums\ReviewOffice;
 use App\Models\Activity;
 use App\Models\User;
 use App\Notifications\ActivityAlert;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Notification;
 
 /**
  * Routes in-app alerts to the authorised users only (BR-11): the Office of
- * the CEO, and a Head of Department only about their own department's memos.
+ * the CEO, a Head of Department only about their own department's memos, and
+ * the Heads of Finance and Procurement only about the CEO's instructions to them.
+ * An alert that needs action also goes to the same people by email and SMS,
+ * reference only (App\Services\OutboundAlerts).
  */
 class Alerts
 {
+    public function __construct(private OutboundAlerts $outbound) {}
+
     public function toCeo(ActivityAlert $alert): void
     {
         $this->send([User::ROLE_CEO], $alert);
@@ -41,9 +47,28 @@ class Alerts
             ->when(! $activity->organising_department_id && ! $activity->responsible_hod_id, fn ($q) => $q->whereRaw('1 = 0'))
             ->get();
 
-        if ($recipients->isNotEmpty()) {
-            Notification::send($recipients, $alert);
-        }
+        $this->deliver($recipients, $alert);
+    }
+
+    /** The active Head of a department (Finance or Procurement receiving an instruction). */
+    public function toHeadOf(int $departmentId, ActivityAlert $alert): void
+    {
+        $recipients = User::query()->role(User::ROLE_HOD)->where('is_active', true)->where('department_id', $departmentId)->get();
+
+        $this->deliver($recipients, $alert);
+    }
+
+    /**
+     * Named users: budget preparers in the Office of the CEO, or the Head of the department whose
+     * workplan and budget it is (callers pass only that department's Head). Anyone else is skipped.
+     *
+     * @param  iterable<User>  $users
+     */
+    public function toUsers(iterable $users, ActivityAlert $alert): void
+    {
+        $recipients = collect($users)->filter(fn (User $u) => $u->is_active && $u->hasAnyRole([User::ROLE_CEO, User::ROLE_CHIEF_OF_STAFF, User::ROLE_ASSISTANT_CHIEF_OF_STAFF, User::ROLE_HOD]));
+
+        $this->deliver($recipients, $alert);
     }
 
     /** @param  list<string>  $roles */
@@ -51,8 +76,17 @@ class Alerts
     {
         $recipients = User::query()->role($roles)->where('is_active', true)->get();
 
-        if ($recipients->isNotEmpty()) {
-            Notification::send($recipients, $alert);
+        $this->deliver($recipients, $alert);
+    }
+
+    /** @param  Collection<int, User>  $recipients */
+    private function deliver(Collection $recipients, ActivityAlert $alert): void
+    {
+        if ($recipients->isEmpty()) {
+            return;
         }
+
+        Notification::send($recipients, $alert);
+        $this->outbound->send($recipients, $alert);
     }
 }

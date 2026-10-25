@@ -23,7 +23,7 @@ it('imports the sample HR staff list into the seeded departments', function () {
         ->and($result['created'])->toBe(16)
         ->and(Department::count())->toBe($departments)
         ->and(Staff::where('is_active', true)->count())->toBe(15)
-        ->and(Staff::where('staff_number', 'PF1008')->first()->job_grade)->toBe('NGCDF 4');
+        ->and(Staff::where('staff_number', 'PF1008')->first()->job_grade)->toBe('4');
 });
 
 it('reads the sample participant list without errors', function () {
@@ -35,8 +35,8 @@ it('reads the sample participant list without errors', function () {
 it('matches the figures and steps in the testing guide walkthrough', function () {
     Storage::fake('local');
     app(StaffImporter::class)->import(base_path('docs/samples/hr-staff-list.csv'));
-    foreach (['NGCDF 5' => '8400', 'NGCDF 6' => '7000', 'NGCDF 8' => '5600'] as $grade => $rate) {
-        DsaRate::create(['job_grade' => $grade, 'destination_category' => 'Other towns', 'amount' => $rate, 'effective_from' => '2026-07-01']);
+    foreach (['5' => '8400', '6' => '7000', '8' => '5600'] as $grade => $rate) {
+        DsaRate::create(['job_grade' => $grade, 'amount' => $rate, 'effective_from' => '2026-07-01']);
     }
 
     $cos = chiefOfStaff();

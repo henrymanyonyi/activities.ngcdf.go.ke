@@ -8,7 +8,6 @@ use App\Models\Activity;
 use App\Models\ActivityCost;
 use App\Models\ActivityLocation;
 use App\Models\ActivityParticipant;
-use App\Models\BudgetLine;
 use App\Models\Constituency;
 use App\Models\County;
 use App\Models\Department;
@@ -169,7 +168,9 @@ class Analytics
 
     /**
      * DB-03 (concept Department Costs), grouped by requesting department or
-     * by the officer's department, with budget and variance where recorded.
+     * by the officer's department, with the allocation and balance for the
+     * period's financial year where recorded (both from BudgetPosition, so
+     * they match the Budget position view).
      *
      * @param  'requesting'|'officer'  $lens
      * @return Collection<int, array<string, mixed>>
@@ -215,17 +216,13 @@ class Analytics
             }
         }
 
-        $budgets = BudgetLine::query()
-            ->where('financial_year', FinancialYear::for($period->from)->label())
-            ->get()
-            ->groupBy('department_id')
-            ->map(fn ($lines) => $lines->sum(fn ($l) => Money::toCents($l->amount)));
+        $positions = app(BudgetPosition::class)->forYear(FinancialYear::for($period->from))->keyBy(fn ($r) => $r['department']?->id ?? 0);
 
-        return collect($rows)->map(function ($r, $key) use ($budgets, $lens) {
+        return collect($rows)->map(function ($r, $key) use ($positions, $lens) {
             $r['staff_count'] = count($r['staff']);
             $r['activity_count'] = count($r['activities']);
-            $r['budget'] = $lens === 'requesting' ? ($budgets[$key] ?? null) : null;
-            $r['variance'] = $r['budget'] === null ? null : $r['budget'] - $r['total'];
+            $r['budget'] = $lens === 'requesting' ? ($positions[$key]['allocation'] ?? null) : null;
+            $r['variance'] = $r['budget'] === null ? null : $positions[$key]['balance'];
             unset($r['staff'], $r['activities']);
 
             return $r;

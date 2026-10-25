@@ -27,13 +27,16 @@
                 <input type="date" wire:model.live="from" class="{{ Ui::CONTROL }} shrink-0 sm:w-44" aria-label="From">
                 <input type="date" wire:model.live="to" class="{{ Ui::CONTROL }} shrink-0 sm:w-44" aria-label="To">
             @endif
+            @if (in_array('fy', $wants))
+                <select wire:model.live="fy" class="{{ $sel }} shrink-0 sm:w-36" aria-label="Financial year"><option value="">FY {{ \App\Support\FinancialYear::current()->label() }}</option>@foreach ($years as $y)<option value="{{ $y }}">FY {{ $y }}</option>@endforeach</select>
+            @endif
             @if (in_array('department', $wants))
                 <select wire:model.live="department_id" class="{{ $sel }} shrink-0 sm:w-56" aria-label="Department"><option value="">All departments</option>@foreach ($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select>
             @endif
             @if (in_array('week', $wants))
                 <input type="date" wire:model.live="week" class="{{ Ui::CONTROL }} shrink-0 sm:w-44" aria-label="Any day in the week">
             @endif
-            <span class="ml-auto text-[11px] text-slate-400">A date range overrides the year and quarter.</span>
+            @if (in_array('period', $wants))<span class="ml-auto text-[11px] text-slate-400">A date range overrides the year and quarter.</span>@endif
         </x-slot:filters>
     @endif
 

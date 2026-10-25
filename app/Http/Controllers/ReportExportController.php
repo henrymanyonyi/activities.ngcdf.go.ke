@@ -39,7 +39,7 @@ class ReportExportController extends Controller
 
         return match ($format) {
             'xlsx' => Excel::download(new ReportExport($definition, $filters, $rows, $request->user()), "{$name}.xlsx"),
-            'pdf' => Pdf::loadView('reports.document', $data)->setPaper('a4', 'landscape')->download("{$name}.pdf"),
+            'pdf' => Pdf::loadView('reports.document', $data)->setPaper('a4', 'landscape')->setOption('isFontSubsettingEnabled', true)->download("{$name}.pdf"),
             'print' => response()->view('reports.document', $data + ['print' => true]),
         };
     }

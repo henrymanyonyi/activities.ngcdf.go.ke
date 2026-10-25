@@ -2,13 +2,19 @@
 
 namespace App\Livewire;
 
+use App\Enums\EmploymentType;
 use App\Livewire\Concerns\RunsActions;
 use App\Models\Department;
 use App\Models\Designation;
 use App\Models\Office;
 use App\Models\Staff;
+use App\Models\User;
+use App\Rules\DsaGrade;
+use App\Services\StaffChanges;
 use App\Services\StaffImporter;
 use App\Services\StaffRecords;
+use App\Support\MobileNumber;
+use Closure;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -22,8 +28,11 @@ use Livewire\WithPagination;
 /**
  * FRD MD-01: the staff list, maintained by the Office of the CEO on screen and
  * by Excel import. A Head of Department sees it and adds officers who are
- * missing, so they can build a team; they correct only the records they added
- * (App\Services\StaffRecords).
+ * missing, one by one or by importing a list, so they can build a team; they
+ * correct only the records they added (App\Services\StaffRecords,
+ * App\Services\StaffImporter). The System Administrator, the CEO, the Chief
+ * of Staff and the Assistant also record promotions, transfers and changes of
+ * system access here (App\Services\StaffChanges), with their history.
  */
 #[Layout('layouts.admin')]
 #[Title('Staff list')]
@@ -64,6 +73,10 @@ class StaffList extends Component
 
     public string $office_id = '';
 
+    public string $employment_type = 'permanent';
+
+    public string $contract_ends_on = '';
+
     public bool $is_active = true;
 
     public $file = null;
@@ -71,17 +84,48 @@ class StaffList extends Component
     /** @var list<string> */
     public array $importErrors = [];
 
+    /** What a checked file would do, before it is imported. */
+    public ?string $importCheck = null;
+
+    // Promotion, transfer or change of access
+    public bool $showPosition = false;
+
+    public ?int $positionStaffId = null;
+
+    public string $posDepartment = '';
+
+    public string $posDesignation = '';
+
+    public string $posAccess = StaffChanges::KEEP;
+
+    public bool $posReplaceHead = false;
+
+    public string $posEffective = '';
+
+    public string $posReason = '';
+
+    public string $posReference = '';
+
+    /** Shown once after an account is made, never stored in plain text. */
+    public ?string $oneTimePassword = null;
+
+    public ?string $oneTimeFor = null;
+
     public function updated(string $property): void
     {
         if (in_array($property, ['search', 'department_id', 'state'], true)) {
             $this->resetPage();
+        }
+
+        if ($property === 'file') {
+            $this->reset(['importErrors', 'importCheck']);
         }
     }
 
     public function edit(?int $id = null): void
     {
         $this->resetErrorBag();
-        $this->reset(['staff_number', 'name', 'email', 'phone', 'form_department_id', 'designation_id', 'job_grade', 'office_id']);
+        $this->reset(['staff_number', 'name', 'email', 'phone', 'form_department_id', 'designation_id', 'job_grade', 'office_id', 'employment_type', 'contract_ends_on']);
         $this->is_active = true;
         $this->editingId = $id;
 
@@ -96,6 +140,8 @@ class StaffList extends Component
             $this->designation_id = (string) ($s->designation_id ?? '');
             $this->job_grade = (string) $s->job_grade;
             $this->office_id = (string) ($s->office_id ?? '');
+            $this->employment_type = $s->employment_type->value;
+            $this->contract_ends_on = (string) $s->contract_ends_on?->toDateString();
             $this->is_active = $s->is_active;
         }
 
@@ -105,22 +151,26 @@ class StaffList extends Component
     public function save(StaffRecords $records): void
     {
         $data = $this->validate([
-            'staff_number' => ['required', 'string', 'max:30', Rule::unique('staff', 'staff_number')->ignore($this->editingId)],
+            'staff_number' => [Rule::requiredIf($this->employment_type === EmploymentType::Permanent->value), 'nullable', 'string', 'max:30', Rule::unique('staff', 'staff_number')->ignore($this->editingId)],
+            'employment_type' => ['required', Rule::enum(EmploymentType::class)],
+            'contract_ends_on' => ['nullable', 'date'],
             'name' => ['required', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:30'],
+            'phone' => ['nullable', 'string', 'max:30', fn (string $attribute, mixed $value, Closure $fail) => MobileNumber::isValid($value) || $fail('Enter a Kenyan mobile number, e.g. 0712 345 678.')],
             'form_department_id' => ['required', 'exists:departments,id'],
             'designation_id' => ['nullable', 'exists:designations,id'],
-            'job_grade' => ['nullable', 'string', 'max:20'],
+            'job_grade' => ['nullable', 'string', 'max:20', new DsaGrade(EmploymentType::tryFrom($this->employment_type) ?? EmploymentType::Permanent)],
             'office_id' => ['nullable', 'exists:offices,id'],
             'is_active' => ['boolean'],
-        ], [], ['staff_number' => 'PF number', 'form_department_id' => 'department']);
+        ], ['staff_number.required' => 'The PF number is required for permanent staff.'], ['staff_number' => 'PF number', 'form_department_id' => 'department', 'contract_ends_on' => 'contract end date']);
 
         $attributes = [
-            'staff_number' => $data['staff_number'],
+            'staff_number' => $data['staff_number'] ?: null,
             'name' => $data['name'],
+            'employment_type' => $data['employment_type'],
+            'contract_ends_on' => $data['contract_ends_on'] ?: null,
             'email' => $data['email'] ?: null,
-            'phone' => $data['phone'] ?: null,
+            'phone' => MobileNumber::normalise($data['phone']),
             'department_id' => $data['form_department_id'],
             'designation_id' => $data['designation_id'] ?: null,
             'job_grade' => $data['job_grade'] ?: null,
@@ -136,18 +186,102 @@ class StaffList extends Component
         }
     }
 
-    public function import(StaffImporter $importer): void
+    public function openPosition(int $id): void
     {
-        abort_unless(Auth::user()->can('reference.manage'), 403);
+        abort_unless(Auth::user()->can('staff.reassign'), 403);
+        $staff = Staff::query()->findOrFail($id);
+        $this->resetErrorBag();
+        $this->positionStaffId = $staff->id;
+        $this->posDepartment = (string) $staff->department_id;
+        $this->posDesignation = (string) $staff->designation_id;
+        $this->posAccess = StaffChanges::KEEP;
+        $this->posReplaceHead = false;
+        $this->posEffective = today()->toDateString();
+        $this->posReason = '';
+        $this->posReference = '';
+        $this->showPosition = true;
+    }
+
+    public function savePosition(StaffChanges $changes): void
+    {
+        abort_unless(Auth::user()->can('staff.reassign'), 403);
+        $this->validate([
+            'posDepartment' => ['required', 'exists:departments,id'],
+            'posDesignation' => ['nullable', 'exists:designations,id'],
+            'posAccess' => ['required', Rule::in(array_keys($changes->accessOptions(Auth::user())))],
+            'posEffective' => ['required', 'date'],
+            'posReason' => ['required', 'string', 'max:2000'],
+            'posReference' => ['nullable', 'string', 'max:100'],
+        ], [], ['posDepartment' => 'department', 'posDesignation' => 'designation', 'posAccess' => 'system access', 'posEffective' => 'effective date', 'posReason' => 'reason', 'posReference' => 'reference']);
+
+        $staff = Staff::query()->findOrFail($this->positionStaffId);
+        $result = $this->attempt(fn () => $changes->apply($staff, [
+            'department_id' => $this->posDepartment,
+            'designation_id' => $this->posDesignation,
+            'access' => $this->posAccess,
+            'replace_head' => $this->posReplaceHead,
+            'effective_on' => $this->posEffective,
+            'reason' => $this->posReason,
+            'reference' => $this->posReference,
+        ], Auth::user()));
+
+        if (is_array($result)) {
+            $this->showPosition = false;
+            if ($result['password']) {
+                [$this->oneTimePassword, $this->oneTimeFor] = [$result['password'], $result['account']->email];
+            }
+            $this->toast("{$staff->name}: change recorded".($result['account'] && $result['change']->to_role !== $result['change']->from_role ? '; their access applies at their next sign-in.' : '.'));
+        }
+    }
+
+    /** Runs every check and reports what the import would do, without saving anything. */
+    public function checkImport(StaffImporter $importer): void
+    {
+        abort_unless(Auth::user()->canAny(['reference.manage', 'staff.add']), 403);
         $this->validate(['file' => ['required', 'file', 'mimes:xlsx,xls,csv,txt', 'max:'.config('activities.max_list_kb')]]);
 
-        $result = $importer->import($this->file->getRealPath());
+        $result = $importer->import($this->file->getRealPath(), Auth::user(), dryRun: true);
         $this->importErrors = $result['errors'];
+        $this->importCheck = $result['errors'] === []
+            ? "The file is ready: {$result['created']} would be added and {$result['updated']} updated"
+                .($result['skipped'] ? ", {$result['skipped']} left as they are" : '').'. Nothing has been saved yet.'
+            : null;
+    }
+
+    public function import(StaffImporter $importer): void
+    {
+        abort_unless(Auth::user()->canAny(['reference.manage', 'staff.add']), 403);
+        $this->validate(['file' => ['required', 'file', 'mimes:xlsx,xls,csv,txt', 'max:'.config('activities.max_list_kb')]]);
+
+        $result = $importer->import($this->file->getRealPath(), Auth::user());
+        $this->importErrors = $result['errors'];
+        $this->importCheck = null;
 
         if ($result['errors'] === []) {
-            $this->reset(['showImport', 'file']);
-            $this->toast("Staff list imported: {$result['created']} added, {$result['updated']} updated.");
+            $this->reset(['showImport', 'file', 'importCheck']);
+            $this->toast("Staff list imported: {$result['created']} added, {$result['updated']} updated."
+                .($result['skipped'] ? " {$result['skipped']} already on the list were left as they are." : ''));
         }
+    }
+
+    /** @return array<string, mixed> */
+    private function positionData(): array
+    {
+        if (! $this->showPosition || ! $this->positionStaffId) {
+            return ['positionStaff' => null, 'positionAccount' => null, 'accessOptions' => [], 'currentHead' => null];
+        }
+
+        $changes = app(StaffChanges::class);
+        $staff = Staff::query()->with(['department', 'designation', 'positionChanges.fromDepartment', 'positionChanges.toDepartment', 'positionChanges.fromDesignation', 'positionChanges.toDesignation', 'positionChanges.changer'])->find($this->positionStaffId);
+        $account = $staff ? $changes->accountOf($staff) : null;
+        $headWanted = $this->posAccess === User::ROLE_HOD && $this->posDepartment !== '';
+
+        return [
+            'positionStaff' => $staff,
+            'positionAccount' => $account?->loadMissing('department'),
+            'accessOptions' => $changes->accessOptions(Auth::user()),
+            'currentHead' => $headWanted ? User::query()->role(User::ROLE_HOD)->where('is_active', true)->where('department_id', $this->posDepartment)->when($account, fn ($q) => $q->whereKeyNot($account->id))->first() : null,
+        ];
     }
 
     public function render(): View
@@ -169,8 +303,12 @@ class StaffList extends Component
             'designations' => Designation::query()->ordered()->get(['id', 'name']),
             'offices' => Office::query()->ordered()->get(['id', 'name']),
             'columns' => StaffImporter::COLUMNS,
+            'employmentTypes' => EmploymentType::cases(),
             'records' => app(StaffRecords::class),
             'manages' => Auth::user()->can('reference.manage'),
+            'canAdd' => Auth::user()->canAny(['reference.manage', 'staff.add']),
+            'canReassign' => Auth::user()->can('staff.reassign'),
+            ...$this->positionData(),
             'counts' => [
                 'active' => Staff::query()->where('is_active', true)->count(),
                 'no_grade' => Staff::query()->where('is_active', true)->whereNull('job_grade')->count(),

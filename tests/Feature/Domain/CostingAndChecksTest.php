@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Storage;
 
 beforeEach(function () {
     Storage::fake('local');
-    DsaRate::create(['job_grade' => 'NGCDF 5', 'destination_category' => 'Other towns', 'amount' => '8400.00', 'effective_from' => '2020-07-01']);
+    DsaRate::create(['job_grade' => '5', 'amount' => '8400.00', 'effective_from' => '2020-07-01']);
 });
 
 it('computes DSA from the rate in force × nights (CB-01, BR-02)', function () {
@@ -30,9 +30,20 @@ it('computes DSA from the rate in force × nights (CB-01, BR-02)', function () {
         ->and($activity->estimated_total)->toBe('16800.00');
 });
 
+it('recalculates DSA, and its nights in the description, when the dates change', function () {
+    $cos = chiefOfStaff();
+    $activity = capturedActivity($cos, ['days' => 1]);
+    expect($activity->costs()->sole())->description->toBe('DSA 0 nights × 8,400.00')->estimated_amount->toBe('0.00');
+
+    app(ActivityEditor::class)->update($activity, ['days' => 5], $cos);
+
+    expect($activity->costs()->sole())->description->toBe('DSA 4 nights × 8,400.00')->estimated_amount->toBe('33600.00')
+        ->and($activity->fresh()->estimated_total)->toBe('33600.00');
+});
+
 it('uses the historical rate for past activities (MD-05)', function () {
     DsaRate::query()->update(['effective_to' => today()->subDays(10)]);
-    DsaRate::create(['job_grade' => 'NGCDF 5', 'destination_category' => 'Other towns', 'amount' => '9000.00', 'effective_from' => today()->subDays(9)]);
+    DsaRate::create(['job_grade' => '5', 'amount' => '9000.00', 'effective_from' => today()->subDays(9)]);
 
     $old = capturedActivity(chiefOfStaff(), ['start_date' => today()->subDays(20)->toDateString(), 'days' => 2]);
     $new = capturedActivity(chiefOfStaff(), ['days' => 2]);

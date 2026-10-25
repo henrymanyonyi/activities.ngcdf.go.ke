@@ -10,6 +10,10 @@ namespace App\Enums;
 enum ActivityStatus: string
 {
     case Draft = 'draft';
+    // A memo an officer prepared through a Head of Department's link, with that Head for review.
+    case WithHod = 'with_hod';
+    // Sent back by the Head of Department to the officer who prepared it.
+    case ReturnedToPreparer = 'returned_to_preparer';
     case UnderReview = 'under_review';
     case ReturnedToHod = 'returned_to_hod';
     case AwaitingDecision = 'awaiting_decision';
@@ -27,6 +31,8 @@ enum ActivityStatus: string
     {
         return match ($this) {
             self::Draft => 'Draft',
+            self::WithHod => 'With the Head of Department',
+            self::ReturnedToPreparer => 'Returned to the preparer',
             self::UnderReview => 'Under review',
             self::ReturnedToHod => 'Returned for correction',
             self::AwaitingDecision => 'Awaiting decision',
@@ -47,6 +53,8 @@ enum ActivityStatus: string
     {
         return match ($this) {
             self::Draft => 'bg-slate-100 text-slate-500',
+            self::WithHod => 'bg-violet-50 text-violet-700',
+            self::ReturnedToPreparer => 'bg-orange-50 text-orange-700',
             self::UnderReview => 'bg-sky-50 text-sky-700',
             self::ReturnedToHod => 'bg-orange-50 text-orange-700',
             self::AwaitingDecision => 'bg-amber-50 text-amber-700',
@@ -65,6 +73,8 @@ enum ActivityStatus: string
     {
         return match ($this) {
             self::Draft => 'fa-pen-ruler',
+            self::WithHod => 'fa-user-check',
+            self::ReturnedToPreparer => 'fa-reply',
             self::UnderReview => 'fa-magnifying-glass',
             self::ReturnedToHod => 'fa-reply',
             self::AwaitingDecision => 'fa-hourglass-half',
@@ -87,7 +97,11 @@ enum ActivityStatus: string
             // Draft → Approved is a decision recorded on the CEO's behalf (CD-03).
             // Draft → Under review is a Head of Department's submission; the
             // Office of the CEO's own drafts go straight to Awaiting decision.
-            self::Draft => [self::UnderReview, self::AwaitingDecision, self::Approved],
+            // Draft → With the Head of Department is an officer submitting a memo prepared through a delegated link.
+            self::Draft => [self::UnderReview, self::AwaitingDecision, self::Approved, self::WithHod],
+            // The Head returns it to the officer, declines it, or forwards it to the Chief of Staff for review.
+            self::WithHod => [self::ReturnedToPreparer, self::Declined, self::UnderReview],
+            self::ReturnedToPreparer => [self::WithHod],
             self::UnderReview => [self::ReturnedToHod, self::AwaitingDecision],
             self::ReturnedToHod => [self::UnderReview],
             self::AwaitingDecision => [self::Approved, self::Returned, self::Declined],
@@ -109,13 +123,16 @@ enum ActivityStatus: string
     /** Details, participants and planned costs may be edited without an amendment. */
     public function isFreelyEditable(): bool
     {
-        return in_array($this, [self::Draft, self::UnderReview, self::ReturnedToHod, self::Returned], true);
+        return in_array($this, [self::Draft, self::WithHod, self::ReturnedToPreparer, self::UnderReview, self::ReturnedToHod, self::Returned], true);
     }
 
-    /** The Head of Department may edit the memo: before submission, or after it is returned for correction. */
+    /**
+     * The Head of Department may edit the memo: before submission, after it is returned for correction, or
+     * while it is with them after an officer prepared it (Activity::isWithPreparer() excludes the officer's turn).
+     */
     public function isWithDepartment(): bool
     {
-        return in_array($this, [self::Draft, self::ReturnedToHod], true);
+        return in_array($this, [self::Draft, self::WithHod, self::ReturnedToHod], true);
     }
 
     /** Submitted and not yet decided by the CEO. */

@@ -55,10 +55,32 @@ return new class extends Migration
             $table->timestamp('read_at')->nullable();
             $table->timestamps();
         });
+
+        // Every action-needed email and SMS: who it went to, what it said (the reference only,
+        // never the memo's details) and whether it was delivered. Written only by
+        // App\Services\OutboundAlerts and App\Jobs\DeliverOutboundMessage. A message to an
+        // officer without an account (a delegated memo link) has no user_id.
+        Schema::create('outbound_messages', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
+            $table->foreignId('activity_id')->nullable()->constrained()->nullOnDelete();
+            $table->string('kind', 40)->index();
+            $table->string('channel', 10);
+            $table->string('recipient');
+            $table->string('subject')->nullable();
+            $table->text('body');
+            $table->string('url', 500)->nullable();
+            $table->string('status', 20)->default('queued')->index();
+            $table->string('provider_reference')->nullable();
+            $table->text('error')->nullable();
+            $table->timestamp('sent_at')->nullable();
+            $table->timestamps();
+        });
     }
 
     public function down(): void
     {
+        Schema::dropIfExists('outbound_messages');
         Schema::dropIfExists('notifications');
         Schema::dropIfExists('access_logs');
         Schema::dropIfExists('audit_logs');

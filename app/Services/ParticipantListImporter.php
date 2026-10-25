@@ -10,6 +10,7 @@ use App\Models\Activity;
 use App\Models\ActivityParticipant;
 use App\Models\Department;
 use App\Models\Designation;
+use App\Models\DsaRate;
 use App\Models\Office;
 use App\Models\Region;
 use App\Models\Staff;
@@ -148,7 +149,7 @@ class ParticipantListImporter
                 'name' => mb_substr($name, 0, 255),
                 'department' => $value('department'),
                 'designation' => $value('designation'),
-                'job_grade' => strtoupper(mb_substr($value('job_grade'), 0, 20)),
+                'job_grade' => DsaRate::normaliseGrade($value('job_grade')) ?? strtoupper(mb_substr($value('job_grade'), 0, 20)),
                 'office' => $value('office'),
                 'region' => $value('region'),
                 'role' => $role,

@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Enums\ActivityStatus;
 use App\Enums\DecisionType;
 use App\Livewire\Concerns\RunsActions;
+use App\Livewire\Concerns\SendsInstructions;
 use App\Models\Activity;
 use App\Models\ActivityParticipant;
 use App\Services\ActivityLifecycle;
@@ -21,6 +22,7 @@ use Livewire\Component;
 class DecisionQueue extends Component
 {
     use RunsActions;
+    use SendsInstructions;
 
     public ?int $activityId = null;
 
@@ -35,6 +37,7 @@ class DecisionQueue extends Component
         $this->activityId = $id;
         $this->decision = DecisionType::from($decision)->value;
         $this->comment = '';
+        $this->reset(['instruct', 'instructionNote']);
         $this->resetErrorBag();
         $this->showDecide = true;
     }
@@ -46,7 +49,11 @@ class DecisionQueue extends Component
         $activity = Activity::query()->findOrFail($this->activityId);
 
         if ($this->attempt(fn () => $lifecycle->decide($activity, $type, $this->comment, Auth::user()), "{$activity->reference}: {$type->label()}.")) {
-            $this->reset(['showDecide', 'activityId', 'comment']);
+            // Finance and Procurement only after an approval; a failure here leaves the decision in place, and the CEO can instruct from the activity.
+            if ($type === DecisionType::Approved) {
+                $this->sendInstructions($activity->fresh());
+            }
+            $this->reset(['showDecide', 'activityId', 'comment', 'instruct', 'instructionNote']);
         }
     }
 

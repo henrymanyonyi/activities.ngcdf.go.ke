@@ -4,6 +4,7 @@ namespace App\Queries;
 
 use App\Enums\ActivityStatus;
 use App\Models\Activity;
+use App\Models\ReportReceipt;
 use App\Support\Period;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -40,7 +41,7 @@ final class ActivityRegisterQuery
     public static function build(array $filters, string $sort = 'start_date', string $direction = 'desc'): Builder
     {
         $query = Activity::query()
-            ->with(['organisingDepartment', 'type', 'locations.county', 'locations.region', 'locations.constituency'])
+            ->with(['organisingDepartment', 'type', 'locations.county', 'locations.region', 'locations.constituency', 'report'])
             ->search($filters['search'] ?? null);
 
         if (! empty($filters['status'])) {
@@ -64,7 +65,8 @@ final class ActivityRegisterQuery
             'late_notice' => $query->where('is_late_notice', true),
             'retrospective' => $query->where('is_retrospective', true),
             'commencement_due' => $query->status(ActivityStatus::Approved)->whereDate('start_date', '<=', today()),
-            'report_overdue' => $query->status(ActivityStatus::Completed)->whereDate('report_due_on', '<', today()),
+            'report_overdue' => $query->status(ActivityStatus::Completed)->whereDate('report_due_on', '<', today())
+                ->whereDoesntHave('report', fn ($r) => $r->where('status', '!=', ReportReceipt::STATUS_RETURNED)),
             'from_link' => $query->whereNotNull('submission_link_id'),
             default => null,
         };

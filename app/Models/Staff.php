@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\EmploymentType;
 use App\Models\Concerns\Auditable;
 use Database\Factories\StaffFactory;
 use Illuminate\Database\Eloquent\Builder;
@@ -9,6 +10,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Staff extends Model
@@ -30,10 +32,12 @@ class Staff extends Model
         'department_id',
         'designation_id',
         'job_grade',
+        'employment_type',
         'office_id',
         'is_active',
         'joined_on',
         'exited_on',
+        'contract_ends_on',
         'smart_hq_staff_id',
         'source',
         'created_by',
@@ -45,6 +49,8 @@ class Staff extends Model
             'is_active' => 'boolean',
             'joined_on' => 'date',
             'exited_on' => 'date',
+            'contract_ends_on' => 'date',
+            'employment_type' => EmploymentType::class,
         ];
     }
 
@@ -74,6 +80,22 @@ class Staff extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /** @return HasMany<StaffChange, $this> */
+    public function positionChanges(): HasMany
+    {
+        return $this->hasMany(StaffChange::class)->latest('effective_on')->latest('id');
+    }
+
+    /**
+     * The FAPM account made from this officer, if any.
+     *
+     * @return HasOne<User, $this>
+     */
+    public function account(): HasOne
+    {
+        return $this->hasOne(User::class);
     }
 
     /** @return HasMany<ActivityParticipant, $this> */

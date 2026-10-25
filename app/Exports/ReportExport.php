@@ -4,26 +4,35 @@ namespace App\Exports;
 
 use App\Models\User;
 use App\Reports\Report;
+use App\Support\DocumentFont;
 use App\Support\Money;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithDefaultStyles;
 use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use Maatwebsite\Excel\Events\AfterSheet;
+use PhpOffice\PhpSpreadsheet\Style\Style;
 
 /**
  * Excel output of a standard report. Carries the RESTRICTED marking, the
  * user's name and the time it was produced at top and bottom (FRD CF-07).
  */
-class ReportExport implements FromArray, ShouldAutoSize, WithEvents, WithTitle
+class ReportExport implements FromArray, ShouldAutoSize, WithDefaultStyles, WithEvents, WithTitle
 {
     private const MARK = 'RESTRICTED: FOR THE OFFICE OF THE CEO ONLY';
 
     private int $headingRow = 6;
 
     public function __construct(private Report $report, private array $filters, private Collection $rows, private User $user) {}
+
+    /** @return array<string, mixed> */
+    public function defaultStyles(Style $defaultStyle): array
+    {
+        return ['font' => ['name' => DocumentFont::NAME]];
+    }
 
     public function title(): string
     {
