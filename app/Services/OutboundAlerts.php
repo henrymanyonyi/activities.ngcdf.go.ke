@@ -17,7 +17,7 @@ use Throwable;
  * Action-needed email and SMS (exception to NT-03 / BR-11 approved 25 October 2026).
  * Only an alert marked with ActivityAlert::needsAction(), only to the CEO (since
  * 25 October 2026), Heads of Department, the Chief of Staff and the Assistant, and only the reference and
- * the step: the details stay in FAPM. Each message is logged, then delivered
+ * the step: the details stay in OCEO. Each message is logged, then delivered
  * once the surrounding transaction commits (as NG-CDF Careers does); a failed
  * delivery is marked failed on its log and never undoes or breaks the action.
  */
@@ -59,7 +59,7 @@ class OutboundAlerts
                     'kind' => $alert->kind,
                     'channel' => $channel,
                     'recipient' => $address,
-                    'subject' => $channel === 'mail' ? 'FAPM: '.$alert->outbound['subject'] : null,
+                    'subject' => $channel === 'mail' ? 'OCEO: '.$alert->outbound['subject'] : null,
                     'body' => $channel === 'mail' ? $this->emailBody($user, $alert) : $this->smsBody($alert, $url),
                     'url' => $url,
                     'from_office' => $this->fromOffice(),
@@ -93,8 +93,8 @@ class OutboundAlerts
                 'kind' => $kind,
                 'channel' => $channel,
                 'recipient' => $address,
-                'subject' => $channel === 'mail' ? 'FAPM: '.$text['subject'] : null,
-                'body' => $channel === 'mail' ? "Dear {$name},\n\n{$text['line']}\n\n{$text['todo']}" : "NG-CDF FAPM: {$text['line']}".($url ? " Open: {$url}" : ''),
+                'subject' => $channel === 'mail' ? 'OCEO: '.$text['subject'] : null,
+                'body' => $channel === 'mail' ? "Dear {$name},\n\n{$text['line']}\n\n{$text['todo']}" : "NG-CDF OCEO: {$text['line']}".($url ? " Open: {$url}" : ''),
                 'url' => $url,
                 'from_office' => $this->fromOffice(),
                 'status' => OutboundMessage::QUEUED,
@@ -107,7 +107,7 @@ class OutboundAlerts
     /** One or two SMS parts: who it is from, what happened and where to act. */
     public function smsBody(ActivityAlert $alert, string $url): string
     {
-        return "NG-CDF FAPM: {$alert->outbound['line']} Sign in to act: {$url}";
+        return "NG-CDF OCEO: {$alert->outbound['line']} Sign in to act: {$url}";
     }
 
     public function emailBody(User $user, ActivityAlert $alert): string

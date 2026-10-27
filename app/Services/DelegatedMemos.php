@@ -122,7 +122,7 @@ class DelegatedMemos
             'todo' => 'Open the link, make the changes asked for and submit it again. It works until '.$link->expires_at->format('d M Y').'.',
         ] : [
             'subject' => 'Please prepare an activity memo',
-            'line' => "The Head of {$department} has asked you to prepare an activity memo in FAPM.",
+            'line' => "The Head of {$department} has asked you to prepare an activity memo in OCEO.",
             'todo' => 'Open the link to start. It asks for a code sent to you, and works until '.$link->expires_at->format('d M Y').'.',
         ], $url, $memo?->id);
 

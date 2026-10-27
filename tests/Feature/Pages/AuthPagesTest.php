@@ -5,7 +5,7 @@ use Illuminate\Support\Facades\Password;
 
 it('renders the sign-in pages in the Smart NG-CDF style', function () {
     $this->get('/login')->assertOk()
-        ->assertSee('NG-CDF FAPM')->assertSee('Restricted')->assertSee('Forgot password?')
+        ->assertSee('NG-CDF OCEO')->assertSee('Restricted')->assertSee('Forgot password?')
         ->assertDontSee('unsplash.com');
 
     $this->get('/forgot-password')->assertOk()->assertSee('Recover password')->assertSee('Send reset link');

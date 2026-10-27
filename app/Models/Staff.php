@@ -89,7 +89,7 @@ class Staff extends Model
     }
 
     /**
-     * The FAPM account made from this officer, if any.
+     * The OCEO account made from this officer, if any.
      *
      * @return HasOne<User, $this>
      */

@@ -27,7 +27,7 @@ class AppSettings
         'memo_review_reminder_working_days' => ['Memo pending reminder (working days)', 3, 'A memo still under review or awaiting the CEO\'s decision after this many working days is flagged as pending too long and raises a daily reminder.'],
         'finance_department_id' => ['Finance department (imprest instructions)', 0, 'The department whose Head receives the CEO\'s instruction to process the imprest for an approved memo.'],
         'procurement_department_id' => ['Procurement department (ticket instructions)', 0, 'The department whose Head receives the CEO\'s instruction to procure the travel tickets for an approved memo.'],
-        'alerts_email' => ['Email when action is needed', 1, 'Yes: Heads of Department, the Chief of Staff and the Assistant also get an email when a memo, report or instruction needs them. It gives the reference only; the details stay in FAPM.'],
+        'alerts_email' => ['Email when action is needed', 1, 'Yes: Heads of Department, the Chief of Staff and the Assistant also get an email when a memo, report or instruction needs them. It gives the reference only; the details stay in OCEO.'],
         'alerts_sms' => ['SMS when action is needed', 1, 'Yes: they also get an SMS through SMS Leopard, to the mobile number on their account or on the staff list. It gives the reference only.'],
     ];
 

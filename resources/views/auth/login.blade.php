@@ -9,7 +9,7 @@
                 <div class="flex items-center gap-3">
                     <div class="bg-white p-2 rounded-xl shadow-lg"><img src="{{ asset('images/ngcdf-logo.png') }}" alt="NG-CDF" class="h-12 w-auto"></div>
                     <div>
-                        <span class="block text-white font-bold text-xl tracking-tight uppercase">NG-CDF FAPM</span>
+                        <span class="block text-white font-bold text-xl tracking-tight uppercase">NG-CDF OCEO</span>
                         <span class="block text-emerald-300 text-xs">Office of the CEO / Accounting Officer</span>
                     </div>
                 </div>
@@ -39,7 +39,7 @@
             <div class="mx-auto w-full max-w-sm lg:w-96">
                 <div class="lg:hidden flex flex-col items-center gap-3 mb-8">
                     <img src="{{ asset('images/ngcdf-logo.png') }}" alt="NG-CDF" class="h-16 w-auto">
-                    <span class="font-bold text-emerald-900 uppercase tracking-tight">NG-CDF FAPM</span>
+                    <span class="font-bold text-emerald-900 uppercase tracking-tight">NG-CDF OCEO</span>
                 </div>
 
                 <x-ui.restricted />

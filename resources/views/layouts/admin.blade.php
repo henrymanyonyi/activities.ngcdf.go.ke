@@ -36,7 +36,7 @@
                         <img src="{{ asset('images/ngcdf-logo.png') }}" alt="NG-CDF" class="h-8 w-auto">
                     </div>
                     <div x-show="sidebarOpen" class="flex flex-col min-w-0">
-                        <span class="font-bold text-sm tracking-tight truncate uppercase">NG-CDF FAPM</span>
+                        <span class="font-bold text-sm tracking-tight truncate uppercase">NG-CDF OCEO</span>
                         <span class="text-[10px] text-emerald-300/80 truncate">Field Activity Planning &amp; Monitoring</span>
                     </div>
                 </div>
@@ -63,7 +63,7 @@
             x-transition:leave="transition ease-in-out duration-300 transform" x-transition:leave-start="translate-x-0" x-transition:leave-end="-translate-x-full"
             class="fixed inset-y-0 z-50 w-64 bg-emerald-900 text-white flex flex-col md:hidden">
             <div class="flex items-center justify-between h-20 px-5 border-b border-emerald-800/50">
-                <span class="font-bold text-sm tracking-tight uppercase">NG-CDF FAPM</span>
+                <span class="font-bold text-sm tracking-tight uppercase">NG-CDF OCEO</span>
                 <button type="button" @click="sidebarMobile = false" class="text-emerald-400 hover:text-white" aria-label="Close menu">
                     <i class="fa-solid fa-xmark"></i>
                 </button>

@@ -197,13 +197,13 @@ class ActivityAlert extends Notification
             : $instruction->kind->office();
     }
 
-    /** To an officer whose FAPM access was changed (App\Services\StaffChanges). */
+    /** To an officer whose OCEO access was changed (App\Services\StaffChanges). */
     public static function accessChanged(?string $role, ?Department $department): self
     {
         $what = $role === null ? 'no longer has a role' : 'is now '.(User::ROLES[$role] ?? $role).($role === User::ROLE_HOD && $department ? ', '.$department->name : '');
 
-        return (new self('access_changed', "Your FAPM access has changed: your account {$what}.", null, 'fa-user-shield', route('home')))
-            ->needsAction(null, 'Your FAPM access has changed', 'Your FAPM access was changed on '.now()->format('d M Y').'.', 'Please sign in again to see what you can now do.');
+        return (new self('access_changed', "Your OCEO access has changed: your account {$what}.", null, 'fa-user-shield', route('home')))
+            ->needsAction(null, 'Your OCEO access has changed', 'Your OCEO access was changed on '.now()->format('d M Y').'.', 'Please sign in again to see what you can now do.');
     }
 
     /** To the officer who scheduled a change of position or access that could not be applied on its date. In the app only. */

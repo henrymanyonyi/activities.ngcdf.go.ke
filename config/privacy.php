@@ -26,7 +26,7 @@ return [
         'title' => 'NG-CDF Board Data Privacy Statement',
     ],
 
-    'app_name' => 'FAPM',
+    'app_name' => 'OCEO',
 
     'logo' => 'images/ngcdf-logo.png',
 

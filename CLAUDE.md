@@ -2,6 +2,8 @@
 
 Guidance for Claude Code in `activities.ngcdf.go.ke`, **NG-CDF FAPM**: the CEO's confidential Field Activity Planning and Monitoring system.
 
+User-facing name (27 Oct 2026): **NG-CDF OCEO** (sign-in, sidebar, emails, SMS, alerts, `APP_NAME`, guides). "FAPM" remains only in code comments, these docs, older guide file names and the memo reference prefix (`FAPM-2026-27-00001`), kept so issued references stay consistent.
+
 ## Read first
 
 - `docs/FRD-TRACEABILITY.md`: every FRD requirement and where it lives. The FRD (v1.2, RESTRICTED) is the specification; `docs/DESIGN-ASSESSMENT.md` is the earlier design and is overridden by the FRD where they differ.

@@ -55,9 +55,9 @@ it('emails and texts the reviewer when a memo is submitted, with the reference o
 
     $reference = $this->memo->reference;
     expect($this->acos->notifications()->sole()->data['kind'])->toBe('submitted_for_review')
-        ->and($sms->sent)->toBe([['+254712000111', "NG-CDF FAPM: Memo {$reference} has been submitted for your review. Sign in to act: ".route('activities.show', $this->memo)]]);
+        ->and($sms->sent)->toBe([['+254712000111', "NG-CDF OCEO: Memo {$reference} has been submitted for your review. Sign in to act: ".route('activities.show', $this->memo)]]);
     Mail::assertSent(AlertMessage::class, fn (AlertMessage $mail) => $mail->hasTo($this->acos->email)
-        && $mail->heading === "FAPM: Memo {$reference} to review"
+        && $mail->heading === "OCEO: Memo {$reference} to review"
         && str_contains($mail->text, 'Please review it, then forward it or return it for correction.')
         && ! str_contains($mail->text, $this->memo->title));
     expect(OutboundMessage::query()->pluck('status', 'channel')->all())->toBe(['mail' => 'sent', 'sms' => 'sent'])
@@ -75,7 +75,7 @@ it('sends email and SMS only when the recipient must act, including the CEO when
     expect($this->hod->notifications()->where('data->kind', 'memo_progressed')->count())->toBe(1)
         ->and($this->ceo->notifications()->where('data->kind', 'awaiting_decision')->count())->toBe(1)
         ->and(OutboundMessage::query()->where('kind', '!=', 'earlier')->get(['user_id', 'channel', 'recipient', 'subject'])->toArray())->toBe([
-            ['user_id' => $this->ceo->id, 'channel' => 'mail', 'recipient' => $this->ceo->email, 'subject' => "FAPM: Memo {$this->memo->reference} awaiting your decision"],
+            ['user_id' => $this->ceo->id, 'channel' => 'mail', 'recipient' => $this->ceo->email, 'subject' => "OCEO: Memo {$this->memo->reference} awaiting your decision"],
             ['user_id' => $this->ceo->id, 'channel' => 'sms', 'recipient' => '+254700000999', 'subject' => null],
         ]);
     OutboundMessage::query()->each(fn (OutboundMessage $m) => $m->forceFill(['kind' => 'earlier'])->save());
@@ -83,7 +83,7 @@ it('sends email and SMS only when the recipient must act, including the CEO when
     // The CEO's approval needs the Head of Department to act: it goes out to them, by email (no mobile on their account).
     $this->lifecycle->decide($this->memo->fresh(), DecisionType::Approved, null, $this->ceo);
     expect(OutboundMessage::query()->where('kind', '!=', 'earlier')->get(['user_id', 'channel', 'subject'])->toArray())->toBe([
-        ['user_id' => $this->hod->id, 'channel' => 'mail', 'subject' => "FAPM: Memo {$this->memo->reference} approved"],
+        ['user_id' => $this->hod->id, 'channel' => 'mail', 'subject' => "OCEO: Memo {$this->memo->reference} approved"],
     ]);
 });
 

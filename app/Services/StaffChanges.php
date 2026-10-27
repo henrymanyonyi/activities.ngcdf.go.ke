@@ -22,7 +22,7 @@ use Throwable;
  * only writer of an officer's position and of the account made from them:
  *
  *  - The officer's department and designation (their HR position) and their
- *    FAPM access (a role in User::ROLES, or none) are separate, and stay so.
+ *    OCEO access (a role in User::ROLES, or none) are separate, and stay so.
  *    A designation never grants access; only the access chosen here does.
  *  - The System Administrator, the CEO, the Chief of Staff and the Assistant
  *    change positions and appoint or remove Heads of Department
@@ -56,7 +56,7 @@ class StaffChanges
 
     public function __construct(private Alerts $alerts, private AuditLogger $audit) {}
 
-    /** The FAPM account belonging to the officer: linked to them, or else with their email address (and then linked). */
+    /** The OCEO account belonging to the officer: linked to them, or else with their email address (and then linked). */
     public function accountOf(Staff $staff): ?User
     {
         return User::query()->with('roles')->where('staff_id', $staff->id)->first()

@@ -71,7 +71,7 @@
             <x-ui.field label="Job grade" for="f-g" error="job_grade" hint="The scale from the HR register, 1 to 10; it sets the DSA rate. Casuals and attachees left blank get INTERN."><input id="f-g" type="text" wire:model="job_grade" maxlength="20" class="{{ Ui::CONTROL }}"></x-ui.field>
             <x-ui.field label="Duty station" for="f-o" error="office_id"><select id="f-o" wire:model="office_id" class="{{ $sel }}"><option value="">Choose…</option>@foreach ($offices as $o)<option value="{{ $o->id }}">{{ $o->name }}</option>@endforeach</select></x-ui.field>
             <x-ui.field label="Email" for="f-e" error="email"><input id="f-e" type="email" wire:model="email" class="{{ Ui::CONTROL }}"></x-ui.field>
-            <x-ui.field label="Mobile number" for="f-p" error="phone" hint="An account made from this officer receives FAPM's action-needed SMS here."><input id="f-p" type="tel" wire:model="phone" maxlength="30" class="{{ Ui::CONTROL }}" placeholder="e.g. 0712 345 678"></x-ui.field>
+            <x-ui.field label="Mobile number" for="f-p" error="phone" hint="An account made from this officer receives OCEO's action-needed SMS here."><input id="f-p" type="tel" wire:model="phone" maxlength="30" class="{{ Ui::CONTROL }}" placeholder="e.g. 0712 345 678"></x-ui.field>
             <x-ui.field label="Contract end date" for="f-ce" error="contract_ends_on"><input id="f-ce" type="date" wire:model="contract_ends_on" class="{{ Ui::CONTROL }}"></x-ui.field>
             @if ($manages)
                 <label class="flex items-center gap-2 text-[13px] text-slate-600 sm:col-span-2"><input type="checkbox" wire:model="is_active" class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">Active</label>
@@ -103,7 +103,7 @@
 
     {{-- Promotion, transfer or change of system access (App\Services\StaffChanges) --}}
     @if ($positionStaff)
-        <x-ui.modal show="showPosition" :open="$showPosition" icon="fa-user-tie" :title="'Change '.$positionStaff->name.'\'s position or access'" subtitle="The department and designation are the officer's HR position; the system access is what they can do in FAPM. Each change is recorded with its effective date and reason.">
+        <x-ui.modal show="showPosition" :open="$showPosition" icon="fa-user-tie" :title="'Change '.$positionStaff->name.'\'s position or access'" subtitle="The department and designation are the officer's HR position; the system access is what they can do in OCEO. Each change is recorded with its effective date and reason.">
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2.5 text-[12px]">
                 <div><p class="{{ Ui::MICRO }}">PF number</p><p class="font-numeric text-slate-700">{{ $positionStaff->staff_number ?: 'None' }}</p></div>
                 <div><p class="{{ Ui::MICRO }}">Department now</p><p class="text-slate-700">{{ $positionStaff->department?->name ?? 'None' }}</p></div>
