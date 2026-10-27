@@ -1,0 +1,551 @@
+<!doctype html>
+<!--
+  OCEO Guide for Heads of Department. Built into ../OCEO-Head-of-Department-Guide.pdf by build.py
+  (python3 docs/guides/source/build.py). Layout follows Smart's Proposal Module User Guide
+  (smart.ngcdf.go.ke/documentation/user-guides/proposal-module).
+  Writing rules: plain English, screen labels in <b class="ui"> exactly as shown, no em or en dashes,
+  no arrow characters, no emoji. Headings with a data-toc attribute appear in the contents with their page.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OCEO Guide for Heads of Department</title>
+<style>
+  :root { --green: #1f4f35; --accent: #2e6b49; --emerald: #059669; --soft: #f3f5f0; --line: #dde3d6; --ink: #1b2620; --muted: #5b625e; --return: #c2410c; }
+  @page {
+    size: A4; margin: 22mm 18mm 20mm 18mm;
+    @top-left { content: "OCEO Guide for Heads of Department"; font: 700 8pt Arial, sans-serif; color: #1f4f35; vertical-align: bottom; padding-bottom: 2mm; border-bottom: 1.2pt solid #2e6b49; }
+    @top-right { content: "RESTRICTED"; font: 700 7.5pt Arial, sans-serif; letter-spacing: 1pt; color: #9b1c1c; vertical-align: bottom; padding-bottom: 2mm; border-bottom: 1.2pt solid #2e6b49; }
+    @bottom-left { content: "Version 1.0  |  27 October 2026"; font: 8pt Arial, sans-serif; color: #5b625e; vertical-align: top; padding-top: 2mm; border-top: 0.6pt solid #dde3d6; }
+    @bottom-right { content: "Page " counter(page); font: 8pt Arial, sans-serif; color: #5b625e; vertical-align: top; padding-top: 2mm; border-top: 0.6pt solid #dde3d6; }
+  }
+  @page cover { margin: 0; @top-left { content: none; border: 0; } @top-right { content: none; border: 0; } @bottom-left { content: none; border: 0; } @bottom-right { content: none; border: 0; } }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin: 0; font-family: Arial, "Helvetica Neue", sans-serif; font-size: 10pt; line-height: 1.45; color: var(--ink); }
+
+  /* Cover */
+  .cover { page: cover; height: 297mm; position: relative; break-after: page; }
+  .cover .band { background: var(--green); height: 62mm; border-bottom: 3mm solid var(--accent); padding: 14mm 18mm 0; display: flex; align-items: center; gap: 7mm; }
+  .cover .band img { width: 26mm; height: 26mm; }
+  .cover .band .org { color: #fff; font-weight: 700; font-size: 12.5pt; line-height: 1.35; letter-spacing: .3pt; }
+  .cover .band .org small { display: block; font-weight: 400; font-size: 9pt; color: #cfe3d6; margin-top: 1.5mm; letter-spacing: 0; }
+  .cover .body { padding: 44mm 18mm 0; }
+  .cover h1 { font-size: 30pt; line-height: 1.12; color: var(--green); margin: 0 0 5mm; }
+  .cover .sub { font-size: 14pt; color: var(--accent); margin: 0 0 12mm; line-height: 1.35; }
+  .cover .chips { display: flex; gap: 2px; margin-bottom: 30mm; }
+  .cover .chips div { flex: 1; color: #fff; font-weight: 700; font-size: 8.4pt; text-align: center; padding: 6px 4px 5px; }
+  .cover table.meta { width: 100%; border-collapse: collapse; font-size: 8.8pt; border-top: 1.2pt solid var(--accent); }
+  .cover table.meta td { padding: 5px 4px; border-bottom: .5pt solid var(--line); }
+  .cover table.meta td:first-child { width: 42mm; font-weight: 700; }
+  .cover .restricted { margin-top: 8mm; display: inline-block; border: 1.2pt solid #9b1c1c; color: #9b1c1c; font-weight: 700; font-size: 9pt; letter-spacing: 2pt; padding: 3px 10px; }
+  .cover .foot { position: absolute; left: 0; right: 0; bottom: 0; height: 14mm; background: var(--green); color: #fff; font-size: 8.5pt; display: flex; justify-content: space-between; align-items: center; padding: 0 18mm; }
+
+  /* Contents */
+  .contents { break-after: page; }
+  .toc .l0 { display: flex; font-weight: 700; color: var(--green); font-size: 9.8pt; margin-top: 4px; line-height: 1.3; }
+  .toc .l1 { display: flex; font-size: 8.6pt; padding-left: 16px; line-height: 1.24; }
+  .toc .fill { flex: 1; border-bottom: 1px dotted #9aa59e; margin: 0 6px 4px; }
+
+  /* Text */
+  h1.part { font-size: 19pt; line-height: 1.2; color: var(--green); margin: 0 0 10px; break-before: page; break-after: avoid; }
+  h1.part.first { break-before: auto; }
+  h1.part.cont { break-before: auto; margin-top: 24px; padding-top: 10px; border-top: 1.2pt solid var(--line); }
+  h2 { font-size: 13pt; color: var(--green); margin: 16px 0 5px; break-after: avoid; }
+  h3 { font-size: 10.8pt; color: var(--accent); margin: 11px 0 3px; break-after: avoid; }
+  p { margin: 0 0 6px; }
+  b.ui { color: var(--green); }
+  ol.steps, ul { margin: 2px 0 8px; padding-left: 22px; }
+  ol.steps li, ul li { margin-bottom: 4px; padding-left: 2px; }
+  ol.steps li::marker { font-weight: 700; color: var(--accent); }
+  table.t { width: 100%; border-collapse: collapse; margin: 4px 0 10px; font-size: 8.9pt; line-height: 1.4; border: .6pt solid var(--line); }
+  table.t th { text-align: left; background: var(--soft); color: var(--green); border-bottom: 1pt solid var(--accent); padding: 5px 6px; }
+  table.t td { padding: 5px 6px; border-bottom: .5pt solid var(--line); vertical-align: top; }
+  table.t tr { break-inside: avoid; }
+  table.t:not(.long) { break-inside: avoid; }
+  table.t.long td, table.t.long th { padding-top: 3px; padding-bottom: 3px; }
+  table.t td.k { font-weight: 700; width: 32%; }
+  table.t td.r, table.t th.r { text-align: right; white-space: nowrap; }
+  .box { padding: 7px 10px 6px; margin: 5px 0 10px; break-inside: avoid; }
+  .box > b:first-child { margin-right: 3px; }
+  .note { background: #eef4fb; border-left: 3px solid #1d4f91; } .note > b:first-child { color: #1d4f91; }
+  .tip { background: #ecf6ef; border-left: 3px solid #2e6b49; } .tip > b:first-child { color: #2e6b49; }
+  .important { background: #fdf6e3; border-left: 3px solid #8a6d12; } .important > b:first-child { color: #8a6d12; }
+  .warning { background: #fbecec; border-left: 3px solid #9b1c1c; } .warning > b:first-child { color: #9b1c1c; }
+  .check { border: .8pt solid var(--accent); margin: 5px 0 10px; break-inside: avoid; font-size: 9pt; }
+  .check .h { background: var(--accent); color: #fff; font-weight: 700; padding: 5px 8px; }
+  .check div.i { display: flex; gap: 8px; padding: 4px 8px; border-bottom: .4pt solid var(--line); background: #fafcf8; }
+  .check div.i:last-child { border-bottom: 0; }
+  .check div.i::before { content: ""; flex: none; width: 8pt; height: 8pt; border: .9pt solid var(--accent); margin-top: 2pt; }
+  .role { display: flex; border: .8pt solid var(--green); margin: 0 0 10px; break-inside: avoid; }
+  .role .tag { background: var(--green); color: #fff; font-weight: 700; font-size: 9.5pt; width: 34mm; display: flex; align-items: center; justify-content: center; text-align: center; padding: 6px; }
+  .role .txt { background: var(--soft); padding: 7px 10px; flex: 1; }
+  figure { margin: 6px 0 10px; break-inside: avoid; }
+  figure figcaption { font-size: 7.6pt; font-style: italic; color: var(--muted); margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<!-- ═════════════ Cover ═════════════ -->
+<section class="cover">
+  <div class="band">
+    <img src="logo.png" alt="">
+    <div class="org">NATIONAL GOVERNMENT<br>CONSTITUENCIES DEVELOPMENT FUND BOARD<small>Office of the Chief Executive Officer</small></div>
+  </div>
+  <div class="body">
+    <h1>OCEO Guide for<br>Heads of Department</h1>
+    <p class="sub">A step-by-step guide to activity memos, workplans and budgets, and activity reports in the Field Activity Planning and Monitoring system</p>
+    <div class="chips">
+      <div style="background:#1f4f35">Head of Department</div>
+      <div style="background:#1d4f91">Assistant Chief of Staff</div>
+      <div style="background:#0f6b6b">Chief of Staff</div>
+      <div style="background:#6b2a6b">CEO</div>
+      <div style="background:#8a6d12">Finance and Procurement</div>
+    </div>
+    <table class="meta">
+      <tr><td>Institution</td><td>National Government Constituencies Development Fund Board</td></tr>
+      <tr><td>System</td><td>NG-CDF OCEO, Field Activity Planning and Monitoring</td></tr>
+      <tr><td>Intended for</td><td>Heads of Department, including acting Heads</td></tr>
+      <tr><td>Document version</td><td>1.0</td></tr>
+      <tr><td>Preparation date</td><td>27 October 2026</td></tr>
+      <tr><td>Basis</td><td>Reviewed against the system as implemented on the preparation date</td></tr>
+    </table>
+    <span class="restricted">RESTRICTED</span>
+  </div>
+  <div class="foot"><span>National Government Constituencies Development Fund Board</span><span>For official staff training and reference</span></div>
+</section>
+
+<!-- ═════════════ Contents (filled in by build.py) ═════════════ -->
+<section class="contents">
+  <h1 class="part first">Contents</h1>
+  <div class="toc"><!--TOC--></div>
+</section>
+
+<!-- ═════════════ 1 ═════════════ -->
+<h1 class="part first" data-toc>1. Introduction</h1>
+<div class="role"><div class="tag">HEAD OF<br>DEPARTMENT</div><div class="txt">You prepare your department's activity memos, keep its workplan and budget, add your officers to the staff list, and report on each activity after it ends.</div></div>
+
+<h2 data-toc>1.1 What OCEO is for</h2>
+<p>OCEO is the system the Office of the CEO uses to plan, approve and follow up the Board's field activities. Every activity that takes officers out of the office starts as an <b>activity memo</b>. The memo says what the activity is, where and when it happens, who goes and what it costs. It is reviewed, decided by the CEO, carried out, and closed with a report.</p>
+<p>Before OCEO, these memos moved on paper and by email. Now each memo has one record that shows who did what and when, its budget is checked against your approved allocation, and the officers on it are checked so nobody is sent to two places on the same day.</p>
+
+<h2 data-toc>1.2 What you can and cannot see</h2>
+<p>OCEO is confidential. As a Head of Department you see your own department's work only.</p>
+<table class="t">
+  <tr><th>You can</th><th>You cannot</th></tr>
+  <tr><td>Prepare, submit and follow your department's memos</td><td>See another department's memos or budget</td></tr>
+  <tr><td>Prepare your department's workplan and budget estimates</td><td>Approve a budget or change an approved one</td></tr>
+  <tr><td>See your department's budget position on your memos</td><td>Open the dashboard, register, calendar or reports</td></tr>
+  <tr><td>Add officers to the staff list</td><td>Deactivate an officer or change anyone's position or access</td></tr>
+  <tr><td>Act on instructions the CEO sends your department</td><td>Approve, decline or forward a memo</td></tr>
+</table>
+<div class="box warning"><b>Warning:</b> Never share your password or let someone else use your account. Everything you open, print or download is recorded in the access log, under your name.</div>
+
+<h2 data-toc>1.3 Who is involved</h2>
+<table class="t">
+  <tr><th>Who</th><th>What they do with your memo</th></tr>
+  <tr><td class="k">You, the Head of Department</td><td>Prepare the memo, its team and costs, and submit it. Correct it if it is returned. Report after the activity.</td></tr>
+  <tr><td class="k">An officer you choose</td><td>Can prepare a memo for you through a secure link, without an account (Section 12).</td></tr>
+  <tr><td class="k">Assistant Chief of Staff</td><td>Reviews the memo. Returns it to you for correction, or forwards it.</td></tr>
+  <tr><td class="k">Chief of Staff</td><td>Reviews the memo, and receives the Assistant's memos before they go to the CEO when that rule is on. Follows the activity and accepts the report.</td></tr>
+  <tr><td class="k">Chief Executive Officer</td><td>Approves or declines the memo. On approval, instructs Finance, Procurement and any other department that must act.</td></tr>
+  <tr><td class="k">Heads of instructed departments</td><td>Process the imprest, buy the tickets, or do what the CEO's instruction asks, and record a reference when done.</td></tr>
+</table>
+
+<h2 data-toc>1.4 How to use this guide</h2>
+<p>Read Section 2 first: it shows the whole journey of a memo in one picture. Section 3 gets you signed in. After that, go straight to the section for the task in front of you.</p>
+<table class="t">
+  <tr><th>If you want to</th><th>Read</th></tr>
+  <tr><td>Sign in for the first time, or reset your password</td><td>Section 3</td></tr>
+  <tr><td>Add a missing officer</td><td>Section 4</td></tr>
+  <tr><td>Prepare your workplan and budget for the year</td><td>Section 5</td></tr>
+  <tr><td>Send a memo for an activity</td><td>Sections 6, 7 and 8</td></tr>
+  <tr><td>Deal with a memo that came back to you</td><td>Section 9</td></tr>
+  <tr><td>Submit the report after the activity</td><td>Section 11</td></tr>
+  <tr><td>Have an officer draft a memo for you</td><td>Section 12</td></tr>
+  <tr><td>Act on an instruction from the CEO</td><td>Section 13</td></tr>
+</table>
+<p>Screen labels, menu items and buttons are printed in <b class="ui">green bold</b>, exactly as they appear in OCEO. The appendices hold the memo tabs, checklists to use before you submit, answers to common questions, and who to contact.</p>
+
+<!-- ═════════════ 2 ═════════════ -->
+<h1 class="part" data-toc>2. How a Memo Moves</h1>
+<h2 data-toc>2.1 The journey at a glance</h2>
+<figure>
+<svg viewBox="0 0 640 250" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2e6b49"/></marker>
+    <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#c2410c"/></marker>
+    <marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5b625e"/></marker>
+  </defs>
+  <text x="0" y="12" font-size="10" font-weight="700" fill="#1f4f35">Before the activity: each step moves the memo forward</text>
+  <g font-size="9" text-anchor="middle" fill="#fff">
+    <rect x="0" y="52" width="130" height="50" rx="5" fill="#1f4f35"/><text x="65" y="71" font-weight="700">You</text><text x="65" y="84">Draft: memo, team, costs</text><text x="65" y="96" font-size="8">Submit for review</text>
+    <rect x="170" y="52" width="130" height="50" rx="5" fill="#1d4f91"/><text x="235" y="71" font-weight="700">Assistant or Chief of Staff</text><text x="235" y="84">Under review</text><text x="235" y="96" font-size="8">Forward or return</text>
+    <rect x="340" y="52" width="130" height="50" rx="5" fill="#6b2a6b"/><text x="405" y="71" font-weight="700">CEO</text><text x="405" y="84">Awaiting decision</text><text x="405" y="96" font-size="8">Approve or decline</text>
+    <rect x="510" y="52" width="130" height="50" rx="5" fill="#059669"/><text x="575" y="71" font-weight="700">Approved</text><text x="575" y="84">Instructions sent to</text><text x="575" y="96" font-size="8">Finance and Procurement</text>
+  </g>
+  <line x1="131" y1="77" x2="168" y2="77" stroke="#2e6b49" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="301" y1="77" x2="338" y2="77" stroke="#2e6b49" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="471" y1="77" x2="508" y2="77" stroke="#2e6b49" stroke-width="1.5" marker-end="url(#a)"/>
+  <path d="M235,51 V34 H50 V50" fill="none" stroke="#c2410c" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#r)"/>
+  <path d="M405,51 V26 H80 V50" fill="none" stroke="#c2410c" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#r)"/>
+  <text x="420" y="22" font-size="8.5" font-style="italic" fill="#c2410c">Dashed: returned to you for correction</text>
+  <line x1="405" y1="103" x2="405" y2="122" stroke="#5b625e" stroke-width="1" marker-end="url(#m)"/>
+  <g font-size="8.5" text-anchor="middle"><rect x="355" y="124" width="100" height="22" rx="4" fill="#9b1c1c"/><text x="405" y="138" fill="#fff" font-weight="700">Declined, with a reason</text></g>
+
+  <text x="0" y="172" font-size="10" font-weight="700" fill="#1f4f35">After approval: the activity takes place and is closed</text>
+  <g font-size="9" text-anchor="middle" fill="#fff">
+    <rect x="0" y="184" width="130" height="44" rx="5" fill="#2563eb"/><text x="65" y="202" font-weight="700">In progress</text><text x="65" y="216">From the start date</text>
+    <rect x="170" y="184" width="130" height="44" rx="5" fill="#4f46e5"/><text x="235" y="202" font-weight="700">Completed</text><text x="235" y="216">After the end date</text>
+    <rect x="340" y="184" width="130" height="44" rx="5" fill="#1f4f35"/><text x="405" y="202" font-weight="700">You report</text><text x="405" y="216">Report received</text>
+    <rect x="510" y="184" width="130" height="44" rx="5" fill="#475569"/><text x="575" y="202" font-weight="700">Closed</text><text x="575" y="216">Nothing changes after</text>
+  </g>
+  <line x1="131" y1="206" x2="168" y2="206" stroke="#2e6b49" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="301" y1="206" x2="338" y2="206" stroke="#2e6b49" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="471" y1="206" x2="508" y2="206" stroke="#2e6b49" stroke-width="1.5" marker-end="url(#a)"/>
+  <text x="0" y="246" font-size="8.5" font-style="italic" fill="#5b625e">There is no direct route to the CEO: every memo is reviewed first. A returned memo goes back to the same office when you resubmit it.</text>
+</svg>
+</figure>
+
+<h2 data-toc>2.2 Statuses you will see</h2>
+<p>The coloured badge on each memo shows where it is. These are the statuses a Head of Department meets:</p>
+<table class="t long">
+  <tr><th style="width:26%">Status</th><th style="width:22%">Who holds it</th><th>What it means</th></tr>
+  <tr><td class="k">Draft</td><td>You</td><td>Being prepared. Only you can see it. You can still discard it.</td></tr>
+  <tr><td class="k">With the Head of Department</td><td>You</td><td>An officer prepared it for you and sent it to you to check (Section 12).</td></tr>
+  <tr><td class="k">Returned to the preparer</td><td>Your officer</td><td>You sent an officer's draft back to them to correct.</td></tr>
+  <tr><td class="k">Under review</td><td>Assistant or Chief of Staff</td><td>Submitted and being reviewed. Locked for you.</td></tr>
+  <tr><td class="k">Returned for correction</td><td>You</td><td>A reviewer or the CEO wants a change. Read the comment, correct and resubmit.</td></tr>
+  <tr><td class="k">Awaiting decision</td><td>CEO</td><td>Reviewed and forwarded. The CEO will approve or decline it.</td></tr>
+  <tr><td class="k">Returned</td><td>Office of the CEO</td><td>The CEO asked the reviewers for clarification. It may come on to you.</td></tr>
+  <tr><td class="k">Approved</td><td>Nobody</td><td>Approved by the CEO. The instructed departments are acting on it.</td></tr>
+  <tr><td class="k">Declined</td><td>Nobody (final)</td><td>Not approved. The CEO's reason is shown on the memo.</td></tr>
+  <tr><td class="k">In progress</td><td>The team</td><td>The activity has started.</td></tr>
+  <tr><td class="k">Completed</td><td>You</td><td>The activity has ended. Your report is now due.</td></tr>
+  <tr><td class="k">Report received</td><td>Office of the CEO</td><td>Your report is in and being checked.</td></tr>
+  <tr><td class="k">Closed</td><td>Nobody (final)</td><td>The report was accepted. Nothing on the memo can change.</td></tr>
+  <tr><td class="k">Postponed or Cancelled</td><td>Office of the CEO</td><td>The activity was put off or called off by the Office of the CEO.</td></tr>
+</table>
+
+<h2 data-toc>2.3 Rules that always apply</h2>
+<ul>
+  <li><b>Every memo is reviewed</b> by the Assistant Chief of Staff or the Chief of Staff before it reaches the CEO.</li>
+  <li><b>Nothing is deleted after you submit.</b> A draft can be discarded. A submitted memo can only be returned, declined, postponed or cancelled, and its history stays.</li>
+  <li><b>Only an approved budget counts.</b> A memo is charged to a line in your department's approved budget.</li>
+  <li><b>An officer cannot be in two places at once.</b> Officers on an approved activity cannot be put on another one on the same days.</li>
+  <li><b>Comments are kept as written.</b> Review comments and the CEO's reasons cannot be edited or removed.</li>
+</ul>
+
+<!-- ═════════════ 3 ═════════════ -->
+<h1 class="part cont" data-toc>3. Getting Started</h1>
+<h2 data-toc>3.1 Your first sign-in</h2>
+<p>When you are appointed Head of Department, OCEO emails you a link to set your own password. The email has the subject <b>OCEO: set your password</b> and goes to your email address on the staff list.</p>
+<ol class="steps">
+  <li>Open the email and press the button in it. The link expires after a while, so use it soon.</li>
+  <li>Type a new password twice and press <b class="ui">Reset password</b>. Choose one you do not use anywhere else.</li>
+  <li>On the sign-in page, type your email and new password and press <b class="ui">Sign in</b>.</li>
+  <li>The first time only, read the NG-CDF Board Data Privacy Statement, tick to agree and accept it.</li>
+</ol>
+<div class="box tip"><b>Tip:</b> No email? Look in your spam or junk folder first. If it is not there, ask the System Administrator to check your email on the staff list and press <b class="ui">Email password link</b> on your account to send a new one.</div>
+
+<h2 data-toc>3.2 Two-factor sign-in</h2>
+<p>OCEO may ask you to protect your account with a second step. Install an authenticator app on your phone (for example Google Authenticator or Microsoft Authenticator), scan the code OCEO shows, and type the six-digit number from the app. Keep the recovery codes OCEO gives you somewhere safe. From then on, OCEO asks for the number from your phone each time you sign in.</p>
+
+<h2 data-toc>3.3 Forgotten password or locked account</h2>
+<ol class="steps">
+  <li>On the sign-in page press <b class="ui">Forgot password?</b></li>
+  <li>Type your work email and press <b class="ui">Send reset link</b>.</li>
+  <li>Open the email, set a new password and sign in.</li>
+</ol>
+<p>The page gives the same answer whatever email you type, so nobody can use it to find out who has an account. After several wrong passwords your account is locked for a while. Resetting your password unlocks it at once.</p>
+
+<h2 data-toc>3.4 Finding your way</h2>
+<p>The menu on the left shows only what you use:</p>
+<table class="t">
+  <tr><th>Menu</th><th>What you do there</th></tr>
+  <tr><td class="k">Activity memos</td><td>Prepare memos, follow them through review and decision, and submit activity reports. The number beside it counts the memos that need you.</td></tr>
+  <tr><td class="k">Staff list</td><td>Find and add the officers of your department.</td></tr>
+  <tr><td class="k">Workplan and budget</td><td>Prepare your department's workplan and budget for the year and send it to the CEO.</td></tr>
+  <tr><td class="k">Instructions</td><td>Shown only to departments the CEO instructs, such as Finance and Supply Chain (Section 13).</td></tr>
+</table>
+<p>Press your name at the top right to see your profile, change your password, manage two-factor sign-in, or <b class="ui">Sign out</b>. Always sign out when you leave your computer.</p>
+
+<h2 data-toc>3.5 Alerts, emails and SMS</h2>
+<p>The <b>bell</b> at the top of every page lists your alerts, for example when a memo is returned to you, approved or declined. While OCEO is open, a small pop-up also appears as each new alert arrives. Press an alert to go straight to the memo.</p>
+<p>When something needs you to act, you also receive an email and, if your mobile number is on the staff list, an SMS. For confidentiality these give only the memo reference and the step. Sign in to see the details, and do not forward them.</p>
+
+<!-- ═════════════ 4 ═════════════ -->
+<h1 class="part cont" data-toc>4. Your Staff List</h1>
+<p>Only officers on the staff list can be put on a team. Human Resources loads most of the list. If an officer of your department is missing, you can add them.</p>
+<h2 data-toc>4.1 Adding an officer</h2>
+<ol class="steps">
+  <li>Open <b class="ui">Staff list</b> and search for the officer by name or PF number, to be sure they are not already there.</li>
+  <li>Press <b class="ui">Add officer</b>.</li>
+  <li>Fill in the name, PF number, designation, employment type, job grade, official email and mobile number.</li>
+  <li>Press <b class="ui">Save</b>.</li>
+</ol>
+<div class="box important"><b>Important:</b> The job grade sets the officer's DSA rate, so take it from HR's records. Casual staff are on scale 10. Attachees without a grade are on INTERN. Type mobile numbers as Kenyan numbers, for example 0712 345 678.</div>
+
+<h2 data-toc>4.2 Importing a list</h2>
+<ol class="steps">
+  <li>On <b class="ui">Staff list</b> press <b class="ui">Import</b> and choose your filled-in staff file.</li>
+  <li>Press <b class="ui">Check file</b>. OCEO shows how many officers would be added and lists any row with a problem.</li>
+  <li>Correct the file if needed, then import it.</li>
+</ol>
+
+<h2 data-toc>4.3 What you cannot change</h2>
+<p>You can correct the officers you added yourself. You cannot deactivate an officer, or change anyone's department, designation or system access. When an officer leaves, transfers or is promoted, inform Human Resources or the System Administrator, who record the change with its date.</p>
+
+<!-- ═════════════ 5 ═════════════ -->
+<h1 class="part" data-toc>5. Your Workplan and Budget</h1>
+<p>Each financial year (July to June) your department prepares a workplan with its budget estimates. When the CEO approves it, it becomes your department's budget, and your memos are charged to its lines.</p>
+<h2 data-toc>5.1 Preparing the workplan</h2>
+<ol class="steps">
+  <li>Open <b class="ui">Workplan and budget</b> and choose the financial year at the top.</li>
+  <li>To prepare it in Excel, press <b class="ui">Workplan template</b>, fill it in and save it.</li>
+  <li>Press <b class="ui">Prepare or import the workplan</b>. Choose your file under <b>Workplan in Excel</b>, or leave it empty to type the lines in.</li>
+  <li>For each line, check the objective, deliverables, quantity and unit cost, quarters and responsible officer.</li>
+  <li>Fill in the <b>Objectives for the year</b>. You may attach the workplan document too.</li>
+</ol>
+<div class="box tip"><b>Tip:</b> If the import finds a mistake, such as a quarter written as Q5, nothing is imported and the message names the row. Correct the file and import it again.</div>
+
+<h2 data-toc>5.2 Submitting it to the CEO</h2>
+<p>Press <b class="ui">Submit to the CEO</b> and confirm. The lines are then locked while the CEO reviews them. The budget does not count until it is approved.</p>
+
+<h2 data-toc>5.3 When the CEO returns it</h2>
+<p>The CEO may comment on the workplan or on a line, change a line's amount, or return it to you. You are alerted, and the badge on <b class="ui">Workplan and budget</b> shows it.</p>
+<ol class="steps">
+  <li>Open the workplan and read the orange box and the comments on the lines.</li>
+  <li>Make the changes asked for.</li>
+  <li>Press <b class="ui">Resubmit to the CEO</b>.</li>
+</ol>
+<p>Your proposed amounts stay visible beside any the CEO changed, and every step is kept in the <b>Review history</b>.</p>
+
+<h2 data-toc>5.4 After approval</h2>
+<p>Once approved, the lines no longer change. If you need more on a line, or to move money between lines, ask the Office of the CEO: they handle budget adjustments, and the CEO approves them.</p>
+
+<!-- ═════════════ 6 ═════════════ -->
+<h1 class="part" data-toc>6. Preparing an Activity Memo</h1>
+<h2 data-toc>6.1 Before you start</h2>
+<div class="check">
+  <div class="h">Have these ready</div>
+  <div class="i">Your department's memo reference number (REF NO) and the date of the memo</div>
+  <div class="i">The dates, the number of days, and the county, constituency and venue</div>
+  <div class="i">The officers who will go, all on the staff list with the right job grade</div>
+  <div class="i">The line in your approved budget the activity is charged to</div>
+  <div class="i">The other costs: tickets, fuel, vehicle hire, venue and so on</div>
+</div>
+
+<h2 data-toc>6.2 Creating the memo</h2>
+<ol class="steps">
+  <li>Open <b class="ui">Activity memos</b> and press <b class="ui">Create new activity memo</b>.</li>
+  <li>Fill in the form, using the table in 6.3.</li>
+  <li>Press <b class="ui">Save draft</b>. You can return to it any time from the <b>Drafts</b> tab.</li>
+</ol>
+
+<h2 data-toc>6.3 Filling in the form</h2>
+<table class="t">
+  <tr><th>Part of the form</th><th>What to put</th></tr>
+  <tr><td class="k">Title and purpose</td><td>A short, clear title, and one sentence on what the activity is for.</td></tr>
+  <tr><td class="k">Category and activity type</td><td>Choose the closest from the lists.</td></tr>
+  <tr><td class="k">Introduction and justification</td><td>Why the activity is needed, and why now. Add other sections, such as a programme, under <b>More memo sections</b>.</td></tr>
+  <tr><td class="k">Key risks</td><td>Anything that could stop the activity or raise its cost.</td></tr>
+  <tr><td class="k">Memo reference (REF NO) and date issued</td><td>Your department's reference and the memo date. Both are required before you can submit.</td></tr>
+  <tr><td class="k">Planned start and number of days</td><td>The first day and how many days. OCEO works out the nights for DSA.</td></tr>
+  <tr><td class="k">Locations</td><td>County, constituency and venue. Press <b class="ui">Add location</b> for more places.</td></tr>
+  <tr><td class="k">Budget line and estimate</td><td>The line in your approved budget, and your estimate of the total.</td></tr>
+</table>
+
+<h2 data-toc>6.4 Choosing the budget line</h2>
+<p>When you choose the budget line, OCEO shows your department's <b>budget position</b>:</p>
+<table class="t">
+  <tr><th>Figure</th><th>What it means</th></tr>
+  <tr><td class="k">Allocation</td><td>Your approved budget, with any approved adjustments.</td></tr>
+  <tr><td class="k">Spent</td><td>What activity reports show was actually spent.</td></tr>
+  <tr><td class="k">Committed</td><td>Planned costs of approved memos not yet reported.</td></tr>
+  <tr><td class="k">Pending</td><td>Memos still in review. Shown for information; not taken off the balance.</td></tr>
+  <tr><td class="k">Balance</td><td>Allocation, less spent and committed. What is still available.</td></tr>
+</table>
+<div class="box note"><b>Note:</b> If no allocation shows, your workplan and budget for the year has not been approved yet. If the balance is too low for the activity, speak to the Office of the CEO before you submit.</div>
+
+<!-- ═════════════ 7 ═════════════ -->
+<h1 class="part cont" data-toc>7. Adding the Team and Costs</h1>
+<p>On the saved memo, press <b class="ui">Team and costs</b>.</p>
+<h2 data-toc>7.1 Adding officers</h2>
+<ol class="steps">
+  <li>Press <b class="ui">Add officers</b>.</li>
+  <li>Search by name, or filter by department and press <b>Select all shown</b>.</li>
+  <li>Tick the officers, choose their role (for example <b>Team lead</b> or <b>Member</b>) and press <b class="ui">Add to team</b>.</li>
+</ol>
+<p>OCEO adds each officer's DSA automatically from their job grade and the number of nights.</p>
+
+<h2 data-toc>7.2 External participants and groups</h2>
+<ul>
+  <li>For a person from outside the Board, press <b class="ui">Add external participant</b>.</li>
+  <li>For many people you do not need to name, such as 40 youth at a forum, press <b class="ui">Add a group by number</b>, give the group a name and the headcount, and choose one DSA scale.</li>
+</ul>
+
+<h2 data-toc>7.3 Cost lines</h2>
+<p>Press <b class="ui">Add cost line</b> for anything other than DSA: air tickets, bus fare, fuel, vehicle hire, venue, materials. Choose the cost type, describe it and type the amount. If a ticket is for one officer, choose that officer.</p>
+
+<h2 data-toc>7.4 How DSA is worked out</h2>
+<ul>
+  <li>There is one daily rate per job grade, wherever in Kenya the activity takes place.</li>
+  <li>An activity of <b>two days or more</b> pays the night before the start (for travel) and every night up to the end: the number of days plus one.</li>
+  <li>A <b>one-day</b> activity pays no nights.</li>
+</ul>
+<table class="t">
+  <tr><th>Example</th><th>Nights paid</th><th class="r">Scale 6 officer</th><th class="r">Casual (scale 10)</th></tr>
+  <tr><td>One-day meeting</td><td>0</td><td class="r">0.00</td><td class="r">0.00</td></tr>
+  <tr><td>Three-day visit</td><td>4</td><td class="r">4 × 11,200 = 44,800.00</td><td class="r">4 × 6,300 = 25,200.00</td></tr>
+  <tr><td>Five-day training</td><td>6</td><td class="r">6 × 11,200 = 67,200.00</td><td class="r">6 × 6,300 = 37,800.00</td></tr>
+</table>
+<p style="font-size:8.6pt;color:#5b625e">Rates shown are those in force from 1 July 2026. OCEO always uses the current rate.</p>
+
+<h2 data-toc>7.5 When an officer is not available</h2>
+<p>An officer already on an <b>approved</b> activity on any of the same days cannot be added, and OCEO tells you why. An officer on a memo still waiting for a decision shows a warning, but can be added. Only the Office of the CEO can override this, with a reason. If you need an officer who is booked, speak to the Office of the CEO.</p>
+
+<!-- ═════════════ 8 ═════════════ -->
+<h1 class="part" data-toc>8. Checking and Submitting</h1>
+<h2 data-toc>8.1 Previewing the memo</h2>
+<p>Press <b class="ui">Preview memo</b>. OCEO builds the memo in the Board's template: TO, FROM, DATE, REF NO and SUBJECT; your sections; Annex A, the Activity Budget Request; and the list of participants. Read it as the CEO will. The total must agree everywhere and the budget line must be named.</p>
+<p>If anything required is missing, OCEO lists it and will not let you submit until it is fixed.</p>
+
+<h2 data-toc>8.2 Submitting for review</h2>
+<ol class="steps">
+  <li>Press <b class="ui">Submit for review</b>.</li>
+  <li>Choose who reviews it: the <b>Assistant Chief of Staff</b> or the <b>Chief of Staff</b>.</li>
+  <li>Confirm. The memo moves to the <b>Awaiting review and decision</b> tab and is locked.</li>
+</ol>
+<div class="box warning"><b>Warning:</b> Check the memo carefully first. A draft can be thrown away with <b class="ui">Discard draft</b>, but a submitted memo is never deleted.</div>
+
+<h2 data-toc>8.3 Signing as acting Head</h2>
+<p>If you are acting in the role, tick <b class="ui">I am signing in an acting capacity</b> when you submit. The memo then reads "Ag." before your designation, for example "Ag. Manager, ICT". Your record on the staff list does not change.</p>
+
+<!-- ═════════════ 9 ═════════════ -->
+<h1 class="part cont" data-toc>9. When a Memo Is Returned</h1>
+<p>A reviewer or the CEO may return your memo for correction. You get an alert and an email, and the memo appears on the <b>Returned for correction</b> tab.</p>
+<ol class="steps">
+  <li>Open the memo and read the comment at the top. It says what must change.</li>
+  <li>Press <b class="ui">Edit memo</b>, or open <b class="ui">Team and costs</b>, and make the changes.</li>
+  <li>Press <b class="ui">Preview memo</b> to check it again.</li>
+  <li>Press <b class="ui">Resubmit for review</b>. It goes back to the same office.</li>
+</ol>
+<div class="box tip"><b>Tip:</b> If a comment is not clear, call the reviewer before you change the memo. A second return costs more time than a short call.</div>
+
+<!-- ═════════════ 10 ═════════════ -->
+<h1 class="part" data-toc>10. After the CEO Decides</h1>
+<h2 data-toc>10.1 When the memo is approved</h2>
+<p>You are alerted and the memo moves to <b>Approved and authorised</b>. On approval the CEO instructs Finance to process the imprest and Supply Chain to procure the tickets, and may instruct other departments, for example Administration for a vehicle. You are told when each instruction is done, with its reference, such as the imprest or LPO number.</p>
+<p>From the start date the memo shows <b>In progress</b>, and after the end date <b>Completed</b>. Your report is then due.</p>
+
+<h2 data-toc>10.2 When the memo is declined</h2>
+<p>The memo moves to the <b>Declined</b> tab with the CEO's reason. A declined memo is final. If the activity is still needed, prepare a new memo that answers the reason.</p>
+
+<h2 data-toc>10.3 Changes after approval</h2>
+<p>If the dates, the team or the costs must change after approval, speak to the Office of the CEO first. Larger changes go back to the CEO for a new decision. If an officer is needed elsewhere, only the Office of the CEO can recall or release them.</p>
+
+<!-- ═════════════ 11 ═════════════ -->
+<h1 class="part cont" data-toc>11. Reporting After the Activity</h1>
+<h2 data-toc>11.1 When the report is due</h2>
+<p>The report is due <b>7 working days after the end date</b>. OCEO records whether it came in on time, from the date it was first received.</p>
+<h2 data-toc>11.2 Submitting the report</h2>
+<ol class="steps">
+  <li>Open the memo and press <b class="ui">Submit activity report</b>.</li>
+  <li>Write <b>What the activity achieved</b>, the <b>Key findings</b> and your <b>Recommendations</b>.</li>
+  <li>Attach the report document.</li>
+  <li>Under each cost line, type the amount actually spent. Type 0 for anything not used, such as DSA for an officer who did not travel.</li>
+  <li>Press <b class="ui">Submit report</b>.</li>
+</ol>
+<div class="box important"><b>Important:</b> The amounts you enter count as spent against your budget straight away, so take them from Finance's records.</div>
+<h2 data-toc>11.3 If the report is returned</h2>
+<p>Press <b class="ui">Correct and resubmit the report</b>, make the change asked for and submit it again. When the Office of the CEO accepts the report, the activity is closed and nothing on it can change.</p>
+
+<!-- ═════════════ 12 ═════════════ -->
+<h1 class="part" data-toc>12. Asking an Officer to Prepare a Memo</h1>
+<p>You can ask an officer on your staff list to draft a memo for you. They do not need an account. The memo stays yours: you check it and decide whether it goes for review.</p>
+<h2 data-toc>12.1 Sending the request</h2>
+<ol class="steps">
+  <li>On <b class="ui">Activity memos</b> press <b class="ui">Ask an officer to prepare a memo</b>.</li>
+  <li>Choose the officer and say what the memo is for.</li>
+  <li>Choose how many days the link works, up to 30, and press <b class="ui">Send the link</b>.</li>
+</ol>
+<h2 data-toc>12.2 What the officer does</h2>
+<p>The officer opens the link and asks for a six-digit code, which is sent to their email or mobile on the staff list. With the code they can open that one memo only. They fill it in, add the team and costs, and send it to you.</p>
+<h2 data-toc>12.3 Checking what they send</h2>
+<p>Open it from the <b>Prepared by officers</b> tab. Then either:</p>
+<ul>
+  <li>submit it for review as in Section 8, when it is ready;</li>
+  <li>press <b class="ui">Return to the officer</b> with a comment, and they receive a new link to correct it; or</li>
+  <li>press <b class="ui">Decline</b> if the memo is not needed.</li>
+</ul>
+<p>While the officer has the memo, you cannot edit it. To stop a link at once, press <b class="ui">Revoke</b> on the memo requests list.</p>
+
+<!-- ═════════════ 13 ═════════════ -->
+<h1 class="part cont" data-toc>13. When the CEO Instructs Your Department</h1>
+<p>When the CEO approves a memo, the CEO may instruct your department to act on it: Finance to process the imprest, Supply Chain to procure the tickets, or any department with a written instruction. You then see <b class="ui">Instructions</b> in the menu, with a count of those still open.</p>
+<ol class="steps">
+  <li>Open the instruction. It shows the reference, dates, places, team and the CEO's note, and for Finance and Supply Chain the cost lines you act on.</li>
+  <li>Press <b class="ui">Acknowledge</b> so the Office of the CEO knows you have it.</li>
+  <li>When it is done, press <b class="ui">Mark as done</b> and type the reference, such as the imprest or LPO number.</li>
+</ol>
+<p>The Office of the CEO and the memo's department are told at once. Once the memo is approved, you can also read it and its documents, but not change anything on it.</p>
+
+<!-- ═════════════ Appendices ═════════════ -->
+<h1 class="part" data-toc>Appendix A: The Activity Memos Tabs</h1>
+<table class="t">
+  <tr><th style="width:32%">Tab</th><th>What is there</th></tr>
+  <tr><td class="k">Drafts</td><td>Memos you started and have not submitted.</td></tr>
+  <tr><td class="k">Prepared by officers</td><td>Memos officers are preparing for you, or have sent to you.</td></tr>
+  <tr><td class="k">Returned for correction</td><td>Memos sent back to you. These need you.</td></tr>
+  <tr><td class="k">Awaiting review and decision</td><td>Memos with the reviewers or the CEO.</td></tr>
+  <tr><td class="k">Approved and authorised</td><td>Approved memos, including those whose report is due.</td></tr>
+  <tr><td class="k">Declined</td><td>Memos the CEO declined, with the reason.</td></tr>
+  <tr><td class="k">All</td><td>Every memo of your department.</td></tr>
+</table>
+
+<h1 class="part cont" data-toc>Appendix B: Checklists</h1>
+<div class="check">
+  <div class="h">Before you submit a memo</div>
+  <div class="i">REF NO and date issued are filled in</div>
+  <div class="i">Dates, number of days and locations are right</div>
+  <div class="i">The budget line is chosen and the balance covers the total</div>
+  <div class="i">Every officer is on the team with the right role, and a team lead is named</div>
+  <div class="i">Tickets, fuel, vehicle hire and other costs are added</div>
+  <div class="i">The preview reads well and the total agrees everywhere</div>
+  <div class="i">"Acting capacity" is ticked if you are acting in the role</div>
+</div>
+<div class="check">
+  <div class="h">Before you submit a report</div>
+  <div class="i">It is within 7 working days of the end date</div>
+  <div class="i">What was achieved, the findings and the recommendations are written</div>
+  <div class="i">The report document is attached</div>
+  <div class="i">The actual amount is entered on every cost line, with 0 for anything not used</div>
+</div>
+
+<h1 class="part cont" data-toc>Appendix C: Common Questions</h1>
+<table class="t">
+  <tr><th style="width:36%">Question</th><th>Answer</th></tr>
+  <tr><td class="k">I cannot add an officer to my team.</td><td>They are on another approved activity on those days, or they are not on the staff list. Read the message beside their name.</td></tr>
+  <tr><td class="k">The memo shows no budget allocation.</td><td>Your workplan and budget for the year is not approved yet, or the line you chose is not in it.</td></tr>
+  <tr><td class="k">Submit for review is refused.</td><td>Something required is missing, often the REF NO, the date issued or the team. OCEO lists what to fix.</td></tr>
+  <tr><td class="k">I made a mistake after submitting.</td><td>Ask the reviewer to return the memo to you so you can correct it.</td></tr>
+  <tr><td class="k">The DSA looks wrong.</td><td>Check the officer's job grade on the staff list and the number of days on the memo.</td></tr>
+  <tr><td class="k">I did not receive the alert email or SMS.</td><td>Check spam, and that your email and mobile on the staff list are right. The bell in OCEO always shows your alerts.</td></tr>
+  <tr><td class="k">I am locked out.</td><td>Use <b class="ui">Forgot password?</b>. Resetting your password unlocks your account.</td></tr>
+  <tr><td class="k">My email or mobile number has changed.</td><td>Ask Human Resources or the System Administrator to update the staff list.</td></tr>
+  <tr><td class="k">I am leaving the role or going on leave.</td><td>Tell the Office of the CEO. Your role can be handed to a successor from today or from a later date. Your memos stay with the department.</td></tr>
+</table>
+
+<h1 class="part cont" data-toc>Appendix D: Getting Help</h1>
+<table class="t">
+  <tr><th style="width:42%">For</th><th>Contact</th></tr>
+  <tr><td class="k">Signing in, passwords and accounts</td><td>The System Administrator (ICT)</td></tr>
+  <tr><td class="k">A memo, a review comment or a decision</td><td>The Office of the CEO: the Chief of Staff or the Assistant Chief of Staff</td></tr>
+  <tr><td class="k">Officers missing or wrong on the staff list</td><td>Human Resources</td></tr>
+  <tr><td class="k">Budget lines, allocations and adjustments</td><td>The Office of the CEO</td></tr>
+</table>
+<div class="box tip"><b>Tip:</b> When you ask for help, give the memo reference, and say what you pressed and what you saw. A screenshot helps. Never send your password to anyone, including ICT.</div>
+
+</body>
+</html>
