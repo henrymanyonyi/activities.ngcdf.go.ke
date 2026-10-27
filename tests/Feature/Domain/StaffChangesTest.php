@@ -7,9 +7,11 @@ use App\Models\Designation;
 use App\Models\Staff;
 use App\Models\StaffChange;
 use App\Models\User;
+use App\Notifications\AccountAccessGranted;
 use App\Services\StaffChanges;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -102,4 +104,45 @@ it('records a change from the staff list screen and shows the one-time password 
 
     Livewire::actingAs(headOfDepartment($this->audit))->test(StaffList::class)->assertDontSee('position or access');
     Livewire::actingAs(headOfDepartment($this->ict))->test(StaffList::class)->call('openPosition', $this->officer->id)->assertForbidden();
+});
+
+it('emails a newly promoted Head a link to set their own password, with which they sign in and reach their memos', function () {
+    Notification::fake();
+
+    $result = $this->changes->apply($this->officer, positionChange(['department_id' => $this->ict->id, 'access' => User::ROLE_HOD]), assistant());
+    $account = $result['account'];
+
+    $token = null;
+    Notification::assertSentTo($account, AccountAccessGranted::class, function (AccountAccessGranted $notification) use (&$token) {
+        $token = $notification->token;
+
+        return $notification->access === 'Head of Department';
+    });
+
+    $this->post('/reset-password', ['token' => $token, 'email' => 'asha.promoted@ngcdf.go.ke', 'password' => 'Head-of-ICT-2026!', 'password_confirmation' => 'Head-of-ICT-2026!'])
+        ->assertSessionHasNoErrors();
+    $this->post('/login', ['email' => 'asha.promoted@ngcdf.go.ke', 'password' => 'Head-of-ICT-2026!'])->assertRedirect('/home');
+    $this->post(route('privacy.consent.accept'), ['agree' => '1']);
+
+    $this->get('/home')->assertRedirect(route('memos.index'));
+    $this->get(route('memos.index'))->assertOk();
+    $this->get(route('dashboard'))->assertForbidden();
+});
+
+it('sends no password link to a Head who already had active access', function () {
+    $hod = headOfDepartment($this->audit);
+    $hod->update(['staff_id' => $this->officer->id]);
+    Notification::fake();
+
+    $this->changes->apply($this->officer, positionChange(['department_id' => $this->ict->id, 'access' => User::ROLE_HOD]), assistant());
+
+    Notification::assertNothingSent();
+});
+
+it('ends the officer\'s place as Manager of the department they leave', function () {
+    $this->audit->update(['manager_staff_id' => $this->officer->id]);
+
+    $this->changes->apply($this->officer, positionChange(['department_id' => $this->ict->id]), assistant());
+
+    expect($this->audit->fresh()->manager_staff_id)->toBeNull();
 });

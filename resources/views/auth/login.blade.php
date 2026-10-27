@@ -24,7 +24,7 @@
                     </p>
                     <div class="mt-8 inline-flex items-start gap-3 rounded-xl bg-white/10 border border-white/15 px-4 py-3 text-sm text-emerald-50">
                         <i class="fa-solid fa-lock mt-0.5 text-amber-400" aria-hidden="true"></i>
-                        <span><strong class="font-semibold text-white">Restricted.</strong> For the CEO, the Chief of Staff and the Assistant Chief of Staff only. Every sign-in is recorded.</span>
+                        <span><strong class="font-semibold text-white">Restricted.</strong> For the Office of the CEO and Heads of Department only. Every sign-in is recorded.</span>
                     </div>
                 </div>
 
@@ -44,7 +44,7 @@
 
                 <x-ui.restricted />
                 <h1 class="mt-4 text-3xl font-bold tracking-tight text-slate-900">Sign in</h1>
-                <p class="mt-2 text-sm text-slate-500">Office of the CEO: authorised officers only.</p>
+                <p class="mt-2 text-sm text-slate-500">Office of the CEO and Heads of Department: authorised officers only.</p>
 
                 <div class="mt-8">
                     <x-auth.errors class="mb-5" />
@@ -70,7 +70,7 @@
                     </form>
 
                     <p class="mt-6 text-xs text-slate-400 leading-relaxed">
-                        After several failed attempts the account is locked for a while; the Chief of Staff can unlock it. You can add two-factor authentication to your account from your Profile.
+                        After several failed attempts the account is locked for a while; reset your password with "Forgot password?" or ask the Chief of Staff to unlock it. You can add two-factor authentication to your account from your Profile.
                     </p>
 
                     <p class="mt-4 text-xs text-slate-500">

@@ -17,6 +17,7 @@ use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use Throwable;
 
 /**
  * FRD CF-01 / CF-04: one active holder per role in User::ROLES (one per
@@ -158,7 +159,7 @@ class Users extends Component
         }
 
         $password = Str::password(16);
-        DB::transaction(function () use ($password) {
+        $user = DB::transaction(function () use ($password) {
             $user = User::create([
                 'name' => $this->name,
                 'email' => strtolower(trim($this->email)),
@@ -170,7 +171,10 @@ class Users extends Component
             ]);
             $user->forceFill(['email_verified_at' => now()])->save();
             $user->assignRole($this->role);
+
+            return $user;
         });
+        $this->mailPasswordLink($user, User::ROLES[$this->role]);
 
         $this->oneTimePassword = $password;
         $this->oneTimeFor = strtolower(trim($this->email));
@@ -275,6 +279,31 @@ class Users extends Component
 
         $this->oneTimePassword = $password;
         $this->oneTimeFor = $user->email;
+    }
+
+    /** Emails the user a link to set their own password, so no one else learns it. Their current password still works until they do. */
+    public function sendPasswordLink(int $id): void
+    {
+        $this->guard();
+        $user = User::query()->findOrFail($id);
+
+        if ($this->mailPasswordLink($user)) {
+            $this->toast("A link to set a new password has been emailed to {$user->email}.");
+        }
+    }
+
+    private function mailPasswordLink(User $user, ?string $access = null): bool
+    {
+        try {
+            $user->sendPasswordLink($access);
+        } catch (Throwable $e) {
+            report($e);
+            $this->toast("The email to {$user->email} could not be sent. Share a one-time password instead, or ask them to use \"Forgot password?\".", 'error');
+
+            return false;
+        }
+
+        return true;
     }
 
     public function resetTwoFactor(int $id): void

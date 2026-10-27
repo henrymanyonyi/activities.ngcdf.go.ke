@@ -4,6 +4,8 @@ use App\Livewire\Users;
 use App\Models\Department;
 use App\Models\Staff;
 use App\Models\User;
+use App\Notifications\AccountAccessGranted;
+use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
 
 it('creates a Head of Department account from the staff list, picking up their email, mobile and department', function () {
@@ -51,4 +53,16 @@ it('sets the mobile number of an existing account from its contact popup', funct
         ->assertHasNoErrors();
 
     expect($hod->fresh()->phone)->toBe('+254711222333');
+});
+
+it('emails a user a link to set a new password, leaving their current password in place', function () {
+    Notification::fake();
+    $hod = headOfDepartment();
+    $password = $hod->password;
+
+    Livewire::actingAs(chiefOfStaff())->test(Users::class)->call('sendPasswordLink', $hod->id)->assertHasNoErrors();
+
+    Notification::assertSentTo($hod, AccountAccessGranted::class);
+    expect($hod->fresh()->password)->toBe($password);
+    Livewire::actingAs($hod)->test(Users::class)->call('sendPasswordLink', $hod->id)->assertForbidden();
 });

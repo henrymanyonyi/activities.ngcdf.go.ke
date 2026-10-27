@@ -39,9 +39,13 @@
                                 <span class="flex-1 text-[13px] text-slate-700">
                                     @if ($tab === 'types')<span class="text-slate-400">{{ $item->category?->name }} ›</span> @endif{{ $item->name }}
                                     @if ($tab === 'categories')<span class="text-[11px] text-slate-400 font-numeric"> · {{ $item->types_count }} types</span>@endif
+                                    @if ($tab === 'departments')<span class="text-[11px] text-slate-400"> · Manager: {{ $item->manager?->name ?? 'not set' }}</span>@endif
                                     @unless ($item->is_active)<x-ui.badge class="ml-1">Inactive</x-ui.badge>@endunless
                                 </span>
                                 <button type="button" wire:click="startEdit({{ $item->id }}, @js($item->name))" class="{{ Ui::BTN_ICON }}" aria-label="Rename"><i class="fa-solid fa-pen text-xs"></i></button>
+                                @if ($tab === 'departments' && $item->is_active)
+                                    <button type="button" wire:click="openManager({{ $item->id }})" class="{{ Ui::BTN_ICON }}" title="Set the department's Manager" aria-label="Set the Manager of {{ $item->name }}"><i class="fa-solid fa-user-tie text-xs"></i></button>
+                                @endif
                                 @if (in_array($tab, ['departments', 'designations', 'offices']) && $item->is_active)
                                     <button type="button" wire:click="openMerge({{ $item->id }})" class="{{ Ui::BTN_ICON }}" title="Merge into another entry"><i class="fa-solid fa-code-merge text-xs"></i></button>
                                 @endif
@@ -131,6 +135,16 @@
             @endif
         </div>
     </section>
+
+    <x-ui.modal show="showManager" :open="$showManager" size="slim" icon="fa-user-tie" :title="'Manager of '.($managerDepartment?->name ?? 'the department')" subtitle="An officer of the department on the staff list. A position only: it gives no system access.">
+        <x-ui.field label="Manager" for="mgr-staff" error="managerStaffId" :hint="$managerOptions->isEmpty() ? 'No active officer is on the staff list for this department yet.' : null">
+            <select id="mgr-staff" wire:model="managerStaffId" class="{{ $sel }}"><option value="">None</option>@foreach ($managerOptions as $o)<option value="{{ $o->id }}">{{ $o->name }}@if ($o->designation) · {{ $o->designation->name }}@endif</option>@endforeach</select>
+        </x-ui.field>
+        <x-slot:footer>
+            <button type="button" wire:click="$set('showManager', false)" class="{{ Ui::BTN_NEUTRAL }}">Cancel</button>
+            <button type="button" wire:click="saveManager" wire:loading.attr="disabled" wire:target="saveManager" class="{{ Ui::BTN_PRIMARY }}"><i class="fa-solid fa-floppy-disk text-xs"></i>Save</button>
+        </x-slot:footer>
+    </x-ui.modal>
 
     <x-ui.modal show="showMerge" :open="$showMerge" size="slim" icon="fa-code-merge" title="Merge a duplicate" subtitle="Every record pointing at this entry is moved to the one you keep. The duplicate stays, inactive, for the record.">
         <x-ui.field label="Keep" for="m-into" error="mergeInto" required>
