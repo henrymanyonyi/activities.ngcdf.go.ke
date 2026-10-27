@@ -5,12 +5,14 @@ namespace App\Services;
 use App\Exceptions\ActivityWorkflowException;
 use App\Models\Department;
 use App\Models\Designation;
+use App\Models\ScheduledStaffChange;
 use App\Models\Staff;
 use App\Models\StaffChange;
 use App\Models\User;
 use App\Notifications\ActivityAlert;
 use App\Support\MobileNumber;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Throwable;
@@ -38,6 +40,10 @@ use Throwable;
  *    account, or one reactivated) is emailed a link to set their own password
  *    (27 October 2026), so they can sign in without being handed one.
  *  - An officer who leaves a department stops being its Manager.
+ *  - A change effective on a later date is scheduled (ScheduledStaffChange)
+ *    and applied on that date by activities:apply-staff-changes; until then
+ *    it can be cancelled. A Head can be replaced with a successor in one
+ *    step (handOver), at once or from a later date (27 October 2026).
  */
 class StaffChanges
 {
@@ -76,10 +82,119 @@ class StaffChanges
     }
 
     /**
+     * Records the change. Effective today or earlier, it applies at once; effective on a later
+     * date, it is scheduled and applied on that date (applyDue), checked now and again then.
+     *
      * @param  array{department_id: int|string|null, designation_id?: int|string|null, access: string, replace_head?: bool, effective_on: string, reason: string, reference?: ?string}  $data
-     * @return array{change: StaffChange, password: ?string, account: ?User}
+     * @return array{change: ?StaffChange, password: ?string, account: ?User, scheduled: ?ScheduledStaffChange}
      */
     public function apply(Staff $staff, array $data, User $actor): array
+    {
+        $this->authorise($data, $actor);
+
+        if (Carbon::parse($data['effective_on'])->startOfDay()->isAfter(today())) {
+            return ['change' => null, 'password' => null, 'account' => null, 'scheduled' => $this->schedule($staff, $data, $actor)];
+        }
+
+        return $this->perform($staff, $data, $actor) + ['scheduled' => null];
+    }
+
+    /**
+     * Ends an officer's role as Head of Department and makes the successor Head of that
+     * department in the same step, today or from a later date. The officer's own change
+     * (no access, another role, or a transfer) is $data; the successor keeps their
+     * designation and moves to the department.
+     *
+     * @param  array{department_id: int|string|null, designation_id?: int|string|null, access: string, effective_on: string, reason: string, reference?: ?string}  $data
+     * @return array{head: array{change: ?StaffChange, password: ?string, account: ?User, scheduled: ?ScheduledStaffChange}, successor: array{change: ?StaffChange, password: ?string, account: ?User, scheduled: ?ScheduledStaffChange}}
+     */
+    public function handOver(Staff $head, array $data, Staff $successor, User $actor): array
+    {
+        $this->authorise($data, $actor);
+
+        $account = $this->accountOf($head);
+        if (! $account?->is_active || $account->roleName() !== User::ROLE_HOD || ! $account->department_id) {
+            throw new ActivityWorkflowException("{$head->name} is not an active Head of Department, so there is no one to hand over from.");
+        }
+        if ($successor->is($head)) {
+            throw new ActivityWorkflowException('Choose another officer as the successor.');
+        }
+        $department = $account->department()->firstOrFail();
+        if ($data['access'] === User::ROLE_HOD && (int) $data['department_id'] === $department->id) {
+            throw new ActivityWorkflowException("{$head->name} would stay Head of {$department->name}. Choose their new access, or no system access.");
+        }
+        if (! $successor->is_active) {
+            throw new ActivityWorkflowException("{$successor->name} is inactive on the staff list.");
+        }
+
+        return DB::transaction(fn () => [
+            'head' => $this->apply($head, $data, $actor),
+            'successor' => $this->apply($successor, [
+                'department_id' => $department->id,
+                'access' => User::ROLE_HOD,
+                'replace_head' => true,
+                'effective_on' => $data['effective_on'],
+                'reason' => "Succeeds {$head->name} as Head of {$department->name}: ".trim((string) $data['reason']),
+                'reference' => $data['reference'] ?? null,
+            ], $actor),
+        ]);
+    }
+
+    /** Cancels a change not yet applied. Kept, cancelled, for the record. */
+    public function cancel(ScheduledStaffChange $scheduled, User $actor): void
+    {
+        if (! $actor->can('staff.reassign')) {
+            throw new AuthorizationException('You are not permitted to change officers\' positions or access.');
+        }
+
+        DB::transaction(function () use ($scheduled, $actor) {
+            $scheduled = ScheduledStaffChange::query()->lockForUpdate()->findOrFail($scheduled->id);
+            if ($scheduled->status !== ScheduledStaffChange::SCHEDULED) {
+                throw new ActivityWorkflowException('This change is no longer scheduled.');
+            }
+            $scheduled->update(['status' => ScheduledStaffChange::CANCELLED, 'cancelled_by' => $actor->id, 'processed_at' => now()]);
+        });
+    }
+
+    /**
+     * Applies the scheduled changes due by today, removals of access first so that a
+     * successor finds the department free. A change that can no longer be applied is
+     * marked failed with the reason, and the officer who scheduled it is alerted.
+     *
+     * @return array{applied: int, failed: int}
+     */
+    public function applyDue(): array
+    {
+        $due = ScheduledStaffChange::query()->pending()->whereDate('effective_on', '<=', today())->with(['staff', 'scheduler'])->get()
+            ->sortBy([fn ($a, $b) => (int) ($a->payload['access'] !== self::NONE) <=> (int) ($b->payload['access'] !== self::NONE), ['effective_on', 'asc'], ['id', 'asc']]);
+        $counts = ['applied' => 0, 'failed' => 0];
+
+        foreach ($due as $scheduled) {
+            try {
+                if (! $scheduled->scheduler) {
+                    throw new ActivityWorkflowException('The account that scheduled it no longer exists.');
+                }
+                DB::transaction(function () use ($scheduled) {
+                    $result = $this->perform($scheduled->staff, $scheduled->payload + ['effective_on' => $scheduled->effective_on->toDateString()], $scheduled->scheduler, $scheduled);
+                    $scheduled->update(['status' => ScheduledStaffChange::APPLIED, 'staff_change_id' => $result['change']->id, 'processed_at' => now()]);
+                });
+                $counts['applied']++;
+            } catch (Throwable $e) {
+                $expected = $e instanceof ActivityWorkflowException || $e instanceof AuthorizationException;
+                $expected || report($e);
+                $scheduled->update(['status' => ScheduledStaffChange::FAILED, 'outcome' => $expected ? $e->getMessage() : 'An unexpected error stopped it; see the application log.', 'processed_at' => now()]);
+                if ($scheduled->scheduler?->is_active) {
+                    $this->alerts->toUsers([$scheduled->scheduler], ActivityAlert::scheduledStaffChangeFailed($scheduled->staff->name, $scheduled->effective_on, $scheduled->outcome));
+                }
+                $counts['failed']++;
+            }
+        }
+
+        return $counts;
+    }
+
+    /** @param  array{access: string, reason: string}  $data */
+    private function authorise(array $data, User $actor): void
     {
         if (! $actor->can('staff.reassign')) {
             throw new AuthorizationException('You are not permitted to change officers\' positions or access.');
@@ -92,21 +207,91 @@ class StaffChanges
         if (trim((string) $data['reason']) === '') {
             throw new ActivityWorkflowException('Give the reason or the administrative reference for the change.');
         }
+    }
 
-        return DB::transaction(function () use ($staff, $data, $actor, $access) {
+    /**
+     * The officer's account, the department, designation and access before and after the change.
+     *
+     * @return array{0: ?User, 1: ?Department, 2: ?int, 3: ?string, 4: ?string}
+     */
+    private function resolve(Staff $staff, array $data): array
+    {
+        $account = $this->accountOf($staff);
+        $fromRole = $account?->is_active ? $account->roleName() : null;
+        $department = filled($data['department_id'] ?? null) ? Department::query()->findOrFail((int) $data['department_id']) : null;
+        $designationId = array_key_exists('designation_id', $data) ? (filled($data['designation_id']) ? (int) $data['designation_id'] : null) : $staff->designation_id;
+        $designationId && Designation::query()->findOrFail($designationId);
+        $toRole = match ($data['access']) {
+            self::KEEP => $fromRole,
+            self::NONE => null,
+            default => $data['access'],
+        };
+
+        return [$account, $department, $designationId, $fromRole, $toRole];
+    }
+
+    private function assertNothingScheduled(Staff $staff, ?ScheduledStaffChange $except = null): void
+    {
+        if ($pending = ScheduledStaffChange::query()->pending()->where('staff_id', $staff->id)->when($except, fn ($q) => $q->whereKeyNot($except->id))->orderBy('effective_on')->first()) {
+            throw new ActivityWorkflowException("{$staff->name} already has a change scheduled from {$pending->effective_on->format('d M Y')}. Cancel it first, then record the new one.");
+        }
+    }
+
+    /** Checked now and again when it applies: the rules as they stand today, and the Head it would replace. */
+    private function schedule(Staff $staff, array $data, User $actor): ScheduledStaffChange
+    {
+        return DB::transaction(function () use ($staff, $data, $actor) {
             $staff = Staff::query()->lockForUpdate()->findOrFail($staff->id);
-            $account = $this->accountOf($staff);
-            $fromRole = $account?->is_active ? $account->roleName() : null;
-            $department = filled($data['department_id'] ?? null) ? Department::query()->findOrFail((int) $data['department_id']) : null;
-            $designationId = array_key_exists('designation_id', $data) ? (filled($data['designation_id']) ? (int) $data['designation_id'] : null) : $staff->designation_id;
-            $designationId && Designation::query()->findOrFail($designationId);
-            $toRole = match ($access) {
-                self::KEEP => $fromRole,
-                self::NONE => null,
-                default => $access,
-            };
+            $this->assertNothingScheduled($staff);
+            [$account, $department, $designationId, $fromRole, $toRole] = $this->resolve($staff, $data);
+            $this->assertAllowed($staff, $account, $actor, $fromRole, $toRole, $data['access'], $department);
 
-            $this->assertAllowed($staff, $account, $actor, $fromRole, $toRole, $access, $department);
+            $effective = Carbon::parse($data['effective_on'])->startOfDay();
+            if ($toRole === User::ROLE_HOD && ! ($data['replace_head'] ?? false)) {
+                $current = User::query()->role(User::ROLE_HOD)->where('is_active', true)->where('department_id', $department->id)
+                    ->when($account, fn ($q) => $q->whereKeyNot($account->id))->first();
+                if ($current && ! $this->leavesHeadshipBy($current, $department, $effective)) {
+                    throw new ActivityWorkflowException("{$current->name} is the active Head of {$department->name}. Tick \"Replace the current Head\", or schedule their change first.");
+                }
+            }
+
+            return ScheduledStaffChange::create([
+                'staff_id' => $staff->id,
+                'effective_on' => $effective->toDateString(),
+                'payload' => [
+                    'department_id' => $department?->id,
+                    'designation_id' => $designationId,
+                    'access' => $data['access'],
+                    'replace_head' => (bool) ($data['replace_head'] ?? false),
+                    'reason' => trim((string) $data['reason']),
+                    'reference' => filled($data['reference'] ?? null) ? mb_substr(trim((string) $data['reference']), 0, 100) : null,
+                ],
+                'status' => ScheduledStaffChange::SCHEDULED,
+                'scheduled_by' => $actor->id,
+            ]);
+        });
+    }
+
+    /** Whether the Head has a change scheduled, by the date, that ends their headship of the department. */
+    private function leavesHeadshipBy(User $head, Department $department, Carbon $date): bool
+    {
+        return $head->staff_id && ScheduledStaffChange::query()->pending()->where('staff_id', $head->staff_id)->whereDate('effective_on', '<=', $date)->get()
+            ->contains(fn (ScheduledStaffChange $c) => $c->payload['access'] !== self::KEEP
+                && ! ($c->payload['access'] === User::ROLE_HOD && (int) $c->payload['department_id'] === $department->id));
+    }
+
+    /**
+     * @param  array{department_id: int|string|null, designation_id?: int|string|null, access: string, replace_head?: bool, effective_on: string, reason: string, reference?: ?string}  $data
+     * @return array{change: StaffChange, password: ?string, account: ?User}
+     */
+    private function perform(Staff $staff, array $data, User $actor, ?ScheduledStaffChange $applying = null): array
+    {
+        return DB::transaction(function () use ($staff, $data, $actor, $applying) {
+            $staff = Staff::query()->lockForUpdate()->findOrFail($staff->id);
+            $this->assertNothingScheduled($staff, $applying);
+            [$account, $department, $designationId, $fromRole, $toRole] = $this->resolve($staff, $data);
+
+            $this->assertAllowed($staff, $account, $actor, $fromRole, $toRole, $data['access'], $department);
 
             // The HR position.
             [$fromDepartment, $fromDesignation] = [$staff->department_id, $staff->designation_id];

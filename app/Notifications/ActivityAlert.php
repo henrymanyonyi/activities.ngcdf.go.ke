@@ -8,6 +8,7 @@ use App\Models\ActionInstruction;
 use App\Models\Activity;
 use App\Models\Department;
 use App\Models\User;
+use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 
@@ -64,6 +65,7 @@ class ActivityAlert extends Notification
             $activityId && $user->can('activities.view') => route('activities.show', $activityId),
             $activityId && $user->can('memos.originate') => route('memos.show', $activityId),
             $url && $user->canAny(['budgets.prepare', 'budgets.approve', 'instructions.action']) => $url,
+            $url && ($data['kind'] ?? null) === 'staff_change_failed' && $user->can('staff.reassign') => $url,
             default => route('home'),
         };
     }
@@ -202,6 +204,12 @@ class ActivityAlert extends Notification
 
         return (new self('access_changed', "Your FAPM access has changed: your account {$what}.", null, 'fa-user-shield', route('home')))
             ->needsAction(null, 'Your FAPM access has changed', 'Your FAPM access was changed on '.now()->format('d M Y').'.', 'Please sign in again to see what you can now do.');
+    }
+
+    /** To the officer who scheduled a change of position or access that could not be applied on its date. In the app only. */
+    public static function scheduledStaffChangeFailed(string $officer, CarbonInterface $effectiveOn, string $reason): self
+    {
+        return new self('staff_change_failed', "The change for {$officer} from {$effectiveOn->format('d M Y')} could not be applied: {$reason}", null, 'fa-user-xmark', route('staff.index', ['search' => $officer]));
     }
 
     public static function pendingTooLong(Activity $activity, int $workingDays): self

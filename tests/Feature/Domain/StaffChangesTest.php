@@ -4,6 +4,7 @@ use App\Exceptions\ActivityWorkflowException;
 use App\Livewire\StaffList;
 use App\Models\Department;
 use App\Models\Designation;
+use App\Models\ScheduledStaffChange;
 use App\Models\Staff;
 use App\Models\StaffChange;
 use App\Models\User;
@@ -15,6 +16,8 @@ use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
 
 beforeEach(function () {
+    // The examples' effective date is today unless a test moves it.
+    $this->travelTo(now()->setDate(2026, 11, 1)->setTime(9, 0));
     $this->changes = app(StaffChanges::class);
     $this->ict = Department::query()->where('name', 'ICT')->firstOrFail();
     $this->audit = Department::query()->where('name', 'Internal Audit')->firstOrFail();
@@ -145,4 +148,108 @@ it('ends the officer\'s place as Manager of the department they leave', function
     $this->changes->apply($this->officer, positionChange(['department_id' => $this->ict->id]), assistant());
 
     expect($this->audit->fresh()->manager_staff_id)->toBeNull();
+});
+
+it('says so when the department has no Head to replace, and names the account the officer will get', function () {
+    Livewire::actingAs(assistant())->test(StaffList::class)
+        ->call('openPosition', $this->officer->id)
+        ->set('posDepartment', (string) $this->audit->id)->set('posAccess', User::ROLE_HOD)
+        ->assertSee('Internal Audit has no active Head of Department now')
+        ->assertSee('An account is made with')
+        ->assertDontSee('Replace the current Head');
+});
+
+it('schedules a change effective on a later date and applies it on that date', function () {
+    $result = $this->changes->apply($this->officer, positionChange(['department_id' => $this->ict->id, 'access' => User::ROLE_HOD, 'effective_on' => '2026-11-10']), assistant());
+
+    expect($result['scheduled'])->status->toBe(ScheduledStaffChange::SCHEDULED)
+        ->and(User::query()->where('staff_id', $this->officer->id)->exists())->toBeFalse()
+        ->and($this->officer->fresh()->department_id)->toBe($this->audit->id);
+
+    $this->travelTo(now()->setDate(2026, 11, 9));
+    expect($this->changes->applyDue())->toBe(['applied' => 0, 'failed' => 0]);
+
+    $this->travelTo(now()->setDate(2026, 11, 10)->setTime(0, 15));
+    expect($this->changes->applyDue())->toBe(['applied' => 1, 'failed' => 0])
+        ->and(User::query()->where('staff_id', $this->officer->id)->sole())->department_id->toBe($this->ict->id)->is_active->toBeTrue()
+        ->and($result['scheduled']->fresh())->status->toBe(ScheduledStaffChange::APPLIED)->staff_change_id->toBe(StaffChange::query()->sole()->id)
+        ->and(StaffChange::query()->sole()->effective_on->toDateString())->toBe('2026-11-10');
+});
+
+it('hands a department over from its Head to a successor at once', function () {
+    $head = headOfDepartment($this->ict);
+    $headStaff = Staff::factory()->create(['department_id' => $this->ict->id]);
+    $head->update(['staff_id' => $headStaff->id]);
+    $successor = Staff::factory()->create(['name' => 'Next Head', 'email' => 'next.head@ngcdf.go.ke', 'department_id' => $this->ict->id]);
+
+    $this->changes->handOver($headStaff, positionChange(['department_id' => $this->ict->id, 'access' => StaffChanges::NONE]), $successor, assistant());
+
+    expect($head->fresh()->is_active)->toBeFalse()
+        ->and(User::query()->role(User::ROLE_HOD)->where('is_active', true)->where('department_id', $this->ict->id)->sole()->staff_id)->toBe($successor->id)
+        ->and(StaffChange::query()->where('staff_id', $successor->id)->sole()->reason)->toStartWith('Succeeds');
+});
+
+it('schedules a handover for a later date, ending the old Head before appointing the new one', function () {
+    $head = headOfDepartment($this->ict);
+    $headStaff = Staff::factory()->create(['department_id' => $this->ict->id]);
+    $head->update(['staff_id' => $headStaff->id]);
+    $successor = Staff::factory()->create(['email' => 'next.head@ngcdf.go.ke', 'department_id' => $this->ict->id]);
+
+    $this->changes->handOver($headStaff, positionChange(['department_id' => $this->ict->id, 'access' => StaffChanges::NONE, 'effective_on' => '2026-12-01']), $successor, assistant());
+    expect(ScheduledStaffChange::query()->pending()->count())->toBe(2)->and($head->fresh()->is_active)->toBeTrue();
+
+    $this->travelTo(now()->setDate(2026, 12, 1));
+    expect($this->changes->applyDue())->toBe(['applied' => 2, 'failed' => 0])
+        ->and($head->fresh()->is_active)->toBeFalse()
+        ->and(User::query()->role(User::ROLE_HOD)->where('is_active', true)->where('department_id', $this->ict->id)->sole()->staff_id)->toBe($successor->id);
+});
+
+it('refuses to schedule a second Head unless the current one is replaced or leaves by then, and lets a scheduled change be cancelled', function () {
+    headOfDepartment($this->ict);
+    $assistant = assistant();
+
+    expect(fn () => $this->changes->apply($this->officer, positionChange(['department_id' => $this->ict->id, 'access' => User::ROLE_HOD, 'effective_on' => '2026-11-10']), $assistant))
+        ->toThrow(ActivityWorkflowException::class, 'is the active Head of ICT');
+
+    $scheduled = $this->changes->apply($this->officer, positionChange(['department_id' => $this->ict->id, 'access' => User::ROLE_HOD, 'replace_head' => true, 'effective_on' => '2026-11-10']), $assistant)['scheduled'];
+    expect(fn () => $this->changes->apply($this->officer, positionChange(['department_id' => $this->ict->id]), $assistant))->toThrow(ActivityWorkflowException::class, 'already has a change scheduled');
+
+    $this->changes->cancel($scheduled, $assistant);
+    $this->travelTo(now()->setDate(2026, 11, 10));
+
+    expect($this->changes->applyDue())->toBe(['applied' => 0, 'failed' => 0])
+        ->and($scheduled->fresh())->status->toBe(ScheduledStaffChange::CANCELLED)->cancelled_by->toBe($assistant->id);
+});
+
+it('marks a scheduled change failed, and alerts who scheduled it, when it can no longer apply', function () {
+    $assistant = assistant();
+    $scheduled = $this->changes->apply($this->officer, positionChange(['department_id' => $this->ict->id, 'access' => User::ROLE_HOD, 'effective_on' => '2026-11-10']), $assistant)['scheduled'];
+    headOfDepartment($this->ict);
+
+    $this->travelTo(now()->setDate(2026, 11, 10));
+
+    expect($this->changes->applyDue())->toBe(['applied' => 0, 'failed' => 1])
+        ->and($scheduled->fresh())->status->toBe(ScheduledStaffChange::FAILED)->outcome->toContain('is the active Head of ICT')
+        ->and($assistant->fresh()->unreadNotifications()->sole()->data['kind'])->toBe('staff_change_failed');
+});
+
+it('offers a successor when ending a Head\'s role from the staff list, and schedules a later handover', function () {
+    $head = headOfDepartment($this->ict);
+    $headStaff = Staff::factory()->create(['name' => 'Old Head', 'department_id' => $this->ict->id]);
+    $head->update(['staff_id' => $headStaff->id]);
+    $successor = Staff::factory()->create(['name' => 'Next Head', 'email' => 'next.head@ngcdf.go.ke', 'department_id' => $this->ict->id]);
+
+    Livewire::actingAs(assistant())->test(StaffList::class)
+        ->call('openPosition', $headStaff->id)
+        ->assertDontSee('Successor as Head of ICT')
+        ->set('posAccess', StaffChanges::NONE)
+        ->assertSee('Successor as Head of ICT')->assertSee('Next Head')
+        ->set('posSuccessor', (string) $successor->id)
+        ->set('posEffective', '2026-11-15')->set('posReason', 'Retirement')
+        ->call('savePosition')->assertHasNoErrors()
+        ->call('openPosition', $headStaff->id)
+        ->assertSee('Scheduled')->assertSee('Cancel');
+
+    expect(ScheduledStaffChange::query()->pending()->pluck('staff_id')->sort()->values()->all())->toBe(collect([$headStaff->id, $successor->id])->sort()->values()->all())
+        ->and($head->fresh()->is_active)->toBeTrue();
 });

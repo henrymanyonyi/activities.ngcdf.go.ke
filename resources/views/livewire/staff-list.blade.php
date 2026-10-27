@@ -42,7 +42,7 @@
                         @foreach ($staff as $s)
                             <tr class="hover:bg-slate-50/60 {{ $s->is_active ? '' : 'opacity-60' }}" wire:key="st-{{ $s->id }}">
                                 <td class="{{ Ui::TD }} font-numeric">{{ $s->staff_number ?: '—' }}</td>
-                                <td class="{{ Ui::TD }} font-medium text-slate-700">{{ $s->name }}@unless ($s->employment_type === EmploymentType::Permanent)<x-ui.badge class="ml-1">{{ $s->employment_type->label() }}</x-ui.badge>@endunless@if (in_array($s->id, $managerIds, true))<x-ui.badge class="ml-1" classes="bg-emerald-50 text-emerald-700">Manager</x-ui.badge>@endif@unless ($s->is_active)<x-ui.badge class="ml-1">Inactive</x-ui.badge>@endunless</td>
+                                <td class="{{ Ui::TD }} font-medium text-slate-700">{{ $s->name }}@unless ($s->employment_type === EmploymentType::Permanent)<x-ui.badge class="ml-1">{{ $s->employment_type->label() }}</x-ui.badge>@endunless@if (in_array($s->id, $scheduledIds, true))<x-ui.badge class="ml-1" classes="bg-amber-50 text-amber-700" icon="fa-clock">Change scheduled</x-ui.badge>@endif@if (in_array($s->id, $managerIds, true))<x-ui.badge class="ml-1" classes="bg-emerald-50 text-emerald-700">Manager</x-ui.badge>@endif@unless ($s->is_active)<x-ui.badge class="ml-1">Inactive</x-ui.badge>@endunless</td>
                                 <td class="{{ Ui::TD }}">{{ $s->designation?->name ?? '—' }}</td>
                                 <td class="{{ Ui::TD }} font-numeric">{!! $s->job_grade ? e($s->job_grade) : '<span class="text-amber-600">not set</span>' !!}</td>
                                 <td class="{{ Ui::TD }}">{{ $s->department?->name ?? '—' }}</td>
@@ -125,14 +125,52 @@
             @if ($currentHead)
                 <label class="flex items-start gap-2 px-3 py-2 rounded-lg bg-orange-50 border border-orange-200 text-orange-800 text-[13px]">
                     <input type="checkbox" wire:model="posReplaceHead" class="mt-0.5 rounded border-orange-300 text-orange-600 focus:ring-orange-500">
-                    <span>Replace the current Head, <strong>{{ $currentHead->name }}</strong>. Their account is deactivated and they are signed out; the change is recorded against them too.</span>
+                    <span>Replace the current Head of {{ $headDepartment?->name }}, <strong>{{ $currentHead->name }}</strong> ({{ $currentHead->email }}). Their account is deactivated and they are signed out; the change is recorded against them too.</span>
                 </label>
+            @elseif ($headDepartment)
+                <p class="px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[13px]"><i class="fa-solid fa-circle-info mr-1"></i>{{ $headDepartment->name }} has no active Head of Department now, so there is no one to replace: {{ $positionStaff->name }} becomes its Head.</p>
+            @endif
+            @if ($posAccess === \App\Models\User::ROLE_HOD && ! $positionAccount)
+                @if ($positionStaff->email)
+                    <p class="text-[12px] text-slate-500">An account is made with <span class="font-semibold">{{ $positionStaff->email }}</span>, and a link to set their password is emailed there.</p>
+                @else
+                    <p class="px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[13px]"><i class="fa-solid fa-triangle-exclamation mr-1"></i>{{ $positionStaff->name }} has no email on the staff list, so no account can be made. Add their work email first.</p>
+                @endif
+            @endif
+            @if ($headedDepartment)
+                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 space-y-2">
+                    <p class="text-[13px] text-slate-700"><i class="fa-solid fa-user-minus mr-1 text-slate-500"></i>This ends {{ $positionStaff->name }}'s role as <strong>Head of {{ $headedDepartment->name }}</strong> on the effective date.</p>
+                    <x-ui.field label="Successor as Head of {{ $headedDepartment->name }}" for="pc-succ" error="posSuccessor" :hint="$successorOptions->isEmpty() ? 'No other active officer is on the staff list for this department.' : 'Optional. They become Head on the same date and get an account from the staff list. To appoint someone from another department, leave this empty and record their promotion with Replace the current Head.'">
+                        <select id="pc-succ" wire:model="posSuccessor" class="{{ $sel }}"><option value="">No successor now</option>@foreach ($successorOptions as $o)<option value="{{ $o->id }}">{{ $o->name }}@if ($o->designation) · {{ $o->designation->name }}@endif</option>@endforeach</select>
+                    </x-ui.field>
+                </div>
             @endif
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <x-ui.field label="Effective date" for="pc-e" error="posEffective" required><input id="pc-e" type="date" wire:model="posEffective" class="{{ Ui::CONTROL }}"></x-ui.field>
+                <x-ui.field label="Effective date" for="pc-e" error="posEffective" required hint="Today or earlier applies now. A later date schedules it for that date."><input id="pc-e" type="date" wire:model="posEffective" class="{{ Ui::CONTROL }}"></x-ui.field>
                 <x-ui.field label="Administrative reference" for="pc-r" error="posReference" class="sm:col-span-2"><input id="pc-r" type="text" wire:model="posReference" maxlength="100" class="{{ Ui::CONTROL }}" placeholder="e.g. HR/PROM/12/2026"></x-ui.field>
             </div>
             <x-ui.field label="Reason" for="pc-why" error="posReason" required><textarea id="pc-why" wire:model="posReason" rows="2" maxlength="2000" class="{{ Ui::CONTROL }}" placeholder="e.g. Promoted to Head of ICT by the Board, letter of 20 October 2026"></textarea></x-ui.field>
+
+            @if ($scheduledChanges->isNotEmpty())
+                <div>
+                    <p class="{{ Ui::MICRO }} mb-1">Scheduled</p>
+                    <ol class="divide-y divide-slate-100 border border-slate-100 rounded-lg max-h-40 overflow-y-auto">
+                        @foreach ($scheduledChanges as $c)
+                            <li class="flex items-start gap-3 px-3 py-2 text-[12px] text-slate-600" wire:key="sched-{{ $c->id }}">
+                                <span class="flex-1">
+                                    <span class="font-semibold text-slate-700">From {{ $c->effective_on->format('d M Y') }}:</span>
+                                    {{ $c->departmentName() }} · {{ $c->accessLabel() }}
+                                    <x-ui.badge class="ml-1" :classes="match ($c->status) { 'scheduled' => 'bg-amber-50 text-amber-700', 'applied' => 'bg-emerald-50 text-emerald-700', 'failed' => 'bg-red-50 text-red-700', default => 'bg-slate-100 text-slate-500' }">{{ ucfirst($c->status) }}</x-ui.badge>
+                                    <span class="block text-slate-500">{{ $c->payload['reason'] ?? '' }}@if ($c->outcome) · {{ $c->outcome }}@endif · scheduled by {{ $c->scheduler?->name ?? 'unknown' }} on {{ $c->created_at->format('d M Y H:i') }}</span>
+                                </span>
+                                @if ($c->status === 'scheduled')
+                                    <button type="button" wire:click="cancelScheduled({{ $c->id }})" wire:loading.attr="disabled" wire:target="cancelScheduled({{ $c->id }})" class="{{ Ui::BTN_TINT }}">Cancel</button>
+                                @endif
+                            </li>
+                        @endforeach
+                    </ol>
+                </div>
+            @endif
 
             @if ($positionStaff->positionChanges->isNotEmpty())
                 <div>
