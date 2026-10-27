@@ -231,3 +231,18 @@ it('manages submission links when enabled', function () {
     Livewire::actingAs(chiefOfStaff())->test(Links::class)->call('regenerate', $link->id);
     expect($link->fresh()->token_hash)->not->toBe($old);
 });
+
+it('sets a department\'s Manager from its own active officers, with no system access', function () {
+    $ict = Department::query()->where('name', 'ICT')->firstOrFail();
+    $manager = Staff::factory()->create(['name' => 'Mary Manager', 'department_id' => $ict->id]);
+    $outsider = Staff::factory()->create(['department_id' => Department::query()->where('name', 'Internal Audit')->value('id')]);
+
+    $page = Livewire::actingAs(chiefOfStaff())->test(Reference::class)->call('openManager', $ict->id)->assertSee('Mary Manager');
+    $page->set('managerStaffId', (string) $outsider->id)->call('saveManager')->assertHasErrors('managerStaffId');
+    $page->set('managerStaffId', (string) $manager->id)->call('saveManager')->assertHasNoErrors();
+
+    expect($ict->fresh()->manager_staff_id)->toBe($manager->id)
+        ->and(User::query()->where('staff_id', $manager->id)->exists())->toBeFalse();
+
+    Livewire::actingAs(headOfDepartment($ict))->test(Reference::class)->call('openManager', $ict->id)->set('managerStaffId', '')->call('saveManager')->assertForbidden();
+});

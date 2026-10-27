@@ -3,12 +3,15 @@
 namespace App\Models;
 
 use App\Models\Concerns\Auditable;
+use App\Notifications\AccountAccessGranted;
+use App\Services\AccessLogger;
 use App\Support\MobileNumber;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use Laravel\Jetstream\HasProfilePhoto;
@@ -110,6 +113,16 @@ class User extends Authenticatable
             'locked_until' => 'datetime',
             'last_login_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Emails the account a link to set its own password (App\Notifications\AccountAccessGranted),
+     * naming the access when it has just been given. Logged in the access log.
+     */
+    public function sendPasswordLink(?string $access = null): void
+    {
+        $this->notify(new AccountAccessGranted(Password::broker()->createToken($this), $access));
+        app(AccessLogger::class)->log(AccessLogger::PASSWORD_LINK_SENT, meta: array_filter(['access' => $access, 'sent_by' => auth()->id()]), userId: $this->id, email: $this->email);
     }
 
     public function isLocked(): bool

@@ -16,7 +16,7 @@
         <div class="px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm" role="alert">
             <p class="font-semibold"><i class="fa-solid fa-key mr-1"></i>One-time password for {{ $oneTimeFor }}</p>
             <p class="font-numeric text-base mt-1 select-all">{{ $oneTimePassword }}</p>
-            <p class="text-[12px] mt-1">Shown once. Share it privately. They change it, and set up two-factor authentication if required, at first sign-in.</p>
+            <p class="text-[12px] mt-1">A link to set their own password has also been emailed to them. This password is shown once: share it privately only if the email does not reach them.</p>
             <button type="button" wire:click="$set('oneTimePassword', null)" class="mt-2 {{ Ui::BTN_TINT }}">I have shared it</button>
         </div>
     @endif
@@ -42,7 +42,7 @@
                         @foreach ($staff as $s)
                             <tr class="hover:bg-slate-50/60 {{ $s->is_active ? '' : 'opacity-60' }}" wire:key="st-{{ $s->id }}">
                                 <td class="{{ Ui::TD }} font-numeric">{{ $s->staff_number ?: '—' }}</td>
-                                <td class="{{ Ui::TD }} font-medium text-slate-700">{{ $s->name }}@unless ($s->employment_type === EmploymentType::Permanent)<x-ui.badge class="ml-1">{{ $s->employment_type->label() }}</x-ui.badge>@endunless@unless ($s->is_active)<x-ui.badge class="ml-1">Inactive</x-ui.badge>@endunless</td>
+                                <td class="{{ Ui::TD }} font-medium text-slate-700">{{ $s->name }}@unless ($s->employment_type === EmploymentType::Permanent)<x-ui.badge class="ml-1">{{ $s->employment_type->label() }}</x-ui.badge>@endunless@if (in_array($s->id, $managerIds, true))<x-ui.badge class="ml-1" classes="bg-emerald-50 text-emerald-700">Manager</x-ui.badge>@endif@unless ($s->is_active)<x-ui.badge class="ml-1">Inactive</x-ui.badge>@endunless</td>
                                 <td class="{{ Ui::TD }}">{{ $s->designation?->name ?? '—' }}</td>
                                 <td class="{{ Ui::TD }} font-numeric">{!! $s->job_grade ? e($s->job_grade) : '<span class="text-amber-600">not set</span>' !!}</td>
                                 <td class="{{ Ui::TD }}">{{ $s->department?->name ?? '—' }}</td>

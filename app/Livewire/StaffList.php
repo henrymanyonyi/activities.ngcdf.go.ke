@@ -302,6 +302,7 @@ class StaffList extends Component
             'departments' => Department::query()->ordered()->get(['id', 'name']),
             'designations' => Designation::query()->ordered()->get(['id', 'name']),
             'offices' => Office::query()->ordered()->get(['id', 'name']),
+            'managerIds' => Department::query()->whereNotNull('manager_staff_id')->pluck('manager_staff_id')->map(fn ($id) => (int) $id)->all(),
             'columns' => StaffImporter::COLUMNS,
             'employmentTypes' => EmploymentType::cases(),
             'records' => app(StaffRecords::class),

@@ -24,6 +24,7 @@
                     <div class="flex flex-wrap gap-2 mt-4">
                         @if ($u->isLocked())<button type="button" wire:click="unlock({{ $u->id }})" class="{{ Ui::BTN_TINT }}">Unlock</button>@endif
                         <button type="button" wire:click="openContact({{ $u->id }})" class="{{ Ui::BTN_TINT }}">Contact</button>
+                        <button type="button" wire:click="sendPasswordLink({{ $u->id }})" wire:loading.attr="disabled" wire:target="sendPasswordLink({{ $u->id }})" class="{{ Ui::BTN_TINT }}" title="Email them a link to set a new password">Email password link</button>
                         <button type="button" wire:click="confirmReset({{ $u->id }})" class="{{ Ui::BTN_TINT }}">Reset password</button>
                         <button type="button" wire:click="resetTwoFactor({{ $u->id }})" class="{{ Ui::BTN_TINT }}">Reset two-factor</button>
                         @unless ($u->is(auth()->user()))
@@ -80,7 +81,8 @@
                                             @if ($u->isLocked())<button type="button" wire:click="unlock({{ $u->id }})" class="{{ Ui::BTN_TINT }}">Unlock</button>@endif
                                             <button type="button" wire:click="openDepartment({{ $u->id }})" class="{{ Ui::BTN_TINT }}">Change department</button>
                                             <button type="button" wire:click="openContact({{ $u->id }})" class="{{ Ui::BTN_TINT }}">Contact</button>
-                                            <button type="button" wire:click="confirmReset({{ $u->id }})" class="{{ Ui::BTN_TINT }}">Reset password</button>
+                                            <button type="button" wire:click="sendPasswordLink({{ $u->id }})" wire:loading.attr="disabled" wire:target="sendPasswordLink({{ $u->id }})" class="{{ Ui::BTN_TINT }}" title="Email them a link to set a new password">Email password link</button>
+                        <button type="button" wire:click="confirmReset({{ $u->id }})" class="{{ Ui::BTN_TINT }}">Reset password</button>
                                             <button type="button" wire:click="resetTwoFactor({{ $u->id }})" class="{{ Ui::BTN_TINT }}">Reset two-factor</button>
                                             <button type="button" wire:click="deactivate({{ $u->id }})" class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1.5 rounded-lg">Deactivate</button>
                                         @else
@@ -122,7 +124,7 @@
         </x-slot:footer>
     </x-ui.modal>
 
-    <x-ui.modal show="showCreate" :open="$showCreate" size="slim" icon="fa-user-plus" :title="'Create '.(\App\Models\User::ROLES[$role] ?? '').' account'" subtitle="A one-time password is shown once after saving.">
+    <x-ui.modal show="showCreate" :open="$showCreate" size="slim" icon="fa-user-plus" :title="'Create '.(\App\Models\User::ROLES[$role] ?? '').' account'" subtitle="A link to set their password is emailed to them; a one-time password is also shown once after saving.">
         @error('role')<p class="text-xs text-red-600">{{ $message }}</p>@enderror
         <x-user.staff-pick :matches="$staffMatches" :picked="$pickedStaff" />
         <x-ui.field label="Full name" for="u-n" error="name" required><input id="u-n" type="text" wire:model="name" maxlength="255" class="{{ Ui::CONTROL }}"></x-ui.field>

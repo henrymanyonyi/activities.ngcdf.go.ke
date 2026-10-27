@@ -13,6 +13,7 @@ use App\Support\MobileNumber;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Throwable;
 
 /**
  * Promotions, transfers and changes of system access (25 October 2026). The
@@ -33,6 +34,10 @@ use Illuminate\Support\Str;
  *    their sessions end so the new access applies at once.
  *  - Every change is recorded in staff_changes with the effective date and
  *    the reason; the account and staff records are audited as usual.
+ *  - An officer given access on an account that was not already active (a new
+ *    account, or one reactivated) is emailed a link to set their own password
+ *    (27 October 2026), so they can sign in without being handed one.
+ *  - An officer who leaves a department stops being its Manager.
  */
 class StaffChanges
 {
@@ -106,6 +111,9 @@ class StaffChanges
             // The HR position.
             [$fromDepartment, $fromDesignation] = [$staff->department_id, $staff->designation_id];
             $staff->update(['department_id' => $department?->id, 'designation_id' => $designationId]);
+            if ((int) $fromDepartment !== (int) $department?->id) {
+                Department::query()->where('manager_staff_id', $staff->id)->get()->each->update(['manager_staff_id' => null]);
+            }
 
             // The system access.
             $password = null;
@@ -133,6 +141,9 @@ class StaffChanges
 
             if ($account?->is_active && $toRole !== $fromRole) {
                 $this->alerts->toUsers([$account->fresh(['roles'])], ActivityAlert::accessChanged($toRole, $department));
+            }
+            if ($account?->is_active && $fromRole === null && $toRole !== null) {
+                $this->sendPasswordLink($account, User::ROLES[$toRole]);
             }
 
             return ['change' => $change, 'password' => $password, 'account' => $account];
@@ -241,6 +252,18 @@ class StaffChanges
         $this->endSessions($account);
 
         return [$account, $password];
+    }
+
+    /** After the change commits; a failed email never undoes it (they can still use "Forgot password?"). */
+    private function sendPasswordLink(User $account, string $access): void
+    {
+        DB::afterCommit(function () use ($account, $access) {
+            try {
+                $account->sendPasswordLink($access);
+            } catch (Throwable $e) {
+                report($e);
+            }
+        });
     }
 
     private function deactivate(User $user): void

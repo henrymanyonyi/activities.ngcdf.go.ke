@@ -7,6 +7,7 @@ use App\Models\Concerns\IsLookup;
 use Database\Factories\DepartmentFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Department extends Model
@@ -18,7 +19,7 @@ class Department extends Model
 
     use IsLookup;
 
-    protected $fillable = ['name', 'code', 'is_active'];
+    protected $fillable = ['name', 'code', 'manager_staff_id', 'is_active'];
 
     protected function casts(): array
     {
@@ -29,6 +30,17 @@ class Department extends Model
     public function staff(): HasMany
     {
         return $this->hasMany(Staff::class);
+    }
+
+    /**
+     * The department's Manager (27 October 2026): an officer of the department on the staff
+     * list. A position only: it gives no system access (the Head of Department is the account).
+     *
+     * @return BelongsTo<Staff, $this>
+     */
+    public function manager(): BelongsTo
+    {
+        return $this->belongsTo(Staff::class, 'manager_staff_id');
     }
 
     /** @return HasMany<Activity, $this> */

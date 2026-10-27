@@ -12,6 +12,7 @@ use App\Models\Designation;
 use App\Models\DsaRate;
 use App\Models\Office;
 use App\Models\Region;
+use App\Models\Staff;
 use App\Services\AppSettings;
 use App\Services\AuditLogger;
 use App\Support\Money;
@@ -59,6 +60,13 @@ class Reference extends Component
     public string $mergeInto = '';
 
     public bool $showMerge = false;
+
+    // A department's Manager
+    public bool $showManager = false;
+
+    public ?int $managerDepartmentId = null;
+
+    public string $managerStaffId = '';
 
     // DSA rates
     public string $rateGrade = '';
@@ -166,6 +174,29 @@ class Reference extends Component
         $this->toast('Merged. The duplicate is kept, inactive, for the record.');
     }
 
+    public function openManager(int $id): void
+    {
+        $department = Department::query()->findOrFail($id);
+        $this->resetErrorBag();
+        $this->managerDepartmentId = $department->id;
+        $this->managerStaffId = (string) ($department->manager_staff_id ?? '');
+        $this->showManager = true;
+    }
+
+    /** The Manager is an active officer of the department, or none. A position only: no system access. */
+    public function saveManager(): void
+    {
+        $this->guard();
+        $department = Department::query()->findOrFail($this->managerDepartmentId);
+        $this->validate([
+            'managerStaffId' => ['nullable', Rule::exists('staff', 'id')->where('department_id', $department->id)->where('is_active', true)->whereNull('deleted_at')],
+        ], ['managerStaffId.exists' => 'Choose an active officer of this department.'], ['managerStaffId' => 'manager']);
+
+        $department->update(['manager_staff_id' => $this->managerStaffId !== '' ? (int) $this->managerStaffId : null]);
+        $this->reset(['showManager', 'managerDepartmentId', 'managerStaffId']);
+        $this->toast($department->manager_staff_id ? "{$department->fresh('manager')->manager->name} is now Manager of {$department->name}." : "{$department->name} has no Manager now.");
+    }
+
     // ── Cost types, counties, DSA rates, thresholds ──────────────────────
 
     public function setCostScope(int $id, string $scope): void
@@ -261,7 +292,7 @@ class Reference extends Component
         }
 
         $data += match ($this->tab) {
-            'departments', 'designations', 'offices' => ['items' => $this->modelFor($this->tab)::query()->orderBy('is_active', 'desc')->orderBy('name')->get(), 'lookupLabel' => self::LOOKUPS[$this->tab][1]],
+            'departments', 'designations', 'offices' => ['items' => $this->modelFor($this->tab)::query()->when($this->tab === 'departments', fn ($q) => $q->with('manager'))->orderBy('is_active', 'desc')->orderBy('name')->get(), 'lookupLabel' => self::LOOKUPS[$this->tab][1]],
             'categories' => ['items' => ActivityCategory::query()->withCount('types')->orderBy('name')->get()],
             'types' => ['items' => ActivityType::query()->with('category')->get()->sortBy(fn ($t) => $t->category?->name.$t->name), 'categories' => ActivityCategory::query()->orderBy('name')->get()],
             'costs' => ['items' => CostCategory::query()->ordered()->get()],
@@ -277,6 +308,10 @@ class Reference extends Component
             ? self::LOOKUPS[$this->tab][0]::query()->where('is_active', true)->whereKeyNot($this->mergeFrom)->orderBy('name')->get(['id', 'name'])
             : collect();
         $data['regions'] = Region::query()->count();
+        $data['managerDepartment'] = $this->showManager ? Department::query()->find($this->managerDepartmentId) : null;
+        $data['managerOptions'] = $data['managerDepartment']
+            ? Staff::query()->active()->where('department_id', $data['managerDepartment']->id)->with('designation')->orderBy('name')->get(['id', 'name', 'designation_id'])
+            : collect();
 
         return view('livewire.settings.reference', $data);
     }

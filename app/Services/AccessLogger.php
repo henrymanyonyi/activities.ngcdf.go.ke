@@ -18,6 +18,10 @@ class AccessLogger
 
     public const LOCKED_OUT = 'locked_out';
 
+    public const PASSWORD_RESET = 'password_reset';
+
+    public const PASSWORD_LINK_SENT = 'password_link_sent';
+
     public const VIEW = 'view';
 
     public const EXPORT = 'export';

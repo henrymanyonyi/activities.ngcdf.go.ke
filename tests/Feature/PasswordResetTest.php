@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Password;
 use Laravel\Fortify\Features;
 use Tests\TestCase;
 
@@ -90,5 +91,36 @@ class PasswordResetTest extends TestCase
 
             return true;
         });
+    }
+
+    public function test_resetting_the_password_ends_a_lockout(): void
+    {
+        Notification::fake();
+
+        $user = User::factory()->create(['failed_login_attempts' => 3, 'locked_until' => now()->addMinutes(30)]);
+
+        $this->post('/forgot-password', ['email' => $user->email]);
+
+        Notification::assertSentTo($user, ResetPassword::class, function (object $notification) use ($user) {
+            $this->post('/reset-password', [
+                'token' => $notification->token,
+                'email' => $user->email,
+                'password' => 'password',
+                'password_confirmation' => 'password',
+            ])->assertSessionHasNoErrors();
+
+            return true;
+        });
+
+        $this->assertFalse($user->fresh()->isLocked());
+        $this->assertSame(0, $user->fresh()->failed_login_attempts);
+        $this->assertDatabaseHas('access_logs', ['user_id' => $user->id, 'event' => 'password_reset']);
+    }
+
+    public function test_the_reset_link_request_does_not_reveal_whether_an_account_exists(): void
+    {
+        $this->post('/forgot-password', ['email' => 'nobody@ngcdf.go.ke'])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('status', trans(Password::RESET_LINK_SENT));
     }
 }
