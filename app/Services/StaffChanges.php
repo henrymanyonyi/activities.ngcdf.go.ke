@@ -308,6 +308,7 @@ class StaffChanges
                 }
                 [$account, $password] = $this->setAccess($staff, $account, $toRole, $department);
             }
+            $handedOver = $toRole !== null && $account !== null && $this->handAccountTo($account, $staff);
 
             $change = StaffChange::create([
                 'staff_id' => $staff->id,
@@ -327,7 +328,7 @@ class StaffChanges
             if ($account?->is_active && $toRole !== $fromRole) {
                 $this->alerts->toUsers([$account->fresh(['roles'])], ActivityAlert::accessChanged($toRole, $department));
             }
-            if ($account?->is_active && $fromRole === null && $toRole !== null) {
+            if ($account?->is_active && $toRole !== null && ($fromRole === null || $handedOver)) {
                 $this->sendPasswordLink($account, User::ROLES[$toRole]);
             }
 
@@ -437,6 +438,56 @@ class StaffChanges
         $this->endSessions($account);
 
         return [$account, $password];
+    }
+
+    /**
+     * The account takes the officer's name, email and mobile number from the staff list. When its
+     * email was someone else's (a placeholder such as hod.ict@, or a previous holder), it is now a
+     * different person's account: the old password, two-factor and passkeys stop working, their
+     * sessions end, and the officer is emailed a link to set their own password.
+     *
+     * @return bool whether the account changed hands (its email changed)
+     */
+    private function handAccountTo(User $account, Staff $staff): bool
+    {
+        $email = filled($staff->email) ? mb_strtolower(trim((string) $staff->email)) : null;
+        $phone = MobileNumber::normalise($staff->phone);
+        $newHolder = $email !== null && $email !== mb_strtolower((string) $account->email);
+        $before = $account->only(['name', 'email', 'phone']);
+
+        if ($newHolder && User::query()->whereRaw('LOWER(email) = ?', [$email])->whereKeyNot($account->id)->exists()) {
+            throw new ActivityWorkflowException("Another account already uses {$email}, so this account cannot be moved to {$staff->name}. Deactivate or correct that account first.");
+        }
+
+        $account->forceFill(array_filter([
+            'name' => $staff->name,
+            'email' => $newHolder ? $email : null,
+            'phone' => $phone,
+        ]));
+        if (! $account->isDirty()) {
+            return false;
+        }
+
+        if ($newHolder) {
+            $account->forceFill([
+                'password' => Str::password(32),
+                'two_factor_secret' => null,
+                'two_factor_recovery_codes' => null,
+                'two_factor_confirmed_at' => null,
+                'failed_login_attempts' => 0,
+                'locked_until' => null,
+                'email_verified_at' => now(),
+            ]);
+        }
+        $account->save();
+
+        if ($newHolder) {
+            DB::table('passkeys')->where('user_id', $account->id)->delete();
+            $this->endSessions($account);
+            $this->audit->record($account, 'account_handed_to_officer', $before, $account->only(['name', 'email', 'phone']) + ['staff_id' => $staff->id]);
+        }
+
+        return $newHolder;
     }
 
     /** After the change commits; a failed email never undoes it (they can still use "Forgot password?"). */
