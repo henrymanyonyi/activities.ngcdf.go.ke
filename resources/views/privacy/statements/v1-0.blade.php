@@ -47,7 +47,7 @@
     <dt>Smart NG-CDF / our Platforms</dt>
     <dd>The Smart NG-CDF digital platform (smart.ngcdf.go.ke), the Board's corporate website, and any other Board-operated application, portal or system.</dd>
     <dt>Data Protection Officer</dt>
-    <dd>A designated NG-CDF Board staff responsible for overseeing the implantation and enforcement of data protection measures, ensuring compliance with the Act, advising the organization and its employees on data processing requirements, and acting as a primary point of contact with Office of the Data Protection Commissioner regarding data privacy matters.</dd>
+    <dd>A designated NG-CDF Board staff responsible for overseeing the implementation and enforcement of data protection measures, ensuring compliance with the Act, advising the organization and its employees on data processing requirements, and acting as a primary point of contact with Office of the Data Protection Commissioner regarding data privacy matters.</dd>
 </dl>
 
 <h2>4. Personal Data We Collect</h2>
