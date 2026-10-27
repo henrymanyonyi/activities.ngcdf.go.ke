@@ -128,9 +128,13 @@
                     <span>Replace the current Head of {{ $headDepartment?->name }}, <strong>{{ $currentHead->name }}</strong> ({{ $currentHead->email }}). Their account is deactivated and they are signed out; the change is recorded against them too.</span>
                 </label>
             @elseif ($headDepartment && $positionAccount?->is_active && $positionAccount->roleName() === \App\Models\User::ROLE_HOD && (int) $positionAccount->department_id === $headDepartment->id)
-                <p class="px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[13px]"><i class="fa-solid fa-circle-check mr-1"></i>{{ $positionStaff->name }} is already the Head of {{ $headDepartment->name }} ({{ $positionAccount->email }}). Nothing about their access changes; record a change only to update their department or designation.</p>
+                <p class="px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[13px]"><i class="fa-solid fa-circle-check mr-1"></i>{{ $positionStaff->name }} is already the Head of {{ $headDepartment->name }} ({{ $positionAccount->email }}).@if (filled($positionStaff->email) && mb_strtolower($positionAccount->email) === mb_strtolower(trim($positionStaff->email))) Nothing about their access changes; record a change only to update their department or designation.@endif</p>
             @elseif ($headDepartment)
                 <p class="px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[13px]"><i class="fa-solid fa-circle-info mr-1"></i>{{ $headDepartment->name }} has no active Head of Department now, so there is no one to replace: {{ $positionStaff->name }} becomes its Head.</p>
+            @endif
+            @php $foreignAccount = $positionAccount && $posAccess !== 'none' && filled($positionStaff->email) && mb_strtolower($positionAccount->email) !== mb_strtolower(trim($positionStaff->email)); @endphp
+            @if ($foreignAccount)
+                <p class="px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[13px]"><i class="fa-solid fa-triangle-exclamation mr-1"></i>The account linked to {{ $positionStaff->name }} is <strong>{{ $positionAccount->name }}</strong> ({{ $positionAccount->email }}). Recording the change moves it to {{ $positionStaff->name }} and <strong>{{ $positionStaff->email }}</strong>: the old password, two-factor and passkeys stop working, and a link to set a password is emailed to {{ $positionStaff->email }}.</p>
             @endif
             @if ($posAccess === \App\Models\User::ROLE_HOD && ! $positionAccount)
                 @if ($positionStaff->email)

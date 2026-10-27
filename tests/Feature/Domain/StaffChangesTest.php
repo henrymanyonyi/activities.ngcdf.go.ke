@@ -134,7 +134,7 @@ it('emails a newly promoted Head a link to set their own password, with which th
 
 it('sends no password link to a Head who already had active access', function () {
     $hod = headOfDepartment($this->audit);
-    $hod->update(['staff_id' => $this->officer->id]);
+    $hod->update(['staff_id' => $this->officer->id, 'email' => 'asha.promoted@ngcdf.go.ke']);
     Notification::fake();
 
     $this->changes->apply($this->officer, positionChange(['department_id' => $this->ict->id, 'access' => User::ROLE_HOD]), assistant());
@@ -264,4 +264,26 @@ it('says an officer who already heads the department is its Head, not that the d
         ->set('posAccess', User::ROLE_HOD)
         ->assertSee('Asha Promoted is already the Head of ICT')
         ->assertDontSee('has no active Head of Department now');
+});
+
+it('hands a placeholder Head account linked to the officer over to them, with their own email and new credentials', function () {
+    Notification::fake();
+    $placeholder = headOfDepartment($this->ict);
+    $placeholder->forceFill(['name' => 'Head of ICT', 'email' => 'hod.ict@ngcdf.go.ke', 'staff_id' => $this->officer->id, 'two_factor_confirmed_at' => now()])->save();
+    $oldPassword = $placeholder->password;
+    DB::table('sessions')->insert(['id' => 'placeholder', 'user_id' => $placeholder->id, 'payload' => '', 'last_activity' => time()]);
+    $this->officer->update(['department_id' => $this->ict->id]);
+
+    Livewire::actingAs(assistant())->test(StaffList::class)
+        ->call('openPosition', $this->officer->id)->set('posAccess', User::ROLE_HOD)
+        ->assertSee('The account linked to Asha Promoted is', false)->assertSee('hod.ict@ngcdf.go.ke');
+
+    $this->changes->apply($this->officer, positionChange(['department_id' => $this->ict->id, 'access' => User::ROLE_HOD]), assistant());
+
+    expect($placeholder->fresh())
+        ->name->toBe('Asha Promoted')->email->toBe('asha.promoted@ngcdf.go.ke')->phone->toBe('+254712111222')
+        ->is_active->toBeTrue()->department_id->toBe($this->ict->id)->two_factor_confirmed_at->toBeNull()
+        ->and($placeholder->fresh()->password)->not->toBe($oldPassword)
+        ->and(DB::table('sessions')->where('user_id', $placeholder->id)->exists())->toBeFalse();
+    Notification::assertSentTo($placeholder->fresh(), AccountAccessGranted::class);
 });
