@@ -1,4 +1,4 @@
-<div class="relative" x-data @keydown.escape.window="$wire.set('open', false)" wire:poll.60s>
+<div class="relative" x-data @keydown.escape.window="$wire.set('open', false)" wire:poll.15s="checkForNew">
     <button type="button" wire:click="$toggle('open')" class="relative p-2 rounded-lg text-slate-500 hover:text-emerald-700 hover:bg-slate-100 transition" aria-label="Alerts{{ $unread ? ", {$unread} unread" : '' }}">
         <i class="fa-regular fa-bell"></i>
         @if ($unread)

@@ -7,6 +7,7 @@ use App\Livewire\Concerns\RunsActions;
 use App\Models\Department;
 use App\Models\Designation;
 use App\Models\Office;
+use App\Models\ScheduledStaffChange;
 use App\Models\Staff;
 use App\Models\User;
 use App\Rules\DsaGrade;
@@ -15,6 +16,7 @@ use App\Services\StaffImporter;
 use App\Services\StaffRecords;
 use App\Support\MobileNumber;
 use Closure;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -105,6 +107,9 @@ class StaffList extends Component
     public string $posReason = '';
 
     public string $posReference = '';
+
+    /** When the officer stops being Head: who becomes Head of that department on the same date. */
+    public string $posSuccessor = '';
 
     /** Shown once after an account is made, never stored in plain text. */
     public ?string $oneTimePassword = null;
@@ -199,6 +204,7 @@ class StaffList extends Component
         $this->posEffective = today()->toDateString();
         $this->posReason = '';
         $this->posReference = '';
+        $this->posSuccessor = '';
         $this->showPosition = true;
     }
 
@@ -212,10 +218,11 @@ class StaffList extends Component
             'posEffective' => ['required', 'date'],
             'posReason' => ['required', 'string', 'max:2000'],
             'posReference' => ['nullable', 'string', 'max:100'],
-        ], [], ['posDepartment' => 'department', 'posDesignation' => 'designation', 'posAccess' => 'system access', 'posEffective' => 'effective date', 'posReason' => 'reason', 'posReference' => 'reference']);
+            'posSuccessor' => ['nullable', Rule::exists('staff', 'id')->where('is_active', true)->whereNull('deleted_at')],
+        ], [], ['posDepartment' => 'department', 'posDesignation' => 'designation', 'posAccess' => 'system access', 'posEffective' => 'effective date', 'posReason' => 'reason', 'posReference' => 'reference', 'posSuccessor' => 'successor']);
 
         $staff = Staff::query()->findOrFail($this->positionStaffId);
-        $result = $this->attempt(fn () => $changes->apply($staff, [
+        $data = [
             'department_id' => $this->posDepartment,
             'designation_id' => $this->posDesignation,
             'access' => $this->posAccess,
@@ -223,15 +230,34 @@ class StaffList extends Component
             'effective_on' => $this->posEffective,
             'reason' => $this->posReason,
             'reference' => $this->posReference,
-        ], Auth::user()));
+        ];
+        $successor = $this->posSuccessor !== '' ? Staff::query()->findOrFail((int) $this->posSuccessor) : null;
+        $result = $this->attempt(fn () => $successor
+            ? $changes->handOver($staff, $data, $successor, Auth::user())
+            : ['head' => $changes->apply($staff, $data, Auth::user())]);
 
-        if (is_array($result)) {
-            $this->showPosition = false;
-            if ($result['password']) {
-                [$this->oneTimePassword, $this->oneTimeFor] = [$result['password'], $result['account']->email];
-            }
-            $this->toast("{$staff->name}: change recorded".($result['account'] && $result['change']->to_role !== $result['change']->from_role ? '; their access applies at their next sign-in.' : '.'));
+        if (! is_array($result)) {
+            return;
         }
+
+        $this->showPosition = false;
+        foreach ($result as $outcome) {
+            if ($outcome['password']) {
+                [$this->oneTimePassword, $this->oneTimeFor] = [$outcome['password'], $outcome['account']->email];
+            }
+        }
+        $head = $result['head'];
+        $this->toast(match (true) {
+            $head['scheduled'] !== null => "{$staff->name}: change scheduled from {$head['scheduled']->effective_on->format('d M Y')}".($successor ? ", with {$successor->name} as the new Head" : '').'. It applies on that date; you can cancel it until then.',
+            $successor !== null => "{$staff->name}: change recorded. {$successor->name} is now the Head; their access applies at their next sign-in.",
+            default => "{$staff->name}: change recorded".($head['account'] && $head['change']->to_role !== $head['change']->from_role ? '; their access applies at their next sign-in.' : '.'),
+        });
+    }
+
+    public function cancelScheduled(int $id, StaffChanges $changes): void
+    {
+        $scheduled = ScheduledStaffChange::query()->with('staff')->findOrFail($id);
+        $this->attempt(fn () => $changes->cancel($scheduled, Auth::user()), "The change for {$scheduled->staff->name} from {$scheduled->effective_on->format('d M Y')} is cancelled.");
     }
 
     /** Runs every check and reports what the import would do, without saving anything. */
@@ -268,7 +294,7 @@ class StaffList extends Component
     private function positionData(): array
     {
         if (! $this->showPosition || ! $this->positionStaffId) {
-            return ['positionStaff' => null, 'positionAccount' => null, 'accessOptions' => [], 'currentHead' => null];
+            return ['positionStaff' => null, 'positionAccount' => null, 'accessOptions' => [], 'currentHead' => null, 'headDepartment' => null, 'scheduledChanges' => collect(), 'headedDepartment' => null, 'successorOptions' => collect()];
         }
 
         $changes = app(StaffChanges::class);
@@ -281,6 +307,28 @@ class StaffList extends Component
             'positionAccount' => $account?->loadMissing('department'),
             'accessOptions' => $changes->accessOptions(Auth::user()),
             'currentHead' => $headWanted ? User::query()->role(User::ROLE_HOD)->where('is_active', true)->where('department_id', $this->posDepartment)->when($account, fn ($q) => $q->whereKeyNot($account->id))->first() : null,
+            'headDepartment' => $headWanted ? Department::query()->find($this->posDepartment) : null,
+            'scheduledChanges' => $staff ? ScheduledStaffChange::query()->where('staff_id', $staff->id)->with('scheduler')->latest('id')->limit(10)->get() : collect(),
+            ...$this->successorData($account),
+        ];
+    }
+
+    /**
+     * When the officer is a Head and this change ends that, the department and the officers who may succeed them.
+     *
+     * @return array{headedDepartment: ?Department, successorOptions: Collection<int, Staff>}
+     */
+    private function successorData(?User $account): array
+    {
+        $headed = $account?->is_active && $account->roleName() === User::ROLE_HOD ? $account->department : null;
+        $staysHead = in_array($this->posAccess, [StaffChanges::KEEP, User::ROLE_HOD], true) && (int) $this->posDepartment === (int) $headed?->id;
+        if (! $headed || $staysHead) {
+            return ['headedDepartment' => null, 'successorOptions' => collect()];
+        }
+
+        return [
+            'headedDepartment' => $headed,
+            'successorOptions' => Staff::query()->active()->where('department_id', $headed->id)->whereKeyNot($this->positionStaffId)->with('designation')->orderBy('name')->get(['id', 'name', 'designation_id']),
         ];
     }
 
@@ -302,6 +350,7 @@ class StaffList extends Component
             'departments' => Department::query()->ordered()->get(['id', 'name']),
             'designations' => Designation::query()->ordered()->get(['id', 'name']),
             'offices' => Office::query()->ordered()->get(['id', 'name']),
+            'scheduledIds' => ScheduledStaffChange::query()->pending()->pluck('staff_id')->map(fn ($id) => (int) $id)->all(),
             'managerIds' => Department::query()->whereNotNull('manager_staff_id')->pluck('manager_staff_id')->map(fn ($id) => (int) $id)->all(),
             'columns' => StaffImporter::COLUMNS,
             'employmentTypes' => EmploymentType::cases(),

@@ -31,6 +31,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [NoStore::class]);
     })
     ->withSchedule(function (Schedule $schedule): void {
+        $schedule->command('activities:apply-staff-changes')->dailyAt('00:15')->withoutOverlapping();
         $schedule->command('activities:daily')->dailyAt('06:00')->withoutOverlapping();
         $schedule->command('activities:weekly-summary')->weeklyOn(1, '06:30');
         $schedule->command('backup:clean')->dailyAt('01:00');
