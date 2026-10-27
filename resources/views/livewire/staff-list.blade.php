@@ -127,6 +127,8 @@
                     <input type="checkbox" wire:model="posReplaceHead" class="mt-0.5 rounded border-orange-300 text-orange-600 focus:ring-orange-500">
                     <span>Replace the current Head of {{ $headDepartment?->name }}, <strong>{{ $currentHead->name }}</strong> ({{ $currentHead->email }}). Their account is deactivated and they are signed out; the change is recorded against them too.</span>
                 </label>
+            @elseif ($headDepartment && $positionAccount?->is_active && $positionAccount->roleName() === \App\Models\User::ROLE_HOD && (int) $positionAccount->department_id === $headDepartment->id)
+                <p class="px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[13px]"><i class="fa-solid fa-circle-check mr-1"></i>{{ $positionStaff->name }} is already the Head of {{ $headDepartment->name }} ({{ $positionAccount->email }}). Nothing about their access changes; record a change only to update their department or designation.</p>
             @elseif ($headDepartment)
                 <p class="px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[13px]"><i class="fa-solid fa-circle-info mr-1"></i>{{ $headDepartment->name }} has no active Head of Department now, so there is no one to replace: {{ $positionStaff->name }} becomes its Head.</p>
             @endif

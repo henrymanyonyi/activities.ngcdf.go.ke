@@ -253,3 +253,15 @@ it('offers a successor when ending a Head\'s role from the staff list, and sched
     expect(ScheduledStaffChange::query()->pending()->pluck('staff_id')->sort()->values()->all())->toBe(collect([$headStaff->id, $successor->id])->sort()->values()->all())
         ->and($head->fresh()->is_active)->toBeTrue();
 });
+
+it('says an officer who already heads the department is its Head, not that the department has none', function () {
+    $hod = headOfDepartment($this->ict);
+    $hod->update(['staff_id' => $this->officer->id]);
+    $this->officer->update(['department_id' => $this->ict->id]);
+
+    Livewire::actingAs(assistant())->test(StaffList::class)
+        ->call('openPosition', $this->officer->id)
+        ->set('posAccess', User::ROLE_HOD)
+        ->assertSee('Asha Promoted is already the Head of ICT')
+        ->assertDontSee('has no active Head of Department now');
+});
